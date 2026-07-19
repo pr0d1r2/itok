@@ -232,8 +232,14 @@ mod tests {
 
     #[test]
     fn budget_breaches_when_the_change_adds_too_much() {
+        // The empty tree -> HEAD adds the ENTIRE repo, so budget 1 always
+        // breaches -- STATE-independent (V37). `HEAD~1..HEAD` couples to
+        // the last commit's size: a near-zero-delta commit as HEAD (a
+        // config number bump) made this spuriously pass with no breach
+        // (B3). The empty-tree hash is git's well-known constant.
+        const EMPTY_TREE: &str = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
         let o =
-            diff(&args(&["-C", &root(), "--budget", "1", "HEAD~1", "HEAD"]));
+            diff(&args(&["-C", &root(), "--budget", "1", EMPTY_TREE, "HEAD"]));
         assert_eq!(o.code, 1);
         assert!(o.err.contains("over budget"));
     }

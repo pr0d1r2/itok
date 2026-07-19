@@ -328,6 +328,10 @@ root, `crates/itok/…` pathspecs — ∵ extracted, the crate IS the repo root
 `--show-prefix`) so ONE test passes at `<repo>/crates/itok` AND standalone.
 V13's "extraction = a move" binds the TESTS too, ⊥ only src; the rehearsal
 (`subtree split` → clone → run `.uow` guards) is how it is proven (T11).
+LAYOUT is not the only ambient a test ⊥ assume: repo STATE too — the live
+`HEAD~1..HEAD` is ⊥ presumed SUBSTANTIAL (a near-zero-delta config commit
+as HEAD broke a `--budget` breach assertion, B3); drive a delta test from a
+CONTROLLED range (empty tree → HEAD adds the whole repo), ⊥ ambient history.
 V38: **a network backend is CASSETTE-REPLAYED in the gate, ⊥ live.**
 Record the real HTTP interactions ONCE into a standard `vcr-cassette` file
 (portable, VCR-interop), replay them offline THROUGH the real client
@@ -392,3 +396,4 @@ T28|.|public docs: README (`cargo install itok`, `--ollama` note, `.context-*` c
 id|date|cause|fix
 B1|2026-07-24|extraction: `rustfmt.toml`/`clippy.toml` root-only ⇒ standalone `cargo fmt --check` reformats (default width 100 vs 80); traveling gate ⊥ reproduces verdict|V27
 B2|2026-07-24|extraction: git-command tests use `CARGO_MANIFEST_DIR.parent().parent()` as repo root + hardcode `crates/itok/…` paths ⇒ standalone `cargo nextest` fails|V37
+B3|2026-07-24|`diff --budget` test asserted a breach on live `HEAD~1..HEAD`, presuming a substantial last commit; a near-zero-delta ceiling bump as HEAD gave no breach ⇒ exit 0 ≠ 1, blocking every commit until HEAD grew|V37
