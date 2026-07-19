@@ -1,0 +1,5 @@
+# Per-path token ceilings, gated by `itok check` (pinned tier, V5). Only
+# registered paths are checked; everything else is unchecked (V10). This
+# is itok checking itself -- the dogfood.
+SPEC.md    60k
+README.md  4k

@@ -1,0 +1,39 @@
+# itok's own size registry -- travels on extraction (V27). At `git subtree
+# split` crates/itok becomes the repo root and this file governs it
+# directly. Same rules as the host: an unmatched file gets limit 0 and
+# fails, so a new file type is a reviewed decision; ceilings sit ~10%
+# above today's largest of that kind.
+
+# docs
+SPEC.md                26000
+
+# license (no extension)
+LICENSE                 1100
+
+# dependency lockfile (present only in the extracted repo)
+Cargo.lock             25000
+
+# source -- V284's 200-line cap usually bites first
+*.rs                   10006
+
+# prose docs (README, CONTRIBUTING)
+*.md                    8192
+
+# config
+*.toml                  2200
+*.nix                   2665
+*.yml                   4535
+
+# detachable toolchain (.uow/) + direnv entry
+.uow/flake.lock          700
+.envrc                   200
+.context-limits          400
+
+# generated / small text
+*.json                  4096
+*.txt                   3000
+
+# extensionless
+.file-limits            1200
+.gitignore                64
+.editorconfig            547

@@ -1,0 +1,15 @@
+{
+  "TOTAL": 99.78,
+  "src/args.rs": 100.0,
+  "src/bpe.rs": 100.0,
+  "src/cli.rs": 99.04,
+  "src/doctor.rs": 100.0,
+  "src/estcmd.rs": 100.0,
+  "src/estimate.rs": 100.0,
+  "src/json.rs": 100.0,
+  "src/main.rs": 100.0,
+  "src/render.rs": 100.0,
+  "src/units.rs": 100.0,
+  "src/verb.rs": 100.0,
+  "src/walk.rs": 97.3
+}

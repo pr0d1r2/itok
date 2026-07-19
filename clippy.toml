@@ -1,0 +1,11 @@
+# V282/V283/V343: code limits, one file, root only (V294).
+# fn 15 / cognitive 7 (decision 2) — strictest tier that still lets an
+# exhaustive match over the verdict enum live in one function.
+too-many-arguments-threshold = 4   # Sandi params <=4, verbatim
+too-many-lines-threshold = 15      # Sandi method <=5 ported (V283)
+cognitive-complexity-threshold = 7
+excessive-nesting-threshold = 4    # clippy default 0 = disabled
+type-complexity-threshold = 150
+max-fn-params-bools = 1
+max-struct-bools = 3
+max-trait-bounds = 3               # SOLID.ISP (V311)

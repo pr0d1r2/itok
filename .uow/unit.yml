@@ -1,0 +1,41 @@
+# itok's guard units, standard-only (V29/V31): the cargo-native gate that
+# travels with a `git subtree split`. fmt, clippy, tests, and a coverage
+# floor -- no host guard bins (repo-hygiene, lexicon, cavekit-spec), which
+# do not travel. Ops are cargo-native argv; no `cargo run` of a guard bin
+# because there are none here (UOW-V446).
+#
+# The schema has no `phase` field yet; the intended split the hook / CI
+# mirrors is:
+#   pre-commit: rustfmt, clippy, unit-tests
+#   pre-push:   e2e-tests, coverage
+#   ci:         all of them
+# glob is the trigger + cache key; each op is a whole-crate tool that
+# self-selects, so it runs once, not per file.
+units:
+  - id: rustfmt
+    glob: "**/*.rs"
+    op: ["cargo", "fmt", "--check"]
+
+  - id: clippy
+    glob: "**/*.rs"
+    op: ["cargo", "clippy", "--all-targets"]
+
+  - id: unit-tests
+    glob: "**/*.rs"
+    op: ["cargo", "nextest", "run", "-E", "kind(lib)", "--test-threads=1"]
+
+  - id: e2e-tests
+    glob: "**/*.rs"
+    op: ["cargo", "nextest", "run", "-E", "kind(test)", "--test-threads=1"]
+
+  - id: coverage
+    glob: "**/*.rs"
+    op:
+      [
+        "cargo",
+        "llvm-cov",
+        "nextest",
+        "--summary-only",
+        "--fail-under-lines",
+        "99",
+      ]

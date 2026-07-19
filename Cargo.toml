@@ -1,0 +1,60 @@
+# Self-specified, NOT workspace-inherited: itok must carry its own package
+# metadata and lints so `git subtree split -P crates/itok` yields a
+# complete crate (V13, V27). The duplication with the workspace deny-list
+# is the price of detachability (V492) -- cargo lints cannot cascade the
+# way file-config baselines do.
+[package]
+name = "itok"
+version = "0.0.0"
+edition = "2021"
+license = "MIT"
+description = "context-cost estimator: token and window budgets for files and changes"
+
+[[bin]]
+name = "itok"
+path = "src/main.rs"
+
+# The dummy tier is zero-dep (V4). --bpe is a real tokenizer and needs
+# one: tiktoken-rs embeds the o200k ranks, so it is offline at runtime
+# and deterministic (V12/V5). It is optional and behind the `bpe` feature
+# so `--no-default-features` yields the tiny dummy-only tool (V13/V23);
+# default-on because real counts are the point of installing.
+[features]
+default = ["bpe"]
+bpe = ["dep:tiktoken-rs"]
+# The exact tier (V4) is a LAN-local backend: ollama's own tokenizer over
+# plain HTTP on :11434 -- keyless, free, on-LAN (V22). Behind its own
+# feature (V23) so the core ships ZERO network deps and runs in a
+# networkless sandbox (V34). ureq with default-features off = no TLS stack
+# (ollama is plain http, no cloud, no cert chain, no ring/openssl).
+ollama = ["dep:ureq"]
+
+[dependencies]
+tiktoken-rs = { version = "0.6", optional = true }
+ureq = { version = "2", default-features = false, optional = true }
+
+# assert_cmd/predicates are dev-only and already in the workspace lockfile.
+[dev-dependencies]
+assert_cmd = "2"
+predicates = "3"
+proptest = "1"
+serde_json = "1.0.151"
+vcr-cassette = "2.0.1"
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+indexing_slicing = "deny"
+todo = "deny"
+unimplemented = "deny"
+dbg_macro = "deny"
+arithmetic_side_effects = "deny"
+too_many_lines = "deny"
+cognitive_complexity = "deny"
+excessive_nesting = "deny"
+fn_params_excessive_bools = "deny"
+struct_excessive_bools = "deny"
+
+[lints.rust]
+unsafe_code = "forbid"

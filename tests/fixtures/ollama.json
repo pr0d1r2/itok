@@ -1,0 +1,35 @@
+{
+  "http_interactions": [
+    {
+      "request": { "uri": "http://ollama/api/tags", "body": "", "method": "get", "headers": {} },
+      "response": {
+        "body": "{\"models\":[{\"name\":\"qwen3-coder:30b\",\"model\":\"qwen3-coder:30b\"}]}",
+        "http_version": "1.1",
+        "status": { "code": 200, "message": "OK" },
+        "headers": { "Content-Type": [ "application/json" ] }
+      },
+      "recorded_at": "Tue, 01 Nov 2011 04:58:44 GMT"
+    },
+    {
+      "request": { "uri": "http://ollama/api/show", "body": "", "method": "post", "headers": {} },
+      "response": {
+        "body": "{\"model_info\":{\"general.architecture\":\"qwen3moe\",\"qwen3moe.context_length\":262144}}",
+        "http_version": "1.1",
+        "status": { "code": 200, "message": "OK" },
+        "headers": { "Content-Type": [ "application/json" ] }
+      },
+      "recorded_at": "Tue, 01 Nov 2011 04:58:44 GMT"
+    },
+    {
+      "request": { "uri": "http://ollama/api/generate", "body": "", "method": "post", "headers": {} },
+      "response": {
+        "body": "{\"response\":\"\",\"done\":true,\"done_reason\":\"stop\",\"prompt_eval_count\":42}",
+        "http_version": "1.1",
+        "status": { "code": 200, "message": "OK" },
+        "headers": { "Content-Type": [ "application/json" ] }
+      },
+      "recorded_at": "Tue, 01 Nov 2011 04:58:44 GMT"
+    }
+  ],
+  "recorded_with": "itok cassette (V38)"
+}
