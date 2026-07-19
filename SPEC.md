@@ -340,17 +340,16 @@ url, ⊥ tokio/async) ∴ V23/V13 hold: the shipped binary stays network-free
 forbidden shape. ∴ every network feature ALSO runs a CI axis (`--features
 ollama` clippy+nextest in `.uow`) so the replayed path ⊥ rot.
 V39: **publishable = public gate green + honest SemVer + zero private
-reference.** Releasing to crates.io needs four things: (1) the STANDARD
-gate reproduces on plain rustup CI (V31) — fmt · clippy · test · `--features
-ollama` · `llvm-cov --fail-under-lines` — w/ NO nix & NO host bin, git
-history fetched FULL (the diff/show/log tests read `HEAD~n`); (2) SemVer
-tells maturity TRUE — `0.8.0` = stable & battle-tested but pre-1.0 (API MAY
-still move; 1.0 reserved for "finished"), ⊥ the default `0.0.0`; (3) crate
+reference.** crates.io needs 4: (1) the STANDARD gate reproduces on plain
+rustup CI (V31) — fmt · clippy · test · `--features ollama` · `llvm-cov
+--fail-under-lines`, NO nix & NO host bin, git history fetched FULL
+(diff/show/log read `HEAD~n`); (2) SemVer tells maturity TRUE — `0.8.0` =
+stable but pre-1.0 (API MAY move; 1.0 = finished), ⊥ default `0.0.0`; (3)
 metadata complete (`repository`·`homepage`·`documentation`·`readme`·
-`keywords`·`categories`·`rust-version`) so crates.io & docs.rs render +
-index; (4) the shipped `.crate` names NO origin repo (V26) & `exclude`s
-non-consumer files (`.uow/`, baselines). Publish = a `subtree split` (V13)
-of a crate already carrying all four.
+`keywords`·`categories`·`rust-version`) so crates.io/docs.rs render; (4)
+the shipped `.crate` names NO origin repo (V26) & `exclude`s non-consumer
+files (`.uow/`, baselines). Publish = `subtree split` (V13) of a crate
+carrying all four.
 
 ## §T TASKS
 
@@ -358,6 +357,7 @@ of a crate already carrying all four.
 |----|-------|-------|-----------|
 | M1 | offline core — estimate + report | T1, T2, T3, T4, T12 | `itok estimate`/`itok e` green on a real tree, json stable, `--budget` gates |
 | M2 | full ladder + gate + extract | T5, T7, T8, T9, T10, T11, T13, T14, T15, T16, T17, T18, T19, T20, T21, T22, T23, T24 | `--bpe`/`--ollama`/`diff`/`check`/`doctor`/`log`/`fit` done, subtree-split rehearsed |
+| M3 | publish — crates.io-ready, public CI | T25, T26, T27, T28 | `cargo publish --dry-run` clean, public CI green, no origin-repo ref shipped, `itok` installs |
 
 T1|x|crate skeleton: standalone bin, Cargo.toml, MIT license, min deps|V13
 T2|x|`estimate` dummy tier: bytes/4 + word proxy, du flags, tracked-by-default|V4,V8
@@ -382,6 +382,10 @@ T21|x|itok baselines at crates/itok/ root: `.file-limits`·`lexicon.txt`·`cover
 T22|x|`gitref` primitive: token cost of a file AT a commit (`git cat-file` → dummy/bpe), shared by diff/show/log|V33
 T23|x|`show` verb: one commit's per-file delta (default HEAD), `-- path`, `<commit>:<path>` blob|V32,V33
 T24|x|cassette-replay the ollama backend: `vcr-cassette` dev-dep + ureq replay stub + fixtures (`/api/tags`·`/api/show`·`/api/generate`); live smoke → `#[ignore]`; `ollama` CI axis in `.uow`+hook; fold into `src/ollama/`|V38,V22,V23
+T25|.|metadata: `Cargo.toml` version `0.8.0` + `repository`·`homepage`·`documentation`·`readme`·`keywords`·`categories`·`rust-version`, `exclude` non-consumer files|V39,V13
+T26|.|public-clean provenance: scrub SPEC + src comments of origin-repo names & `UOW-Vxxx` pointers (fold inline), header un-names the workspace, `exclude=[".uow"]`|V26,V39
+T27|.|bare-rust `.github/workflows/ci.yml`: fmt·clippy·test·`--features ollama`·`llvm-cov --fail-under-lines 99`, `fetch-depth:0`, no nix/uow|V39,V31,V38
+T28|.|public docs: README (`cargo install itok`, `--ollama` note, `.context-*` config) + `CHANGELOG.md` + crate rustdoc for docs.rs|V39,V15
 
 ## §B BUGS
 
