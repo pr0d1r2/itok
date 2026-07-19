@@ -4,8 +4,9 @@
 # fails, so a new file type is a reviewed decision; ceilings sit ~10%
 # above today's largest of that kind.
 
-# docs -- M3 publish (V39) + docs-registry feature (V40)
-SPEC.md                28000
+# docs -- M3 (V39) + docs registry (V40) + backprop B3/V37.
+# COMPACTION DEBT: compact/split SPEC.md before M3 closes.
+SPEC.md                29000
 
 # license (no extension)
 LICENSE                 1100
