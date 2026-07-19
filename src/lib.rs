@@ -12,6 +12,7 @@ mod diffcmd;
 mod discover;
 mod docs;
 mod doctor;
+mod doctorfmt;
 mod estcmd;
 pub mod estimate;
 mod fitcmd;

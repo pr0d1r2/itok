@@ -3,10 +3,12 @@
 //! fit-to-window, balance (one file dominating), noise (lockfile share),
 //! and confidence (the dummy-vs-bpe spread, the one signal only itok has,
 //! because it owns both estimators). Report-only, exit 0 always: doctor
-//! advises, `check` gates. A thin composer; it grows no tentacles.
+//! advises, `check` gates. A thin composer; it grows no tentacles. This
+//! module gathers the signals; `doctorfmt` renders them.
 
 use crate::args::{parse, Format, Opts};
 use crate::cli::Output;
+use crate::doctorfmt::{human, json, Health};
 use crate::estimate::dummy;
 use crate::render::Method;
 use crate::walk::{bytes, tracked};
@@ -35,17 +37,6 @@ fn run(opts: &Opts) -> Output {
         }
         Err(e) => Output::usage_err(format!("itok: {e}")),
     }
-}
-
-/// Aggregate health of a fileset. Percentages are whole numbers.
-struct Health {
-    dummy_total: u64,
-    real_total: u64,
-    has_bpe: bool,
-    method: &'static Method,
-    window: Option<u64>,
-    biggest: u64,
-    noise: u64,
 }
 
 fn assess(
@@ -119,95 +110,9 @@ fn real_count(path: &Path, dummy_val: u64) -> u64 {
     }
 }
 
-/// Percentage `part` is of `whole`, saturating and division-safe.
-fn pct(part: u64, whole: u64) -> u64 {
-    part.saturating_mul(100).checked_div(whole).unwrap_or(0)
-}
-
-/// The dummy-vs-real spread: percent, and the direction bytes/4 erred.
-fn spread(dummy_total: u64, real_total: u64) -> (u64, char) {
-    if real_total >= dummy_total {
-        (pct(real_total.saturating_sub(dummy_total), real_total), '+')
-    } else {
-        (
-            pct(dummy_total.saturating_sub(real_total), dummy_total),
-            '-',
-        )
-    }
-}
-
 /// Lockfiles are high-token, low-signal -- the noise a context carries.
 fn is_noise(path: &str) -> bool {
     path.ends_with(".lock")
-}
-
-fn verdict(pct: u64, warn_at: u64) -> &'static str {
-    if pct > 100 {
-        "OVER"
-    } else if pct >= warn_at {
-        "warn"
-    } else {
-        "ok"
-    }
-}
-
-fn human(h: &Health) -> String {
-    let method = h.method.label;
-    let mut s = format!("context: {} itok ({method})\n", h.real_total);
-    s.push_str(&fit_line(h));
-    s.push_str(&balance_line(h));
-    s.push_str(&noise_line(h));
-    s.push_str(&confidence_line(h));
-    s
-}
-
-fn fit_line(h: &Health) -> String {
-    match h.window {
-        None => "  fit         (pass --window to check)\n".to_owned(),
-        Some(w) => {
-            let p = pct(h.real_total, w);
-            format!(
-                "  fit         {} / {w}  {p}%  {}\n",
-                h.real_total,
-                verdict(p, 80)
-            )
-        }
-    }
-}
-
-fn balance_line(h: &Health) -> String {
-    let p = pct(h.biggest, h.real_total);
-    format!("  balance     biggest file {p}%  {}\n", verdict(p, 50))
-}
-
-fn noise_line(h: &Health) -> String {
-    let p = pct(h.noise, h.real_total);
-    format!("  noise       lockfiles {p}%  {}\n", verdict(p, 20))
-}
-
-fn confidence_line(h: &Health) -> String {
-    if !h.has_bpe {
-        return "  confidence  n/a (build with the bpe feature)\n".to_owned();
-    }
-    let (s, dir) = spread(h.dummy_total, h.real_total);
-    format!("  confidence  bytes/4 is {dir}{s}% vs o200k\n")
-}
-
-fn json(h: &Health) -> String {
-    let method = h.method.label;
-    let window = h
-        .window
-        .map_or_else(|| "null".to_owned(), |w| w.to_string());
-    let fit = h.window.map_or(0, |w| pct(h.real_total, w));
-    format!(
-        "{{\"total_tokens\":{},\"method\":\"{method}\",\"window\":{window},\
-         \"fit_pct\":{fit},\"biggest_pct\":{},\"noise_pct\":{},\
-         \"confidence_pct\":{}}}\n",
-        h.real_total,
-        pct(h.biggest, h.real_total),
-        pct(h.noise, h.real_total),
-        spread(h.dummy_total, h.real_total).0,
-    )
 }
 
 #[cfg(test)]
@@ -221,28 +126,9 @@ mod tests {
     }
 
     #[test]
-    fn pct_is_division_safe() {
-        assert_eq!(pct(50, 200), 25);
-        assert_eq!(pct(5, 0), 0);
-    }
-
-    #[test]
-    fn spread_reports_direction() {
-        assert_eq!(spread(80, 100), (20, '+'));
-        assert_eq!(spread(100, 80), (20, '-'));
-    }
-
-    #[test]
     fn lockfiles_are_noise() {
         assert!(is_noise("Cargo.lock"));
         assert!(!is_noise("src/main.rs"));
-    }
-
-    #[test]
-    fn verdict_thresholds() {
-        assert_eq!(verdict(10, 80), "ok");
-        assert_eq!(verdict(90, 80), "warn");
-        assert_eq!(verdict(120, 80), "OVER");
     }
 
     #[test]
@@ -280,42 +166,6 @@ mod tests {
     #[test]
     fn a_bad_flag_is_a_usage_error() {
         assert_eq!(doctor(&args(&["--bogus"])).code, 2);
-    }
-
-    // The has_bpe:false and window:None branches are unreachable through a
-    // default (bpe-on, real-repo) run, so drive them with a built Health.
-    fn h(real: u64, dummy: u64, window: Option<u64>, bpe: bool) -> Health {
-        let method = if bpe {
-            &crate::render::O200K
-        } else {
-            &crate::render::DUMMY
-        };
-        Health {
-            dummy_total: dummy,
-            real_total: real,
-            has_bpe: bpe,
-            method,
-            window,
-            biggest: real,
-            noise: 0,
-        }
-    }
-
-    #[test]
-    fn confidence_is_na_without_bpe() {
-        assert!(confidence_line(&h(100, 80, None, false)).contains("n/a"));
-    }
-
-    #[test]
-    fn human_names_the_dummy_method_without_bpe() {
-        assert!(human(&h(100, 80, None, false)).contains("bytes/4"));
-    }
-
-    #[test]
-    fn json_window_is_null_when_absent() {
-        let j = json(&h(100, 80, None, true));
-        assert!(j.contains("\"window\":null"));
-        assert!(j.contains("\"fit_pct\":0"));
     }
 
     #[test]
