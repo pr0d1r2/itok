@@ -38,6 +38,13 @@ impl Output {
         }
     }
 
+    /// A usage error `msg` followed by the command reference (V40): the
+    /// one place the "message + usage" shape lives, so every verb's error
+    /// path stays a short single line.
+    pub(crate) fn usage_err(msg: String) -> Self {
+        Self::usage(format!("{msg}\n{}", crate::docs::usage()))
+    }
+
     /// A budget breach: the report still prints, the note goes to stderr,
     /// exit 1 (V16).
     pub(crate) fn breach(out: String, err: String) -> Self {

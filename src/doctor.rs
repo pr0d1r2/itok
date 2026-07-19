@@ -15,7 +15,7 @@ use std::path::{Path, PathBuf};
 pub(crate) fn doctor(rest: &[String]) -> Output {
     match parse(rest) {
         Ok(opts) => run(&opts),
-        Err(e) => Output::usage(format!("itok: {e}\n{}", crate::docs::usage())),
+        Err(e) => Output::usage_err(format!("itok: {e}")),
     }
 }
 
@@ -33,7 +33,7 @@ fn run(opts: &Opts) -> Output {
             let window = opts.window.or(model.window);
             Output::ok(assess(opts, &root, model.encoding, window))
         }
-        Err(e) => Output::usage(format!("itok: {e}\n{}", crate::docs::usage())),
+        Err(e) => Output::usage_err(format!("itok: {e}")),
     }
 }
 

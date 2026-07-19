@@ -22,7 +22,7 @@ struct Raw {
 pub(crate) fn show(rest: &[String]) -> Output {
     match parse(rest) {
         Ok(raw) => run(&raw),
-        Err(e) => Output::usage(format!("itok: {e}\n{}", crate::docs::usage())),
+        Err(e) => Output::usage_err(format!("itok: {e}")),
     }
 }
 

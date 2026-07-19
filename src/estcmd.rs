@@ -19,7 +19,7 @@ use std::path::PathBuf;
 pub(crate) fn estimate(rest: &[String]) -> Output {
     match parse(rest) {
         Ok(opts) => graded(&opts),
-        Err(e) => Output::usage(format!("itok: {e}\n{}", crate::docs::usage())),
+        Err(e) => Output::usage_err(format!("itok: {e}")),
     }
 }
 

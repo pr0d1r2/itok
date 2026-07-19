@@ -21,7 +21,7 @@ type Breach = (String, u64, u64);
 pub(crate) fn check(rest: &[String]) -> Output {
     match parse(rest) {
         Ok((root, format)) => run(&root, format),
-        Err(e) => Output::usage(format!("itok: {e}\n{}", crate::docs::usage())),
+        Err(e) => Output::usage_err(format!("itok: {e}")),
     }
 }
 

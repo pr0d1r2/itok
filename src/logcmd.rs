@@ -29,17 +29,14 @@ struct Raw {
 pub(crate) fn log(rest: &[String]) -> Output {
     match parse(rest) {
         Ok(raw) => run(&raw),
-        Err(e) => Output::usage(format!("itok: {e}\n{}", crate::docs::usage())),
+        Err(e) => Output::usage_err(format!("itok: {e}")),
     }
 }
 
 fn run(raw: &Raw) -> Output {
     let root = PathBuf::from(raw.chdir.as_deref().unwrap_or("."));
     let Some(path) = raw.path.clone() else {
-        return Output::usage(format!(
-            "itok: log needs a path\n{}",
-            crate::docs::usage()
-        ));
+        return Output::usage_err("itok: log needs a path".to_owned());
     };
     let commits = gitref::commits(&root, &git_args(raw, &path));
     let rows = rows(&root, &commits, &path, raw.bpe);
