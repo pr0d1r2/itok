@@ -339,6 +339,18 @@ url, ⊥ tokio/async) ∴ V23/V13 hold: the shipped binary stays network-free
 & tiny. rvcr rejected — it is reqwest+tokio = an async runtime, V23's
 forbidden shape. ∴ every network feature ALSO runs a CI axis (`--features
 ollama` clippy+nextest in `.uow`) so the replayed path ⊥ rot.
+V39: **publishable = public gate green + honest SemVer + zero private
+reference.** Releasing to crates.io needs four things: (1) the STANDARD
+gate reproduces on plain rustup CI (V31) — fmt · clippy · test · `--features
+ollama` · `llvm-cov --fail-under-lines` — w/ NO nix & NO host bin, git
+history fetched FULL (the diff/show/log tests read `HEAD~n`); (2) SemVer
+tells maturity TRUE — `0.8.0` = stable & battle-tested but pre-1.0 (API MAY
+still move; 1.0 reserved for "finished"), ⊥ the default `0.0.0`; (3) crate
+metadata complete (`repository`·`homepage`·`documentation`·`readme`·
+`keywords`·`categories`·`rust-version`) so crates.io & docs.rs render +
+index; (4) the shipped `.crate` names NO origin repo (V26) & `exclude`s
+non-consumer files (`.uow/`, baselines). Publish = a `subtree split` (V13)
+of a crate already carrying all four.
 
 ## §T TASKS
 
