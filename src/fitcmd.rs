@@ -220,7 +220,7 @@ mod tests {
 
     #[test]
     fn missing_window_is_a_usage_error() {
-        // V20/§I: fit needs a budget to pack against.
+        // V20 (interface): fit needs a budget to pack against.
         let o = fit(&args(&["-C", DIR, "Cargo.toml"]));
         assert_eq!(o.code, 2);
         assert!(o.err.contains("--window"));
