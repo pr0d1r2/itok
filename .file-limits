@@ -4,8 +4,8 @@
 # fails, so a new file type is a reviewed decision; ceilings sit ~10%
 # above today's largest of that kind.
 
-# docs
-SPEC.md                26000
+# docs -- headroom for the M3 publish milestone (V39)
+SPEC.md                27000
 
 # license (no extension)
 LICENSE                 1100
