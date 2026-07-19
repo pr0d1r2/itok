@@ -356,15 +356,14 @@ files (`.uow/`, baselines). Publish = `subtree split` (V13) of a crate
 carrying all four.
 V40: **docs render from ONE command registry — `itok docs` emits it, a
 guard FREEZES it.** itok hand-rolls args (no clap) ∴ verb/flag text
-scatters across help strings & rots alone (the README did). One in-code
-registry (verb → synopsis · flags · exit codes) renders EVERY view:
-`--help` terse, `itok docs` markdown reference, later man/completions —
-adding a verb is a ONE-place edit. `docs` is READ-ONLY → stdout (V6);
-`itok docs > README.md` is the USER's redirect, ⊥ the tool writing.
-Generated = REFERENCE only; the NARRATIVE (intro, ladder, mermaid) stays
-hand-written ABOVE it. A guard runs `itok docs` & diffs the committed
-reference ∴ staleness FAILS the gate (coverage-freeze shape, V14) — docs
-cannot rot, ⊥ merely regenerable.
+scatters across help strings & rots alone (the README did). One registry
+(verb → synopsis · flags · exit) feeds EVERY view — `--help`, `itok docs`
+(markdown reference), later man — so a new verb is a ONE-place edit.
+READ-ONLY, to stdout (V6): `itok docs > README.md` is the USER's redirect,
+⊥ the tool writing. Generated = REFERENCE; the NARRATIVE (intro, ladder,
+mermaid) stays hand-written ABOVE it. A guard diffs `itok docs` vs the
+committed reference ∴ staleness FAILS the gate (coverage-freeze, V14) —
+docs cannot rot, ⊥ merely regenerable.
 
 ## §T TASKS
 
