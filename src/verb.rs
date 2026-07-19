@@ -24,7 +24,7 @@ pub(crate) enum Verb {
 
 /// Read-only verbs, the only ones prefix-inference resolves. `fit` selects
 /// rather than reports but is still read-only (V20), so it belongs here.
-const VERBS: &[(&str, Verb)] = &[
+pub(crate) const VERBS: &[(&str, Verb)] = &[
     ("estimate", Verb::Estimate),
     ("doctor", Verb::Doctor),
     ("diff", Verb::Diff),

@@ -10,6 +10,7 @@ mod diffargs;
 mod diffcmd;
 #[cfg(feature = "ollama")]
 mod discover;
+mod docs;
 mod doctor;
 mod estcmd;
 pub mod estimate;

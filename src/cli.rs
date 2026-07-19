@@ -12,43 +12,6 @@ use crate::verb::{resolve, Resolution, Verb};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
-pub(crate) const USAGE: &str = "\
-itok -- context-cost estimator
-
-usage: itok <command> [args]
-
-commands:
-  estimate [-s] [-h] [--top N] [--budget N] [--bpe] [--ollama [HOSTS]]
-           [--format human|json] [-C dir] [paths...]
-                    token cost of files (git-tracked by default)
-                    --bpe: real tokenizer (o200k) instead of bytes/4
-                    --ollama: exact via a local model's tokenizer (LAN)
-  doctor   [--model X] [--window N] [--ollama [HOSTS]] [--format human|json]
-           [-C dir] [paths...]
-                    advisory health: fit-to-window, balance, noise,
-                    estimate confidence. Reports; never gates.
-                    --model X: resolve X's encoding via .context-models.
-                    --ollama: live model/window discovery across a fleet.
-                    HOSTS = host[:port] comma-list, - (stdin), or
-                    .context-hosts; else OLLAMA_HOST, else localhost.
-  diff     [<A> <B>|<A>..<B>|<ref>] [--staged] [-- <path>]
-                    token delta between two points (default working vs
-                    HEAD); --exit-code / --budget N to gate.
-  show     [<commit>] [-- <path>] | <commit>:<path>
-                    one commit's per-file delta (default HEAD); the
-                    <commit>:<path> form is a blob's cost at a ref.
-  log      <path> [<A>..<B>] [-n N] [--since D] [--reverse]
-                    a path's token cost + delta across the commits that
-                    touched it. Report-only.
-  check    [-C dir] [--format human|json]
-                    gate registered paths against .context-limits;
-                    exit 1 on any breach.
-  fit      --window N [--by size] [--bpe] [--format human|json] [-C dir]
-           [paths...]
-                    greedy subset of files that fits the token window;
-                    emits a pipeable path list (default git-tracked).
-";
-
 /// What a run produced: streams + exit code. No process, no I/O.
 #[derive(Debug, PartialEq, Eq)]
 pub struct Output {
@@ -86,7 +49,7 @@ impl Output {
 #[must_use]
 pub fn run(args: &[String]) -> Output {
     match args.split_first() {
-        None => Output::usage(USAGE.to_owned()),
+        None => Output::usage(crate::docs::usage()),
         Some((first, rest)) => head(first, rest),
     }
 }
@@ -94,7 +57,12 @@ pub fn run(args: &[String]) -> Output {
 fn head(first: &str, rest: &[String]) -> Output {
     match first {
         "--version" | "-V" => Output::ok(format!("itok {VERSION}\n")),
-        "--help" | "-h" => Output::ok(USAGE.to_owned()),
+        "--help" | "-h" => Output::ok(crate::docs::usage()),
+        // `docs` is READ-ONLY (V6) but full-name only, not prefix-inferred:
+        // it must not steal `doctor`'s `do`/`doc` prefixes. Emits the
+        // markdown reference to stdout; `itok docs > README.md` is the
+        // user's redirect -- the tool never writes (V40).
+        "docs" => Output::ok(crate::docs::markdown()),
         verb => run_verb(verb, rest),
     }
 }
@@ -129,15 +97,17 @@ fn dispatch(v: Verb, rest: &[String]) -> Output {
 }
 
 fn ambiguous_msg(verb: &str, cands: &[&str]) -> String {
-    format!("itok: '{verb}' is ambiguous: {}\n{USAGE}", cands.join(", "))
+    let usage = crate::docs::usage();
+    format!("itok: '{verb}' is ambiguous: {}\n{usage}", cands.join(", "))
 }
 
 fn unknown_msg(verb: &str, near: &[&str]) -> String {
+    let usage = crate::docs::usage();
     if near.is_empty() {
-        format!("itok: unknown command '{verb}'\n{USAGE}")
+        format!("itok: unknown command '{verb}'\n{usage}")
     } else {
         format!(
-            "itok: unknown command '{verb}' -- did you mean {}?\n{USAGE}",
+            "itok: unknown command '{verb}' -- did you mean {}?\n{usage}",
             near.join(", ")
         )
     }
@@ -171,6 +141,16 @@ mod tests {
         let o = run(&args(&["--help"]));
         assert!(o.out.contains("estimate"));
         assert_eq!(o.code, 0);
+    }
+
+    #[test]
+    fn docs_gives_the_markdown_reference() {
+        // Full-name verb, read-only to stdout (V40): markdown out, no stderr.
+        let o = run(&args(&["docs"]));
+        assert_eq!(o.code, 0);
+        assert!(o.out.starts_with("## Commands"));
+        assert!(o.out.contains("### `estimate`"));
+        assert!(o.err.is_empty(), "read-only: {:?}", o.err);
     }
 
     #[test]

@@ -6,7 +6,7 @@
 //! advises, `check` gates. A thin composer; it grows no tentacles.
 
 use crate::args::{parse, Format, Opts};
-use crate::cli::{Output, USAGE};
+use crate::cli::Output;
 use crate::estimate::dummy;
 use crate::render::Method;
 use crate::walk::{bytes, tracked};
@@ -15,7 +15,7 @@ use std::path::{Path, PathBuf};
 pub(crate) fn doctor(rest: &[String]) -> Output {
     match parse(rest) {
         Ok(opts) => run(&opts),
-        Err(e) => Output::usage(format!("itok: {e}\n{USAGE}")),
+        Err(e) => Output::usage(format!("itok: {e}\n{}", crate::docs::usage())),
     }
 }
 
@@ -33,7 +33,7 @@ fn run(opts: &Opts) -> Output {
             let window = opts.window.or(model.window);
             Output::ok(assess(opts, &root, model.encoding, window))
         }
-        Err(e) => Output::usage(format!("itok: {e}\n{USAGE}")),
+        Err(e) => Output::usage(format!("itok: {e}\n{}", crate::docs::usage())),
     }
 }
 

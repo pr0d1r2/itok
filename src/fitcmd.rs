@@ -11,7 +11,7 @@
 //! git-tracked set (V8). Report-only, exit 0.
 
 use crate::args::Format;
-use crate::cli::{Output, USAGE};
+use crate::cli::Output;
 use crate::estimate::count;
 use crate::render::{DUMMY, O200K};
 use crate::units;
@@ -33,13 +33,16 @@ struct Req {
 pub(crate) fn fit(rest: &[String]) -> Output {
     match parse(rest) {
         Ok(req) => run(&req),
-        Err(e) => Output::usage(format!("itok: {e}\n{USAGE}")),
+        Err(e) => Output::usage(format!("itok: {e}\n{}", crate::docs::usage())),
     }
 }
 
 fn run(req: &Req) -> Output {
     let Some(window) = req.window else {
-        return Output::usage(format!("itok: fit needs --window N\n{USAGE}"));
+        return Output::usage(format!(
+            "itok: fit needs --window N\n{}",
+            crate::docs::usage()
+        ));
     };
     let root = PathBuf::from(req.chdir.as_deref().unwrap_or("."));
     let (picked, tokens) = pack(&candidates(req, &root), window);

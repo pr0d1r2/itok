@@ -12,7 +12,7 @@
 //! delta) or --budget N (nonzero when the delta adds more than N, V16).
 
 use crate::args::Format;
-use crate::cli::{Output, USAGE};
+use crate::cli::Output;
 use crate::diffargs::{breach_msg, parse, signed, Raw};
 use crate::estimate;
 use crate::gitref;
@@ -36,7 +36,7 @@ struct Cmp {
 pub(crate) fn diff(rest: &[String]) -> Output {
     match parse(rest) {
         Ok(raw) => run(&raw),
-        Err(e) => Output::usage(format!("itok: {e}\n{USAGE}")),
+        Err(e) => Output::usage(format!("itok: {e}\n{}", crate::docs::usage())),
     }
 }
 

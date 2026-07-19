@@ -6,7 +6,7 @@
 //! (V32/V33). Built on the gitref primitive.
 
 use crate::args::Format;
-use crate::cli::{Output, USAGE};
+use crate::cli::Output;
 use crate::diffargs::signed;
 use crate::gitref;
 use crate::render::{Method, DUMMY, O200K};
@@ -29,14 +29,17 @@ struct Raw {
 pub(crate) fn log(rest: &[String]) -> Output {
     match parse(rest) {
         Ok(raw) => run(&raw),
-        Err(e) => Output::usage(format!("itok: {e}\n{USAGE}")),
+        Err(e) => Output::usage(format!("itok: {e}\n{}", crate::docs::usage())),
     }
 }
 
 fn run(raw: &Raw) -> Output {
     let root = PathBuf::from(raw.chdir.as_deref().unwrap_or("."));
     let Some(path) = raw.path.clone() else {
-        return Output::usage(format!("itok: log needs a path\n{USAGE}"));
+        return Output::usage(format!(
+            "itok: log needs a path\n{}",
+            crate::docs::usage()
+        ));
     };
     let commits = gitref::commits(&root, &git_args(raw, &path));
     let rows = rows(&root, &commits, &path, raw.bpe);

@@ -4,7 +4,7 @@
 //! shape.
 
 use crate::args::{parse, Format, Opts};
-use crate::cli::{Output, USAGE};
+use crate::cli::Output;
 use crate::estimate::{measure, over_budget, Estimate};
 use crate::json;
 #[cfg(feature = "ollama")]
@@ -19,7 +19,7 @@ use std::path::PathBuf;
 pub(crate) fn estimate(rest: &[String]) -> Output {
     match parse(rest) {
         Ok(opts) => graded(&opts),
-        Err(e) => Output::usage(format!("itok: {e}\n{USAGE}")),
+        Err(e) => Output::usage(format!("itok: {e}\n{}", crate::docs::usage())),
     }
 }
 

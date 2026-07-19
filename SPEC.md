@@ -400,7 +400,7 @@ T25|.|metadata: `Cargo.toml` version `0.8.0` + `repository`·`homepage`·`docume
 T26|.|public-clean provenance: scrub SPEC + src comments of origin-repo names & `UOW-Vxxx` pointers (fold inline), header un-names the workspace, `exclude=[".uow"]`|V26,V39
 T27|.|bare-rust `.github/workflows/ci.yml`: fmt·clippy·test·`--features ollama`·`llvm-cov --fail-under-lines 99`, `fetch-depth:0`, no nix/uow|V39,V31,V38
 T28|.|assemble README = hand narrative + the `itok docs` reference block + badges (post-ORG); `CHANGELOG.md`; crate rustdoc for docs.rs|V39,V40,V15
-T29|.|`itok docs` verb: ONE command registry (verb·synopsis·flags·exit) renders `--help` + a markdown reference; read-only to stdout; guard diffs it vs README ∴ docs can't rot|V40,V6,V9
+T29|x|`itok docs` verb: ONE command registry (verb·synopsis·flags·exit) renders `--help` + a markdown reference; read-only to stdout; guard diffs it vs README ∴ docs can't rot|V40,V6,V9
 
 ## §B BUGS
 

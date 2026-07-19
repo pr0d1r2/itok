@@ -6,7 +6,7 @@
 //! are gated; everything else is unchecked (V10). Exit 1 on any breach.
 
 use crate::args::Format;
-use crate::cli::{Output, USAGE};
+use crate::cli::Output;
 use crate::estimate;
 use crate::render::Method;
 use crate::units;
@@ -21,7 +21,7 @@ type Breach = (String, u64, u64);
 pub(crate) fn check(rest: &[String]) -> Output {
     match parse(rest) {
         Ok((root, format)) => run(&root, format),
-        Err(e) => Output::usage(format!("itok: {e}\n{USAGE}")),
+        Err(e) => Output::usage(format!("itok: {e}\n{}", crate::docs::usage())),
     }
 }
 

@@ -4,7 +4,7 @@
 //! Report-only. Built on the gitref primitive.
 
 use crate::args::Format;
-use crate::cli::{Output, USAGE};
+use crate::cli::Output;
 use crate::diffargs::signed;
 use crate::gitref;
 use crate::render::{Method, DUMMY, O200K};
@@ -22,7 +22,7 @@ struct Raw {
 pub(crate) fn show(rest: &[String]) -> Output {
     match parse(rest) {
         Ok(raw) => run(&raw),
-        Err(e) => Output::usage(format!("itok: {e}\n{USAGE}")),
+        Err(e) => Output::usage(format!("itok: {e}\n{}", crate::docs::usage())),
     }
 }
 

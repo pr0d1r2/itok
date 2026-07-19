@@ -36,10 +36,7 @@ nix develop --command cargo install --path crates/itok
 That puts `itok` in `~/.cargo/bin`. Make sure that directory is on your
 `PATH`.
 
-## Commands
-
-Today `itok` implements one verb, `estimate`. The others are on the
-[roadmap](#roadmap) below.
+## Prefix inference
 
 Verb names support **prefix inference**: any unambiguous prefix works, so
 `itok e`, `itok est`, and `itok estimate` are the same command. A typo that
@@ -50,56 +47,32 @@ $ itok esimate
 itok: unknown command 'esimate' -- did you mean estimate?
 ```
 
-### `estimate`
+The full command reference is [below](#commands); `itok docs` prints it and
+is the source of that section.
 
-```text
-itok estimate [-s] [-h] [--top N] [--budget N] [--format human|json]
-             [-C dir] [paths...]
-```
-
-Estimate the token cost of files. With no `paths`, it estimates every
-**git-tracked** file (like `rg` respects `.gitignore`); with paths, just
-those.
-
-| flag | meaning |
-|------|---------|
-| `-s`, `--summarize` | only the total line (like `du -s`) |
-| `-h`, `--human` | abbreviate counts: `37k`, `1M` |
-| `--top N` | show only the N biggest files |
-| `--budget N` | fail if any file exceeds N tokens (see below) |
-| `--format human\|json` | output shape; `json` is the stable contract |
-| `-C dir` | run as if started in `dir` |
-
-Examples:
-
-```bash
-itok estimate SPEC.md                 # one file
-itok estimate -s                      # whole repo, just the total
-itok e -h --top 5                     # 5 biggest, human-readable
-itok estimate --format json src/      # machine-readable, one line per file
-```
-
-### The precision ladder
+## The precision ladder
 
 An estimate is only as good as its method. `itok` offers a ladder from
 cheap-and-crude to true, and always labels which rung produced a number.
 
 ```mermaid
 flowchart LR
-    A["dummy<br/>bytes / 4<br/>zero-dep, instant"] --> B["--bpe<br/>real tokenizer<br/>offline, deterministic"] --> C["--exact<br/>provider count<br/>network"]
+    A["dummy<br/>bytes / 4<br/>zero-dep, instant"] --> B["--bpe<br/>real tokenizer<br/>offline, deterministic"] --> C["--ollama<br/>a local model's own<br/>tokenizer, exact, LAN"]
     style A fill:#eee,stroke:#999
 ```
 
-Today only the **dummy** tier is built (`bytes/4`, the ~4-chars-per-token
-rule of thumb, off by roughly 15-30%). `--bpe` (a real tokenizer, no
-tilde) and `--exact` (a provider's own count) are on the roadmap. Because
-every number names its method, you always know which you are looking at.
+All three rungs are built. `dummy` (`bytes/4`, the ~4-chars-per-token rule
+of thumb, off by roughly 15-30%) is the zero-dependency default; `--bpe`
+is a real tokenizer (o200k, offline, deterministic, no tilde); `--ollama`
+gets an exact count from a local model's own tokenizer over the LAN --
+keyless, no cloud, no network in the core. Because every number names its
+method, you always know which you are looking at.
 
-### Budgets: `--budget N`
+## Budgets
 
-Supplying `--budget` turns `estimate` into a gate. It fails if **any
-single file** exceeds the budget -- "no file over N tokens". The report
-still prints; the breach goes to stderr; the exit code is `1`.
+Supplying `--budget N` turns `estimate` (or `diff`) into a gate: it fails
+if a file -- or a change's delta -- exceeds the budget. The report still
+prints; the breach goes to stderr; the exit code is `1`.
 
 ```bash
 $ itok estimate --budget 20k SPEC.md
@@ -114,7 +87,7 @@ $ echo $?
 `N` accepts a decimal unit: `2000`, `15k`, `1M`. Drop it into CI as a
 one-line ceiling with no config file to maintain.
 
-### JSON output
+## JSON output
 
 `--format json` is a **stable contract** -- one JSON object per file, so
 tools can parse it without guessing:
@@ -124,32 +97,93 @@ $ itok estimate --format json SPEC.md
 {"path":"SPEC.md","tokens":38785,"unit":"input_tokens","estimated":true,"method":"bytes/4"}
 ```
 
-`estimated` is `true` for a crude tier and will be `false` for a real
-tokenizer -- the machine-readable form of the `~` marker.
+`estimated` is `true` for a crude tier and `false` for a real tokenizer --
+the machine-readable form of the `~` marker.
+
+<!-- BEGIN itok docs -->
+
+## Commands
+
+Every verb, its synopsis and what it does. Regenerate with `itok docs`.
+
+### `estimate`
+
+```text
+estimate [-s] [-h] [--top N] [--budget N] [--bpe] [--ollama [HOSTS]] [--format human|json] [-C dir] [paths...]
+```
+
+Token cost of files, git-tracked by default. `--bpe` swaps bytes/4 for a real tokenizer (o200k); `--ollama` gets an exact count from a local model's own tokenizer. `--budget N` turns it into a gate.
+
+### `doctor`
+
+```text
+doctor [--model X] [--window N] [--ollama [HOSTS]] [--format human|json] [-C dir] [paths...]
+```
+
+Advisory health check: fit-to-window, budget balance, noise ratio, estimate confidence. Reports and suggests; never gates. `--model X` resolves an encoding via `.context-models`; `--ollama` discovers live model windows across a fleet.
+
+### `diff`
+
+```text
+diff [<A> <B> | <A>..<B> | <ref>] [--staged] [--exit-code] [--budget N] [--bpe] [-- <path>]
+```
+
+Token delta between two points (default: working tree vs HEAD), git-diff-shaped. `--exit-code` or `--budget N` makes it a gate.
+
+### `show`
+
+```text
+show [<commit>] [-- <path>] | show <commit>:<path>
+```
+
+One commit's per-file token delta (default HEAD). The `<commit>:<path>` form reports a single blob's cost at that ref.
+
+### `log`
+
+```text
+log <path> [<A>..<B>] [-n N] [--since D] [--reverse] [--bpe] [--format human|json]
+```
+
+A path's token cost and delta across every commit that touched it -- the creep curve. Report-only, git-log-shaped.
+
+### `check`
+
+```text
+check [-C dir] [--format human|json]
+```
+
+Gate registered paths against `.context-limits` (pinned `--bpe`, so the verdict is deterministic). Exit 1 on any breach.
+
+### `fit`
+
+```text
+fit --window N [--by size] [--bpe] [--format human|json] [-C dir] [paths...]
+```
+
+Greedy subset of files that fits a token window; emits a pipeable path list (git-tracked by default). `itok fit --window 200k src/ | xargs cat` builds a context bundle under budget.
+
+### `docs`
+
+```text
+docs
+```
+
+Print this command reference as markdown -- the source for README's generated block, kept in sync by a guard.
 
 ## Exit codes
 
 | code | meaning |
 |------|---------|
 | `0` | ok |
-| `1` | over budget (a `--budget` breach) |
-| `2` | usage error (bad flag, unknown command) |
+| `1` | budget breach or nonzero delta |
+| `2` | usage error |
+| `7` | network error (`--ollama`) |
 
-## Roadmap
+<!-- END itok docs -->
 
-`itok` is built spec-first: `SPEC.md` in this directory is the design and
-the build queue. Planned verbs and tiers:
-
-- `--bpe` / `--exact` -- real tokenizer counts (the honest number)
-- `diff` -- token cost of a change (`git diff`-shaped)
-- `check` -- gate against a committed `.context-limits` policy
-- `doctor` -- "will this fit my model's window?"
-- `log` -- token-cost trend across git history
-- `fit` -- greedy subset that fits a `--window` budget
-- `--ollama` -- exact counts + live windows from a local model server
-
-See `SPEC.md` for the invariants and `CONTRIBUTING.md` for how to build
-the next one.
+The command reference above is **generated**: `itok docs` prints it, and a
+test fails if this block drifts from the code. Edit the registry in
+`src/docs.rs`, never the block by hand.
 
 ## License
 
