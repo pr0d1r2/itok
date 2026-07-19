@@ -225,13 +225,16 @@ separate `--ollama-port` can't express per-host ports in a fleet list
 (`box1:11434,box2:6666`) & works in none of stdin/`.context-hosts`.
 Default port `11434`; a `scheme://` prefix carries TLS for a proxied
 server — same slot, no new flag. Considered & rejected.
-V26: **external citations labeled `UOW-Vxxx`, ⊥ bare.** A reference to
-the origin repo's invariants carries the source tag (the `RFC-2119` /
-`JIRA-123` convention, V1); a bare `Vxxx` collides w/ itok's own namespace
-& reads broken. Such a citation is PROVENANCE (see-also / derived-from),
-NEVER load-bearing: each itok invariant stands on its own reasoning ∴ the
-tag degrades to a harmless label after `subtree split` & self-containment
-holds in LOGIC (the header's promise). Lineage kept, dependency ⊥ made.
+V26: **provenance is a DEV-TIME note, kept OUT of the shipped spec.** A
+reference to the origin repo's invariants is see-also / derived-from,
+NEVER load-bearing — each itok invariant stands on its own reasoning. ∴
+the SHIPPED, public `SPEC.md` names NO origin-repo invariant number: a
+`UOW-Vxxx` pointer targets a PRIVATE repo the reader can't see & leaks its
+numbering, a bare `Vxxx` collides w/ itok's own namespace & reads broken.
+The reasoning a pointer once cited is folded INLINE & self-contained. The
+scrub lives IN the monorepo (this file is kept public-clean in place) ∴
+extraction stays a pure MOVE (V13), ⊥ surgery. Lineage lives in git
+history & commit trail, ⊥ the shipped text.
 V27: **itok self-guards — its guard config TRAVELS.** The fractal: every
 extractable unit is a mini-repo. crates/itok/ mirrors a repo root — own
 `SPEC.md`, `.file-limits`, `lexicon.txt`, `coverage-baseline.json`,
