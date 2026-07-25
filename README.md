@@ -32,6 +32,17 @@ $ itok estimate -h --top 3
 cargo install itok
 ```
 
+With [Nix](https://nixos.org), no Rust toolchain needed:
+
+```bash
+nix run github:pr0d1r2/itok -- estimate SPEC.md   # run without installing
+nix profile install github:pr0d1r2/itok           # or install
+```
+
+Three outputs: `default` (the `--bpe` tokenizer included), `itok-minimal`
+(the zero-dependency `bytes/4` core), and `itok-ollama` (adds the
+LAN-exact tier).
+
 Or from a checkout:
 
 ```bash

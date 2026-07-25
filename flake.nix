@@ -49,8 +49,50 @@
             --manifest-path "$manifest" --bin itok \
             ''${ITOK_FEATURES:+--features "$ITOK_FEATURES"} -- "$@"
         '';
+      # The reproducible build (V62). Possible only because the flake sits
+      # at the repo root and can therefore see `Cargo.toml`/`src/`, and
+      # because `Cargo.lock` is tracked -- flakes copy git-TRACKED files
+      # into the store, and the build sandbox has no network, so
+      # `cargoLock.lockFile` is what lets nix vendor exact crates offline.
+      itokPkg =
+        pkgs: features:
+        pkgs.rustPlatform.buildRustPackage {
+          pname = "itok";
+          # Read from Cargo.toml so there is ONE version, not two that can
+          # disagree (V64's rule, applied to a number).
+          version =
+            (builtins.fromTOML (builtins.readFile ./Cargo.toml)).package.version;
+          src = ./.;
+          cargoLock.lockFile = ./Cargo.lock;
+          buildNoDefaultFeatures = features != null;
+          buildFeatures = if features == null then [ ] else features;
+          # The test suite shells out to git for HEAD~n (V33's `gitref`),
+          # and a nix store source has no `.git` -- by design, that is what
+          # makes the build reproducible. So the suite cannot run HERE; it
+          # runs in the dev shell and in CI, where history exists (V37/B3
+          # is the same constraint seen from the other side).
+          doCheck = false;
+          meta = {
+            description = "context-cost estimator: token and window budgets for files and changes";
+            homepage = "https://github.com/pr0d1r2/itok";
+            license = pkgs.lib.licenses.mit;
+            mainProgram = "itok";
+          };
+        };
     in
     {
+      packages = forAll (pkgs: {
+        # Default features: the dummy tier plus `--bpe` (V4).
+        default = itokPkg pkgs null;
+        # The zero-dependency core alone -- proves V23/V13 build clean.
+        itok-minimal = itokPkg pkgs [ ];
+        # Adds the LAN-exact rung (V22); still no TLS stack (V23).
+        itok-ollama = itokPkg pkgs [
+          "bpe"
+          "ollama"
+        ];
+      });
+
       devShells = forAll (pkgs: {
         default = pkgs.mkShell {
           packages = [

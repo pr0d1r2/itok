@@ -560,12 +560,17 @@ current. `ITOK_MANIFEST` is resolved AT ENTRY from `$PWD` (V37: derive,
 never hardcode a layout) so it works in-repo & extracted alike;
 `ITOK_PROFILE=release` / `ITOK_FEATURES` are the escape hatches. The dev
 files are `exclude`d from the published `.crate` (V39): consumer-
-meaningless. A real `packages.default` (`buildRustPackage` + `cargoLock.
-lockFile`, giving `nix build`/`nix run`/flake-input consumption) is
-DEFERRED, ⊥ rejected — it requires a COMMITTED `Cargo.lock` (nix flakes
-read git-TRACKED files only, & a sandboxed build cannot resolve versions
-off the network), which is now satisfied. Trigger: a user | CI wanting
-itok without a rust toolchain.
+meaningless. `packages.*` BUILT (T58): `default` (dummy+bpe),
+`itok-minimal` (`--no-default-features` — the zero-dep core, so V23/V13's
+claim is a BUILD, ⊥ a promise), `itok-ollama` (+ the LAN rung). Rests on
+a COMMITTED `Cargo.lock`: flakes read git-TRACKED files only, & a
+sandboxed build cannot resolve versions off the network, so
+`cargoLock.lockFile` is what vendors them offline. `doCheck = false` ∵ the
+suite shells to git for `HEAD~n` (V33's `gitref`) & a store source has NO
+`.git` — that absence is exactly what makes the build reproducible ∴ the
+suite runs in the dev shell & CI, where history exists (V37/B3 seen from
+the other side). `version` is READ from `Cargo.toml` ∴ one number, ⊥ two
+that can disagree.
 V64: **ONE gate definition, many callers — eliminate the second copy, ⊥
 freeze it.** `hk.pkl` holds the OPS (which command, which flags, which
 phase, which order, the coverage floor); the workflow holds ORCHESTRATION
@@ -679,6 +684,7 @@ T48|.|session-cost regression gate: a recorded run over its input-token budget f
 T54|x|adopt hk as the gate runner: vendor `pkl/Config.pkl` (⊥ `package://`), `hk.pkl` w/ fast set + `all` amending it, `depends` chain over the cargo steps, `stash = "git"` on pre-commit, dev shell provides hk pinned to the vendored schema's version|V64,V66,V67
 T55|x|`ci.yml` = orchestration ONLY, delegating to `hk check --all --check`; `tests/ci.rs` retargeted from freezing a second copy to freezing the SINGLE definition (ops in hk.pkl, workflow restates none, schema vendored)|V64,V65
 T56|x|fix the cassette stub's request drain (B5): read to `Content-Length` before replying, `Connection: close`; verified 8/8 parallel runs green where it was 2/3 failing|V68,V38
+T58|x|`packages.default`/`itok-minimal`/`itok-ollama` via `buildRustPackage`+`cargoLock.lockFile`; version read from `Cargo.toml`; `doCheck = false` (no `.git` in the store); `nix build`/`nix run` verified on aarch64-darwin for all three|V62,V23
 T57|x|drop `.file-limits`: no standalone runner reads it ∴ hand-maintained ceilings gating nothing; refs scrubbed from SPEC/CONTRIBUTING/`Cargo.toml` exclude; file-size limits remain a monorepo guard|V69,V28
 T49|.|SPEC compaction debt (M3 closed, now DUE): compact §V/§B prose; one-file rule holds — more sections, ⊥ more files|V15
 T50|x|flake to repo ROOT (`git mv` out of the unit dir) + dev shell PROVIDES `itok` via a `cargo run` shim; `ITOK_MANIFEST` resolved at entry, `ITOK_PROFILE`/`ITOK_FEATURES` hatches; dev files `exclude`d from the `.crate`|V62,V15,V39
