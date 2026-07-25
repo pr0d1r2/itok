@@ -47,6 +47,62 @@ local fast = new Mapping<String, Step> {
     depends = List("test")
     check = "cargo test --doc"
   }
+  // Hygiene, all of it `hk util` -- native to the runner, so it needs no
+  // extra binary in the shell or on a CI runner. That matters: the gate
+  // of record stays reproducible with rustup alone (V65), and these are
+  // the FIRST non-cargo steps, so they are also the first that genuinely
+  // run in parallel rather than queueing behind the target-dir lock
+  // (V67).
+  //
+  // `pkl/` is excluded from every fixer: it is upstream's schema,
+  // vendored VERBATIM (V66), and reformatting it would silently fork it.
+  // The cassette is a RECORDING -- editing bytes invalidates it (V38).
+  ["trailing-whitespace"] {
+    glob = List("**/*")
+    exclude = List("pkl/**", "tests/fixtures/**")
+    check_diff = "hk util trailing-whitespace --diff {{files}}"
+    fix = "hk util trailing-whitespace --fix {{files}}"
+  }
+  ["final-newline"] {
+    glob = List("**/*")
+    exclude = List("pkl/**", "tests/fixtures/**")
+    check_diff = "hk util end-of-file-fixer --diff {{files}}"
+    fix = "hk util end-of-file-fixer --fix {{files}}"
+  }
+  ["line-endings"] {
+    glob = List("**/*")
+    exclude = List("pkl/**", "tests/fixtures/**")
+    check_diff = "hk util mixed-line-ending --diff {{files}}"
+    fix = "hk util mixed-line-ending --fix {{files}}"
+  }
+  ["no-bom"] {
+    glob = List("**/*")
+    check = "hk util check-byte-order-marker {{files}}"
+  }
+  ["no-merge-conflict"] {
+    glob = List("**/*")
+    check = "hk util check-merge-conflict --assume-in-merge {{files}}"
+  }
+  // Irreversible if it ever fires late -- a key in git history stays in
+  // git history.
+  ["no-private-key"] {
+    glob = List("**/*")
+    check = "hk util detect-private-key {{files}}"
+  }
+  ["no-large-files"] {
+    glob = List("**/*")
+    check = "hk util check-added-large-files {{files}}"
+  }
+  // A crate that ships to case-insensitive filesystems (macOS, Windows)
+  // cannot afford two paths differing only in case.
+  ["no-case-conflict"] {
+    glob = List("**/*")
+    check = "hk util check-case-conflict {{files}}"
+  }
+  ["no-broken-symlinks"] {
+    glob = List("**/*")
+    check = "hk util check-symlinks {{files}}"
+  }
   // itok gates itself (V14): `.context-limits` ceilings, checked by the
   // tool being built. Triggered by the registered paths and the registry
   // itself, so a docs-only commit still gets gated.
@@ -68,11 +124,36 @@ local all = (fast) {
     depends = List("itok")
     check = "cargo nextest run --features ollama"
   }
+  // V23/V13/V34 claim the core builds with ZERO network deps as a
+  // dummy-only tool. Until this step existed that claim rested on reading
+  // Cargo.toml; now it is a build that passes or fails.
+  ["no-default-features"] {
+    glob = List("**/*.rs")
+    depends = List("ollama")
+    check = "cargo nextest run --no-default-features"
+  }
+  // V39: the published .crate must contain only consumer files. An
+  // untracked-but-unignored directory silently lands in it -- that is
+  // exactly how `.direnv/` (5.5MB of nixpkgs source) got in, and it was
+  // found by hand rather than by the gate.
+  ["package"] {
+    glob = List("**/*.rs", "Cargo.toml", ".gitignore")
+    depends = List("no-default-features")
+    check = "cargo package --list --allow-dirty > /dev/null"
+  }
+  // The docs.rs badge is a promise; broken intra-doc links break it
+  // there, not here, unless this runs.
+  ["rustdoc"] {
+    glob = List("**/*.rs")
+    depends = List("package")
+    env { ["RUSTDOCFLAGS"] = "-D warnings" }
+    check = "cargo doc --no-deps --all-features"
+  }
   // The floor is itok's OWN standalone coverage, not a workspace
   // aggregate (B4). It lives here and nowhere else.
   ["coverage"] {
     glob = List("**/*.rs")
-    depends = List("ollama")
+    depends = List("rustdoc")
     check = "cargo llvm-cov nextest --features ollama --fail-under-lines 98"
   }
 }
