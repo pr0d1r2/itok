@@ -25,13 +25,13 @@ Cargo.lock             25000
 *.md                    8192
 
 # config
-*.toml                  2600
-*.nix                   2665
+*.toml                  2900
+*.nix                   3900
 *.yml                   4535
 
-# detachable toolchain (.uow/) + direnv entry
-.uow/flake.lock          700
-.envrc                   200
+# pinned toolchain at repo root + direnv entry
+flake.lock               700
+.envrc                   500
 .context-limits          400
 
 # generated / small text
