@@ -21,7 +21,7 @@ Cargo.lock             25000
 *.md                    8192
 
 # config
-*.toml                  2200
+*.toml                  2600
 *.nix                   2665
 *.yml                   4535
 

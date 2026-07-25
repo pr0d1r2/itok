@@ -5,13 +5,27 @@
 # way file-config baselines do.
 [package]
 name = "itok"
-version = "0.0.0"
+# 0.8.0: stable, pre-1.0; 1.0 = finished (V39).
+version = "0.8.0"
 edition = "2021"
+# MSRV: `Option::is_none_or` (diffcmd) is stable since 1.82.
+rust-version = "1.82"
 license = "MIT"
 description = "context-cost estimator: token and window budgets for files and changes"
-# `.uow/` (the guard declaration) is meaningless to a crate consumer (V26);
-# T25 broadens the non-consumer excludes.
-exclude = [".uow"]
+repository = "https://github.com/pr0d1r2/itok"
+homepage = "https://github.com/pr0d1r2/itok"
+documentation = "https://docs.rs/itok"
+readme = "README.md"
+keywords = ["tokens", "llm", "context", "tokenizer", "cli"]
+categories = ["command-line-utilities", "development-tools"]
+# Dev-only guard files, meaningless to a crate consumer (V26/V13).
+exclude = [
+  ".uow",
+  "coverage-baseline.json",
+  "lexicon.txt",
+  ".file-limits",
+  ".context-limits",
+]
 
 [[bin]]
 name = "itok"
