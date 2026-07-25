@@ -5,8 +5,12 @@
 # above today's largest of that kind.
 
 # docs -- M3 (V39) + docs registry (V40) + backprop B3/V37.
-# COMPACTION DEBT: compact/split SPEC.md before M3 closes.
-SPEC.md                29000
+# COMPACTION DEBT (now DUE, tracked as T49): M3 closed and the runtime
+# axis (M4-M7, V41-V61) landed instead of a compaction pass. Ceiling
+# raised as a REVIEWED decision, ~10% above today's file; compact §V/§B
+# and re-tighten it in T49. One-file rule holds -- more sections, not
+# more files.
+SPEC.md                48000
 
 # license (no extension)
 LICENSE                 1100
@@ -35,6 +39,6 @@ Cargo.lock             25000
 *.txt                   3000
 
 # extensionless
-.file-limits            1200
+.file-limits            1600
 .gitignore                64
 .editorconfig            547

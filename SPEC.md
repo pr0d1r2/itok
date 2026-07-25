@@ -21,6 +21,10 @@ who knows those tools needs no teaching.
 - Zero deps on any host-project internals ⇒ extraction is a move.
 - Estimation, ⊥ measurement: no public Claude tokenizer exists ∴ the
   default is a labelled proxy, never a claim of truth.
+- Runtime axis (V41) reads the HARNESS's own on-disk transcript,
+  READ-ONLY. ⊥ store content, ⊥ egress, ⊥ touch credentials (V43/V45).
+- Enforcement is opt-in & ADAPTER-shaped: no daemon, no server, no
+  in-flight interception, ⊥ in the request path (V52/V53/V58).
 
 ## §I INTERFACE
 
@@ -44,8 +48,24 @@ who knows those tools needs no teaching.
   (default `11434`); a comma-list, `-` (stdin), or `.context-hosts`;
   honors `OLLAMA_HOST`. Fleet = union of models. Network, the SLOWEST-REMOTE
   rung (V4); never on `check`/`log`. No CIDR (V24), no `--ollama-port` (V25).
+- `itok trace [<session>]` — `-n N` · `--since D` · `--reverse` ·
+  `--format json`. Runtime LOAD EVENTS, 1 line each, chronological.
+  Report-only.
+- `itok top [<session>] [-- <path>]` — `-h` · `-s` · `--top N` ·
+  `--cost` · `--format json`. Ranked context OCCUPANCY + dup · stale ·
+  cache columns. `-- <path>` = that path's loads (per-path attribution;
+  ⊥ a separate `blame` verb, V46). Report-only.
+- `itok calibrate [<session>]` — estimate-vs-actual factor from CLEAN
+  samples only, reports `n`; `--format json`. Report-only (V48).
+- `itok cap [N]` — stdin→stdout token filter. `--strip` · `--dedup` ·
+  `--elide` · `--outline` (the reduction ladder, V50) · `--footer
+  human|json`. Announces its elision; resumable (V49/V51).
+- `itok guard` — hook ADAPTER: harness hook JSON on stdin → decision
+  JSON on stdout; reads `.context-policy`. The runtime gate (V52/V53).
+  Signals in JSON, ⊥ via exit code — the harness reads stdout.
 - Config: `.context-limits` (per-path ceiling), `.context-models`
-  (model → encoding table).
+  (model → encoding + window + optional RATE column, `--cost`),
+  `.context-policy` (per-glob/per-tool budget · pins · fuse tiers).
 - Exit: 0 ok · 1 breach/delta · 2 usage · 7 network (`--ollama`).
 
 ## §V INVARIANTS
@@ -367,6 +387,147 @@ READ-ONLY, to stdout (V6): `itok docs > README.md` is the USER's redirect,
 mermaid) stays hand-written ABOVE it. A guard diffs `itok docs` vs the
 committed reference ∴ staleness FAILS the gate (coverage-freeze, V14) —
 docs cannot rot, ⊥ merely regenerable.
+V41: **second axis — RUNTIME, beside the static one.** V1-V40 answer
+about FILES, ex ante ("what will this cost?"). The runtime axis answers
+about a CONTEXT, ex post ("what actually got loaded, by what, at what
+cost?"). Same estimator engine (V4), new frontend. It earns its own
+verbs ∵ input tokens are billed EVERY turn while output tokens spend
+ONCE ∴ a file loaded at turn 3 is still charged at turn 40 & runtime
+waste COMPOUNDS. `itok` = input tokens (V3) ∴ this axis is the name's
+other half, ⊥ scope creep.
+V42: **observe before enforce** — the ORDERING law & the modularization
+law. Telemetry (read-only, post-hoc, zero interception) ships FIRST &
+usable ALONE; reduction ships next & usable ALONE (a pipe filter);
+enforcement ships LAST, tuned from measured numbers. ∵ a fuse threshold
+guessed w/o data has false-positives that cost MORE than the waste it
+prevents (a denied legit read = retries + rephrase = burned turns). Each
+rung ! stand on its own & be shippable alone; none may require the next.
+V43: **the transcript is the GROUND TRUTH & is READ-ONLY.** Session data
+comes from the harness's own on-disk transcript (Claude Code: JSONL under
+`~/.claude/projects/…`), ⊥ from interception. It already carries the real
+API `usage` ∴ ACTUAL, ⊥ estimate — the closed loop for free. itok NEVER
+writes/moves/mutates it. FOREIGN & unversioned schema ∴ parse
+defensively: unknown fields ignored, malformed record SKIPPED w/ a
+counted total, ⊥ crash, ⊥ a hard schema assert. ONE reader module,
+harness-PLUGGABLE (a new harness = a new reader, ⊥ a new tool).
+V44: **the ledger is a LOWER BOUND & says so** — V3's honesty rule on
+the runtime axis. Load events cannot see system prompt, tool schemas,
+`CLAUDE.md`, or prior turns ∴ report `accounted` vs `total` & label the
+gap `unaccounted`; NEVER silently attribute the remainder. Where real
+`usage` is present the TOTAL is exact & only the ATTRIBUTION is partial —
+say which. Every number names its method (V3): `ledger(actual)` ≠
+`ledger(bytes/4)`.
+V45: **content NEVER enters the ledger & never leaves the box.** Record
+path · content hash · count · ts · tool · session; ⊥ file bodies, ⊥
+message text, ⊥ env, ⊥ credentials. Transcripts hold the user's & their
+customers' content ∴ a telemetry file that copied it is a NEW leak
+surface buying nothing — counts answer every question this axis asks. No
+egress at all (V35): local files & stdout only; itok ships NO uploader,
+NO endpoint, NO opt-out-shaped default.
+V46: **runtime verbs keep top/du/strace grammar** (V1) — `trace` = 1
+line per load event, chronological (`-n` · `--since` · `--reverse`, the
+`git log`/strace shape); `top` = ranked occupancy (`-h` · `-s` ·
+`--top N`, the `du`/`top` shape). Both report-only, exit 0 (V5). `log`
+stays the PATH-HISTORY verb (V19) & session events are ⊥ routed through
+it — `git log` means commits, so overloading it is the V2 near-collision.
+NO `blame` verb: per-path attribution is `top -- <path>` ∵ `git blame` is
+per-LINE authorship & the almost-match costs more than the flag (V1/V2).
+V47: **cache accounting is READ, ⊥ inferred.** `cache_creation` /
+`cache_read` come from `usage` ∴ prefix re-billing is OBSERVED, ⊥
+modelled. Report it as seen & name it; ⊥ a heuristic "you probably busted
+the cache" (that would be a confident guess, V3). Absent fields ⇒ no
+cache column, ⊥ a zero (a zero reads as a measurement).
+V48: **calibration on CLEAN SAMPLES only.** The estimate-vs-actual
+correction factor is derived ONLY from turns where exactly ONE load event
+explains the `usage` delta; noisy turns DISCARDED & the surviving `n`
+reported beside the factor. A factor from dirty samples is a confident
+lie (V3). The factor is REPORTED, ⊥ silently folded into the estimators —
+the ladder's rungs stay honest & unmodified (V4). Applying it is opt-in &
+LABELLED as derived: `~186k itok (bytes/4 ×1.12 cal:n=340)`.
+V49: **`cap` = token-unit filter, visibly ⊥ `head`.** stdin→stdout, pipe
+shape (V1). `head`/`tail` truncate SILENTLY by bytes/lines; `cap`
+truncates by TOKENS & ANNOUNCES the elision with a machine-parsable
+footer ∴ it takes a DIFFERENT NAME, ⊥ `head -t` — an almost-`head` is
+V2's expensive failure. Usable with no agent & no hook: `cmd | itok cap
+10k` is the whole product of its rung (V42).
+V50: **reduction ladder mirrors the precision ladder (V4)** — ordered
+LOSSLESS → LOSSIEST, every applied rung NAMED in the footer: `strip`
+(ansi · trailing ws) | `dedup` (repeat lines `×N`) | `elide` (base64 ·
+minified · lockfile bodies) | `outline` (code → signatures, bodies
+dropped) | `cap` (hard truncate). Applied IN ORDER, stopping the moment
+the budget is met ∴ the CHEAPEST SUFFICIENT rung wins & the reader is
+told exactly which ran. Lossless rungs are default-safe; lossy rungs are
+opt-in per policy. NEVER reorder lossy-first — silent structural loss is
+the failure this ladder exists to avoid.
+V51: **truncation is RESUMABLE & IDEMPOTENT.** The elision footer
+carries the resume selector (offset · line range · omitted count) so the
+next read CONTINUES, ⊥ restarts at 0. An un-resumable cap costs more than
+it saves (the reader re-fetches the whole file). Re-running the same cap
+on the same input yields the same cut (V5's determinism, on the filter).
+V52: **`guard` is an ADAPTER, ⊥ a daemon.** Shape: harness hook JSON on
+stdin → decision JSON on stdout, ONE process per call, no server, no
+background thread, no state beyond an append-only session file.
+Harness-specific mapping lives in ONE module (V43's pluggability); every
+other module is harness-agnostic. ∴ a new agent harness is a new adapter,
+⊥ a fork of the tool.
+V53: **the gate set is CLOSED & every gate is OPT-IN** — extends V5.
+Gates = `check` (committed registry) · `--budget` (inline one-shot) ·
+`guard` (runtime policy). Nothing else gates, ever. Enforcement never
+self-enables: no `.context-policy` & no installed hook ⇒ itok is exactly
+as report-only as it is today. `guard` obeys V5's determinism for V5's
+reason — its decision pins a fixed tier, ∵ a gate that varies per run is
+⊥ a gate — & takes the CONSERVATIVE estimate (V36), ⊥ the exact count.
+V54: **fuse is GRADUATED, w/ hysteresis & a MANDATORY escape hatch.** A
+binary deny costs more than the waste (retry loops burn turns) ∴ tiers by
+occupancy: `observe` (ledger only) → `warn` (stderr; the agent reads it &
+self-corrects) → `cap` (elide, resumable V51) → `deny` (& NAME the
+cheaper alternative: `itok fit`, a line range, `rg -m`). Plus a RATE fuse
+over a sliding window (N tokens in M calls = runaway `cat huge.log` /
+grep into `node_modules`). A trip is STICKY w/ hysteresis ∴ ⊥ flapping on
+the boundary. There is ALWAYS an override — a trapped agent is worse than
+a fat one.
+V55: **the fuse is judged by its OWN telemetry** — V42's other half.
+Every trip · cap · override is a ledger event ∴ override-rate &
+false-positive rate are MEASURABLE. A high override rate means BAD
+POLICY, ⊥ a bad agent, & is the signal to retune. Enforcement that cannot
+be measured cannot be tuned ∴ ⊥ shipped.
+V56: **pins are ABSOLUTE.** Policy MAY pin paths that are never capped,
+elided, or denied (`CLAUDE.md`, `SPEC.md`, the law files). A guard that
+elides the rules it guards under is self-defeating. A pin overrides every
+tier, including a tripped fuse.
+V57: **`.context-policy` is the runtime registry, opt-in like
+`.context-limits` (V10).** Per-glob & per-tool budgets · pins (V56) ·
+fuse tiers (V54). Absent ⇒ NO enforcement (V53). Reuses the one decimal
+unit grammar (V18) & the glob semantics of the existing registries — a
+third config file, ⊥ a third config LANGUAGE.
+V58: **in-flight MITM proxy DEFERRED (⊥ rejected).** An
+`ANTHROPIC_BASE_URL` shim would see EVERYTHING billed & could enforce
+hard — but it sits in the CREDENTIAL path & the STREAMING path: it
+forwards an API key, buffers SSE, & becomes a new failure mode on EVERY
+request. The transcript reader (V43) yields ~the same numbers post-hoc at
+ZERO risk, & the hook adapter (V52) yields enforcement at request
+granularity ∴ the risky rung buys little. Trigger to revisit: a measured
+need for a signal only in-flight interception can give. If ever built:
+own opt-in feature (V23), NEVER default, ⊥ read/store/log credentials
+(V45), & ! shout what it intercepts. Considered & deferred, escape hatch
+recorded (like V21/V24/V25).
+V59: **runtime data verbs report AGGREGATES, ⊥ verdicts** — V19's rule,
+carried over. `trace`/`top` may compute re-read waste (same blob loaded
+N× = N× billed), stale bytes (occupancy × turns-since-touched), dup &
+cache columns — those are ARITHMETIC. "This is unhealthy, do X" is
+JUDGMENT & belongs to `doctor` if & when it earns a session target (V17's
+thin-composer boundary still binds: doctor ⊥ grows tentacles).
+V60: **fan-out = N windows, ⊥ one.** Subagent / sidechain sessions each
+own a SEPARATE context ∴ the ledger keys by session & rolls up to the
+parent. A 12-agent fan-out is 12 windows & its true cost is the SUM —
+invisible in any single window, which is exactly why it needs reporting.
+V61: **money is a RENDERING, ⊥ a source.** `--cost` multiplies counts by
+a rate read from `.context-models` (an optional per-model column); itok
+bundles NO price list ∵ prices change & vary by contract ∴ a built-in
+would go stale & become a confident lie (V3). Missing rate ⇒ NO money
+column, ⊥ a guessed one (V11's unknown-model rule). Cache-read tokens
+bill at a different rate than fresh ones ∴ `--cost` ! use the cache
+split (V47) or omit the column entirely.
 
 ## §T TASKS
 
@@ -375,6 +536,10 @@ docs cannot rot, ⊥ merely regenerable.
 | M1 | offline core — estimate + report | T1, T2, T3, T4, T12 | `itok estimate`/`itok e` green on a real tree, json stable, `--budget` gates |
 | M2 | full ladder + gate + extract | T5, T7, T8, T9, T10, T11, T13, T14, T15, T16, T17, T18, T19, T20, T21, T22, T23, T24 | `--bpe`/`--ollama`/`diff`/`check`/`doctor`/`log`/`fit` done, subtree-split rehearsed |
 | M3 | publish — crates.io-ready, public CI | T25, T26, T27, T28, T29 | `cargo publish --dry-run` clean, public CI green, no origin-repo ref shipped, docs regenerate, `itok` installs |
+| M4 | runtime introspection — read-only ledger (V41, V42) | T30, T31, T32, T33, T34, T35, T36, T37, T38, T49 | `itok trace`/`itok top` green on itok's OWN sessions, accounted-vs-unaccounted stated, calibration factor + `n` reported, zero interception |
+| M5 | reduction — the standalone pipe filter | T39, T40, T41 | `cmd \| itok cap 10k` useful w/ no agent & no hook, every applied rung named in the footer, cut is resumable & deterministic |
+| M6 | enforcement — policy · guard · fuse | T42, T43, T44, T45, T46 | hook adapter decides from `.context-policy`, fuse graduated + always overridable, every trip/cap/override lands in the ledger |
+| M7 | runtime CI — replay & regression | T47, T48 | a recorded ledger replays deterministically offline ∴ policy A/B w/o an agent; a run over session budget fails CI |
 
 T1|x|crate skeleton: standalone bin, Cargo.toml, MIT license, min deps|V13
 T2|x|`estimate` dummy tier: bytes/4 + word proxy, du flags, tracked-by-default|V4,V8
@@ -404,6 +569,26 @@ T26|x|public-clean provenance: scrub SPEC + src comments of origin-repo names & 
 T27|x|bare-rust `.github/workflows/ci.yml`: fmt·clippy·test·`--features ollama`·`llvm-cov --fail-under-lines 98`, `fetch-depth:0`, no nix/uow|V39,V31,V38
 T28|x|assemble README = hand narrative + the `itok docs` reference block + badges (post-ORG); `CHANGELOG.md`; crate rustdoc for docs.rs|V39,V40,V15
 T29|x|`itok docs` verb: ONE command registry (verb·synopsis·flags·exit) renders `--help` + a markdown reference; read-only to stdout; guard diffs it vs README ∴ docs can't rot|V40,V6,V9
+T30|.|session reader module: harness-PLUGGABLE, defensive JSONL parse → load events; unknown fields ignored, malformed records skipped & COUNTED; ⊥ writes to the transcript|V43,V45
+T31|.|`trace` verb: 1 line/load event, chronological, `-n`·`--since`·`--reverse`·json|V46,V9,V59
+T32|.|`top` verb: ranked occupancy, `-h`·`-s`·`--top N`, dup + stale columns, `-- <path>` per-path attribution (⊥ a `blame` verb)|V46,V59
+T33|.|accounted-vs-unaccounted split; method label on every runtime number (`ledger(actual)` ≠ `ledger(bytes/4)`)|V44,V3
+T34|.|cache columns read from `usage` (`cache_creation`/`cache_read`); fields absent ⇒ NO column, ⊥ a zero|V47
+T35|.|fan-out rollup: ledger keyed by session, sidechain/subagent sessions rolled to parent, SUM reported|V60
+T36|.|`calibrate` verb: factor from single-load turns ONLY, discards counted, `n` reported; application opt-in & labelled `×1.12 cal:n=340`|V48,V4
+T37|.|DOGFOOD: run `trace`/`top`/`calibrate` over itok's OWN dev sessions; the measured waste (re-read, stale, cache-bust) sets M6's default thresholds, ⊥ guessed ones|V42,V15
+T38|.|`--cost` rendering: rate column in `.context-models`, cache-split aware; missing rate ⇒ no column|V61,V11
+T39|.|`cap` verb: stdin→stdout token filter + ANNOUNCED elision footer (human/json) carrying a resume selector|V49,V51
+T40|.|reduction ladder rungs `strip`·`dedup`·`elide`·`outline`: applied lossless→lossiest, stop at budget, applied rungs named in the footer; lossy rungs opt-in|V50
+T41|.|`cap` determinism + resume round-trip tests: same input ⇒ same cut; footer selector actually continues (proptest the tail)|V51,V5
+T42|.|`.context-policy` parser: per-glob & per-tool budgets · pins · fuse tiers; reuses the V18 unit grammar & existing glob semantics; absent ⇒ no enforcement|V57,V18,V53
+T43|.|`guard` adapter: hook JSON stdin → decision JSON stdout, ONE process per call, no daemon; harness mapping isolated to one module; decision in JSON ⊥ exit code|V52,V53
+T44|.|fuse state machine: occupancy tiers observe→warn→cap→deny (deny NAMES a cheaper alternative) + sliding-window RATE fuse + sticky hysteresis + override hatch|V54
+T45|.|pins honored absolutely — above every tier & above a tripped fuse|V56
+T46|.|fuse telemetry: trip · cap · override are ledger events; `top` reports override-rate as the policy-quality signal|V55
+T47|.|ledger REPLAY: recorded events × a policy, offline & deterministic ⇒ policy A/B with no agent & no network|V53,V5
+T48|.|session-cost regression gate: a recorded run over its input-token budget fails CI (the `--budget` shape, on a session)|V53,V16
+T49|.|SPEC compaction debt (M3 closed, now DUE): compact §V/§B prose, re-tighten `.file-limits` `SPEC.md` ceiling; one-file rule holds — more sections, ⊥ more files|V15
 
 ## §B BUGS
 
