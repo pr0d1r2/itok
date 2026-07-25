@@ -655,6 +655,33 @@ COMPLETE list beats an early one. BYPASS is ⊥ a fix: `--no-verify` ·
 `HK=0` · lowering a threshold · `#[allow]` all SHIP THE DEFECT with the
 alarm switched off. If the CHECK itself is wrong, that is a SPEC change —
 made deliberately, in its own commit, ⊥ silently at the failure site.
+V72: **a gate step MAY need a binary; the VERDICT may ⊥ need one.** The
+`hk util` family is native to the runner ∴ free everywhere. A second tier
+(`typos`·`actionlint`·`taplo`·`shellcheck`) needs a real binary, & that
+is allowed — V65 binds the OPS a verdict rests on (cargo, rustup-only),
+⊥ every auxiliary lint. Rule: the tool is PINNED in the dev shell &
+installed at a PINNED version in CI, ⊥ floating ∴ the two runners agree
+(V64). `actionlint` earns its place specially: the workflow is the ONE
+file NO local run exercises (V64 keeps orchestration there) ∴ without it,
+a mistake in the workflow is found only by pushing.
+V73: **an exemption NAMES what is deliberate; it is ⊥ a suppression.**
+`.typos.toml` exempts `esimate` ∵ it is the INPUT to the typo-suggestion
+tests (V6) — the mistake ! be spelled correctly in both the unit test &
+the README example — & exempts `pkl/` + `tests/fixtures/` ∵ one is
+vendored VERBATIM (V66) & the other is a RECORDING (V38): "fixing" either
+silently forks it. Every exemption carries its REASON in the config file,
+⊥ in a commit message nobody reads at the failure site. A suppressed
+finding w/o a named reason is indistinguishable from a bug (V71's
+no-bypass rule, applied to config).
+V74: **a hook DEGRADES when its runner is absent; it ⊥ BLOCKS.** A gate
+exists to stop bad commits, ⊥ to stop git. When the runner is missing —
+outside the dev shell, a fresh clone, a container — the hook prints ONE
+line to stderr & exits 0: LOUD about being skipped, ∵ a SILENTLY skipped
+gate is indistinguishable from a passing one (V71). Hard-failing instead
+makes the repo unusable for anyone who ⊥ installed the toolchain, which
+is the wrong failure mode for a CONVENIENCE — the gate of record is CI +
+`hk check` (V65), ⊥ the hook. ∴ the hook command is written BY HAND, ⊥ by
+`hk install`, whose command assumes its own binary is on PATH (B6).
 
 ## §T TASKS
 
@@ -728,6 +755,9 @@ T59|.|public exposure: create the GitHub repo, publish `0.7.0-rc.1` FIRST (immut
 T60|.|CI hardening: platform matrix (ubuntu + macos-arm), MSRV `1.82` axis, release automation, a green streak before `0.8.0`|V70,V39
 T61|.|closure: fold public feedback, freeze the CLI surface & the json contract, `1.0.0`|V70,V9
 T62|x|gate UX: silent on success (`HK_HIDE_WHEN_DONE`), explicit `fail_fast` locally & `--no-fail-fast` in CI, per-step remediation hints on the non-obvious failures, `AGENTS.md` playbook + CONTRIBUTING pointer|V71,V65
+T63|x|external-tool lints: `typos`·`actionlint`·`taplo`·`shellcheck` pinned in the dev shell + at pinned versions in CI (`install-action` for 3, pinned release download for actionlint); `.typos.toml` exemptions named|V72,V73
+T64|x|dev shell installs hooks on entry, written BY HAND w/ a runner-missing guard (B6), skipped when a global install exists ∵ git aggregates `hook.*.command` across scopes ⇒ double fire|V71,V74
+T65|x|`packages.*` src narrowed via `lib.fileset` to `src/`+`Cargo.toml`+`Cargo.lock` ∴ a doc edit no longer invalidates the build|V62
 T49|.|SPEC compaction debt (M3 closed, now DUE): compact §V/§B prose; one-file rule holds — more sections, ⊥ more files|V15
 T50|x|flake to repo ROOT (`git mv` out of the unit dir) + dev shell PROVIDES `itok` via a `cargo run` shim; `ITOK_MANIFEST` resolved at entry, `ITOK_PROFILE`/`ITOK_FEATURES` hatches; dev files `exclude`d from the `.crate`|V62,V15,V39
 T51|x|drop the unit declaration from the standalone repo; `ci.yml` carries all 5 ops at >= their old strength (clippy gains `--all-features -- -D warnings`, coverage keeps the corrected 98) & records what was deliberately ⊥ carried (`--test-threads=1`, the phase split)|V28,V29,V31
@@ -740,5 +770,6 @@ id|date|cause|fix
 B1|2026-07-24|extraction: `rustfmt.toml`/`clippy.toml` root-only ⇒ standalone `cargo fmt --check` reformats (default width 100 vs 80); traveling gate ⊥ reproduces verdict|V27
 B2|2026-07-24|extraction: git-command tests use `CARGO_MANIFEST_DIR.parent().parent()` as repo root + hardcode `crates/itok/…` paths ⇒ standalone `cargo nextest` fails|V37
 B3|2026-07-24|`diff --budget` test asserted a breach on live `HEAD~1..HEAD`, presuming a substantial last commit; a near-zero-delta ceiling bump as HEAD gave no breach ⇒ exit 0 ≠ 1, blocking every commit until HEAD grew|V37
+B6|2026-07-25|dev-shell auto-install wrote `hk install`'s command, which assumes `hk` on PATH. Outside the shell: `hk: command not found` ⇒ hook exit nonzero ⇒ EVERY git commit in the repo blocked, ⊥ merely ungated. Caught within one minute, by the very next commit failing|V74
 B5|2026-07-25|cassette replay stub read the request with ONE `read()`; TCP segments the only POST (`/api/generate`) so the body can arrive second ⇒ reply-then-close raced the client's write ⇒ `itok: ollama read ...: Invalid argument (os error 22)`. Flaky 2/3 runs parallel, 3/3 green serial ∴ the deleted unit declaration's `--test-threads=1` had been MASKING it, & the claim that the suite was hermetic (argued from reading temp-dir/port handling) was wrong. Surfaced the first time the new gate ran the ollama axis|V68
 B4|2026-07-25|ci.yml `--fail-under-lines 99` copied the monorepo WORKSPACE total; itok ALONE is 98.03% (siblings inflate the aggregate) ⇒ the standalone gate fails coverage. Caught by the T359 proving ground. Floor set to itok's own 98|V31

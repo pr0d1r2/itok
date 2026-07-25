@@ -121,6 +121,36 @@ local fast = new Mapping<String, Step> {
     glob = List("**/*")
     check = "hk util check-symlinks {{files}}"
   }
+  // Steps below need a real binary, unlike the `hk util` family (V72).
+  // Pinned in the dev shell and installed in CI so both run the same
+  // versions.
+  ["typos"] {
+    glob = List("**/*")
+    // --force-exclude: `.typos.toml`'s excludes are ignored for paths
+    // passed explicitly, and hk always passes them explicitly. Without
+    // it the vendored schema and the cassette get scanned.
+    check = "typos --force-exclude {{files}}"
+    fix = "typos --force-exclude --write-changes {{files}}"
+  }
+  // The workflow is code too, and it is the one file no local run
+  // exercises -- a mistake there is found by pushing (V64: orchestration
+  // stays in ci.yml, so nothing else can catch its errors).
+  ["actionlint"] {
+    glob = List(".github/workflows/*.yml", ".github/workflows/*.yaml")
+    check = "actionlint {{files}}"
+  }
+  ["taplo"] {
+    glob = List("**/*.toml")
+    exclude = List("pkl/**")
+    check = "taplo format --check --diff {{files}}"
+    fix = "taplo format {{files}}"
+  }
+  // `.envrc` is shell without a `.sh` name, and it is the file that runs
+  // on every shell entry -- exactly where a silent mistake costs most.
+  ["shellcheck"] {
+    glob = List("**/*.sh", "**/*.bash", ".envrc")
+    check = "shellcheck --shell=bash {{files}}"
+  }
   // itok gates itself (V14): `.context-limits` ceilings, checked by the
   // tool being built. Triggered by the registered paths and the registry
   // itself, so a docs-only commit still gets gated.

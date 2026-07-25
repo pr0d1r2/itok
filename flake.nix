@@ -62,7 +62,18 @@
           # disagree (V64's rule, applied to a number).
           version =
             (builtins.fromTOML (builtins.readFile ./Cargo.toml)).package.version;
-          src = ./.;
+          # Only what the BUILD reads. With `src = ./.` every tracked file
+          # is an input, so editing SPEC.md or README rebuilt the crate
+          # from scratch. Tests are excluded too -- doCheck is false, and
+          # they need a `.git` the store does not have.
+          src = pkgs.lib.fileset.toSource {
+            root = ./.;
+            fileset = pkgs.lib.fileset.unions [
+              ./src
+              ./Cargo.toml
+              ./Cargo.lock
+            ];
+          };
           cargoLock.lockFile = ./Cargo.lock;
           buildNoDefaultFeatures = features != null;
           buildFeatures = if features == null then [ ] else features;
@@ -112,6 +123,12 @@
             # Pinned here so every contributor on nix gets the same hk as
             # the vendored pkl schema was cut from.
             pkgs.hk
+            # Gate steps that need a real binary (V72). Pinned here so the
+            # dev shell and CI run the same versions.
+            pkgs.typos
+            pkgs.actionlint
+            pkgs.taplo
+            pkgs.shellcheck
           ];
           # Pin locale so tool output is deterministic across machines.
           LANG = "C.UTF-8";
@@ -126,6 +143,28 @@
               export ITOK_MANIFEST="$PWD/Cargo.toml"
             else
               echo "itok(shell): no Cargo.toml in $PWD -- \`itok\` shim disabled" >&2
+            fi
+            # Entering the shell installs the hooks, so a contributor
+            # cannot forget to (V71: a gate you must remember to enable is
+            # not a gate). Silent and idempotent -- Unix philosophy.
+            #
+            # Written by hand rather than via `hk install`, because the
+            # command that writes assumes hk is on PATH. It is not,
+            # outside this shell -- and a hook that hard-fails when its
+            # runner is missing does not gate a commit, it blocks EVERY
+            # git command in the repo (B6). So the command degrades: no
+            # hk, no gate, one line to stderr saying so. Loud, not silent.
+            #
+            # SKIPPED when a global install exists: git aggregates
+            # `hook.<name>.command` across scopes, so having both fires
+            # every hook twice. The global install is the better setup, so
+            # it wins when present.
+            if ! git config --global --get-regexp '^hook\.hk-' >/dev/null 2>&1; then
+              for ev in pre-commit pre-push; do
+                git config --local "hook.hk-$ev.event" "$ev"
+                git config --local "hook.hk-$ev.command" \
+                  "command -v hk >/dev/null 2>&1 || { echo 'hk not found -- gate skipped; enter the dev shell (direnv/nix develop) to run it' >&2; exit 0; }; test \"\''${HK:-1}\" = \"0\" || hk run $ev --from-hook \"\$@\""
+              done
             fi
           '';
         };

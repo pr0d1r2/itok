@@ -1,0 +1,14 @@
+# `typos` config. Both entries below are exemptions, not suppressions:
+# each names something that is deliberately spelled that way.
+
+[files]
+# `pkl/` is upstream's schema, vendored verbatim (V66) -- correcting a
+# typo in it would silently fork it from the version we pinned.
+# `tests/fixtures/` is a recording; editing bytes invalidates the replay.
+extend-exclude = ["pkl/", "tests/fixtures/"]
+
+[default.extend-words]
+# NOT a typo: it is the INPUT to the typo-suggestion tests (V6). itok
+# suggests `estimate` when a user types `esimate`, and both the unit test
+# and the README example have to spell the mistake correctly.
+esimate = "esimate"

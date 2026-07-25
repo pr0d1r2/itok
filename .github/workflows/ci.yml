@@ -26,6 +26,10 @@ jobs:
       # Pinned to the version in the dev-shell flake, which is also the
       # version the vendored `pkl/Config.pkl` schema was cut from.
       HK_VERSION: "1.51.0"
+      # actionlint is not in install-action's manifest (it is Go, so the
+      # cargo-binstall fallback cannot fetch it). Pinned release download,
+      # same shape as hk. Matches the dev shell's nixpkgs version.
+      ACTIONLINT_VERSION: "1.7.12"
     steps:
       # fetch-depth: 0 -- the diff/show/log tests read HEAD~n; a shallow
       # clone has no history and would fail them (V37/B3 class).
@@ -38,6 +42,14 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@cargo-llvm-cov
       - uses: taiki-e/install-action@nextest
+      - uses: taiki-e/install-action@typos
+      - uses: taiki-e/install-action@taplo
+      - uses: taiki-e/install-action@shellcheck
+      - name: install actionlint
+        run: |
+          curl -fsSL "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz" \
+            | tar xz -C /usr/local/bin actionlint
+          actionlint --version
       - name: install hk
         run: |
           curl -fsSL "https://github.com/jdx/hk/releases/download/v${HK_VERSION}/hk-x86_64-unknown-linux-gnu.tar.gz" \
