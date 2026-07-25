@@ -1,5 +1,10 @@
 # itok
 
+[![CI](https://github.com/pr0d1r2/itok/actions/workflows/ci.yml/badge.svg)](https://github.com/pr0d1r2/itok/actions/workflows/ci.yml)
+[![crates.io](https://img.shields.io/crates/v/itok.svg)](https://crates.io/crates/itok)
+[![docs.rs](https://docs.rs/itok/badge.svg)](https://docs.rs/itok)
+![MSRV 1.82](https://img.shields.io/badge/MSRV-1.82-blue)
+
 Estimate the token / context cost of files and changes, from the command
 line. `git`- and `du`-shaped, so if you know those tools you already know
 this one.
@@ -23,18 +28,17 @@ $ itok estimate -h --top 3
 
 ## Install
 
-No published release yet -- build from source.
-
 ```bash
-# from a checkout of the repo
-cargo install --path crates/itok
-
-# or with the pinned toolchain
-nix develop --command cargo install --path crates/itok
+cargo install itok
 ```
 
-That puts `itok` in `~/.cargo/bin`. Make sure that directory is on your
-`PATH`.
+Or from a checkout:
+
+```bash
+cargo install --path crates/itok    # inside the monorepo
+```
+
+That puts `itok` in `~/.cargo/bin` -- make sure it is on your `PATH`.
 
 ## Prefix inference
 
@@ -184,6 +188,10 @@ Print this command reference as markdown -- the source for README's generated bl
 The command reference above is **generated**: `itok docs` prints it, and a
 test fails if this block drifts from the code. Edit the registry in
 `src/docs.rs`, never the block by hand.
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md).
 
 ## License
 

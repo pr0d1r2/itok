@@ -1,5 +1,11 @@
-//! itok core. The logic lives in a lib so it is unit-tested in the fast
-//! gate (kind(lib)); `main.rs` is a thin bin over it. Spec: SPEC.md.
+//! `itok` -- estimate the token / context cost of files and changes, from
+//! the command line. `git`- and `du`-shaped, honest by design (the default
+//! is a labelled *estimate*, never a claim of truth).
+//!
+//! This crate is primarily the `itok` **binary**; the library exists so the
+//! whole command surface is unit- and property-tested at lib cost (`main.rs`
+//! is a thin shell). See the README for usage and `SPEC.md` for the design
+//! invariants.
 
 mod args;
 #[cfg(feature = "bpe")]
