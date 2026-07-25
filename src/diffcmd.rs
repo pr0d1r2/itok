@@ -2,11 +2,13 @@
 //! arg-forms (V7/V32). Built on the gitref primitive -- each side is
 //! either a ref (a blob at a commit) or the working tree:
 //!
-//!   itok diff              working tree vs HEAD
-//!   itok diff <ref>        working tree vs <ref>
-//!   itok diff <A> <B>      <B> vs <A>   (also <A>..<B>)
-//!   itok diff --staged     index vs HEAD
-//!   ... [-- <path>]       narrow to one path (V33)
+//! ```text
+//! itok diff              working tree vs HEAD
+//! itok diff <ref>        working tree vs <ref>
+//! itok diff <A> <B>      <B> vs <A>   (also <A>..<B>)
+//! itok diff --staged     index vs HEAD
+//! ... [-- <path>]        narrow to one path (V33)
+//! ```
 //!
 //! Report-only unless a gate is asked for: --exit-code (nonzero on any
 //! delta) or --budget N (nonzero when the delta adds more than N, V16).
