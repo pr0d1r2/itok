@@ -1,21 +1,18 @@
 name: ci
 
-# The public, cargo-native gate (V31/V39): the same verdict as the monorepo,
-# reproduced on plain rustup -- no nix, no uow, no host guard bins. Dormant
-# in the monorepo (GitHub reads only root-level workflows); active once
-# `git subtree split` reroots this crate to a repo root.
+# ORCHESTRATION ONLY (V64). Which commands run, with which flags, in which
+# order, and the coverage floor all live in `hk.pkl` -- the single gate
+# definition. This file supplies what only a CI runner can: a machine, a
+# toolchain, a cache, and full git history. It must NEVER restate an op;
+# a second copy is a second thing to drift (B4).
 #
-# This is now the ONLY gate declaration in the standalone repo -- the unit
-# declaration it once mirrored is monorepo-only. Each of its five ops is
-# reproduced at or above its old strength: fmt identical; clippy gains
-# `--all-features -- -D warnings`; its lib/e2e nextest split becomes plain
-# `cargo test` (both kinds) plus the ollama axis; coverage keeps the
-# corrected 98 floor (a stale 99 there was the workspace aggregate, B4).
-# NOT carried over, on purpose: `--test-threads=1` (the tests are hermetic
-# -- temp dirs keyed by test name + pid, per-child `current_dir`, ephemeral
-# replay ports -- so serializing only hides real parallelism bugs) and the
-# pre-commit/pre-push phase split (consumed by a hook runner that does not
-# exist here; a git hook or justfile is the standalone form).
+# So the same verdict is reachable three ways with one definition: a local
+# `pre-commit` hook, a local `pre-push` hook, and `hk check` here.
+#
+# hk runs the ops; it never hides them. Every step in `hk.pkl` is a plain
+# cargo command a human can paste into a shell with nothing but rustup
+# (V65) -- so this workflow is a convenience, not a dependency of the
+# crate.
 
 on:
   push:
@@ -23,8 +20,12 @@ on:
   pull_request:
 
 jobs:
-  test:
+  gate:
     runs-on: ubuntu-latest
+    env:
+      # Pinned to the version in the dev-shell flake, which is also the
+      # version the vendored `pkl/Config.pkl` schema was cut from.
+      HK_VERSION: "1.51.0"
     steps:
       # fetch-depth: 0 -- the diff/show/log tests read HEAD~n; a shallow
       # clone has no history and would fail them (V37/B3 class).
@@ -35,22 +36,12 @@ jobs:
         with:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
-      - run: cargo fmt --check
-      - run: cargo clippy --all-targets --all-features -- -D warnings
-      - run: cargo test
-      # The ollama network backend is cassette-replayed offline (V38); this
-      # axis keeps that path from rotting. The live smoke is #[ignore].
-      - run: cargo test --features ollama
-
-  coverage:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@cargo-llvm-cov
-      # --features ollama so the network path (covered by the cassette) is
-      # instrumented too; the floor matches the monorepo's coverage-freeze.
-      - run: cargo llvm-cov --features ollama --fail-under-lines 98
+      - name: install hk
+        run: |
+          curl -fsSL "https://github.com/jdx/hk/releases/download/v${HK_VERSION}/hk-x86_64-unknown-linux-gnu.tar.gz" \
+            | tar xz -C /usr/local/bin hk
+          hk --version
+      # --check, because `hk check` defaults to running FIX commands; CI
+      # must report, never rewrite. --all, because CI has no staged set.
+      - run: hk check --all --check
