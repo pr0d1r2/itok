@@ -41,4 +41,4 @@ jobs:
       - uses: taiki-e/install-action@cargo-llvm-cov
       # --features ollama so the network path (covered by the cassette) is
       # instrumented too; the floor matches the monorepo's coverage-freeze.
-      - run: cargo llvm-cov --features ollama --fail-under-lines 99
+      - run: cargo llvm-cov --features ollama --fail-under-lines 98

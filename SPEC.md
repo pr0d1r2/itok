@@ -272,7 +272,10 @@ monorepo-only.** The fancy guards are HOST crates (`repo-guard`,
 CI use cargo-native tools alone (fmt, clippy, nextest, llvm-cov). Coverage
 is a `--fail-under-lines` FLOOR, ⊥ the per-file `coverage-freeze` ratchet
 (a host bin); `coverage-baseline.json` travels as reference, ⊥ enforced
-in the extracted repo. Two-tier by design: the monorepo is itok's
+in the extracted repo. The floor is the UNIT's OWN standalone coverage
+(itok ≈ 98%), ⊥ the monorepo WORKSPACE total (sibling crates inflate that
+to 99%, B4): a floor copied from the aggregate fails the single crate.
+Two-tier by design: the monorepo is itok's
 full-guard home (root config, all guards, where it is developed); the
 public repo runs the standard gate. A graft lands public, flows back, &
 hits the full guards in the monorepo — external contribution, internal
@@ -398,7 +401,7 @@ T23|x|`show` verb: one commit's per-file delta (default HEAD), `-- path`, `<comm
 T24|x|cassette-replay the ollama backend: `vcr-cassette` dev-dep + ureq replay stub + fixtures (`/api/tags`·`/api/show`·`/api/generate`); live smoke → `#[ignore]`; `ollama` CI axis in `.uow`+hook; fold into `src/ollama/`|V38,V22,V23
 T25|x|metadata: `Cargo.toml` version `0.8.0` + `repository`·`homepage`·`documentation`·`readme`·`keywords`·`categories`·`rust-version`, `exclude` non-consumer files|V39,V13
 T26|x|public-clean provenance: scrub SPEC + src comments of origin-repo names & cross-repo invariant pointers (fold inline), header un-names the workspace, `exclude=[".uow"]`|V26,V39
-T27|x|bare-rust `.github/workflows/ci.yml`: fmt·clippy·test·`--features ollama`·`llvm-cov --fail-under-lines 99`, `fetch-depth:0`, no nix/uow|V39,V31,V38
+T27|x|bare-rust `.github/workflows/ci.yml`: fmt·clippy·test·`--features ollama`·`llvm-cov --fail-under-lines 98`, `fetch-depth:0`, no nix/uow|V39,V31,V38
 T28|x|assemble README = hand narrative + the `itok docs` reference block + badges (post-ORG); `CHANGELOG.md`; crate rustdoc for docs.rs|V39,V40,V15
 T29|x|`itok docs` verb: ONE command registry (verb·synopsis·flags·exit) renders `--help` + a markdown reference; read-only to stdout; guard diffs it vs README ∴ docs can't rot|V40,V6,V9
 
@@ -408,3 +411,4 @@ id|date|cause|fix
 B1|2026-07-24|extraction: `rustfmt.toml`/`clippy.toml` root-only ⇒ standalone `cargo fmt --check` reformats (default width 100 vs 80); traveling gate ⊥ reproduces verdict|V27
 B2|2026-07-24|extraction: git-command tests use `CARGO_MANIFEST_DIR.parent().parent()` as repo root + hardcode `crates/itok/…` paths ⇒ standalone `cargo nextest` fails|V37
 B3|2026-07-24|`diff --budget` test asserted a breach on live `HEAD~1..HEAD`, presuming a substantial last commit; a near-zero-delta ceiling bump as HEAD gave no breach ⇒ exit 0 ≠ 1, blocking every commit until HEAD grew|V37
+B4|2026-07-25|ci.yml `--fail-under-lines 99` copied the monorepo WORKSPACE total; itok ALONE is 98.03% (siblings inflate the aggregate) ⇒ the standalone gate fails coverage. Caught by the T359 proving ground. Floor set to itok's own 98|V31

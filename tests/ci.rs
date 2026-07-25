@@ -21,7 +21,7 @@ fn reproduces_the_standard_gate() {
         "cargo clippy",
         "cargo test",
         "--features ollama", // V38: the cassette-replayed network axis
-        "--fail-under-lines 99", // the coverage floor, matching the monorepo
+        "--fail-under-lines 98", // itok's OWN standalone coverage floor (B4)
     ] {
         assert!(y.contains(step), "ci.yml missing `{step}`");
     }
