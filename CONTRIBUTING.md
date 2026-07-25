@@ -40,6 +40,27 @@ cargo fmt --all                # formatting is not optional
 No `nix`? A recent stable Rust with `cargo-nextest` and `cargo-llvm-cov`
 works too; the pinned shell just guarantees the versions.
 
+### Hooks
+
+The gate is defined once, in `hk.pkl`, and run by [hk]. The dev shell
+provides `hk`; install the hooks once, globally, and every repo with an
+`hk.pkl` is covered (repos without one are a silent no-op):
+
+```bash
+hk install --global            # needs git 2.54+; once per machine
+```
+
+Per-repo `hk install` also works, but do not do both -- git aggregates
+`hook.<name>.command` across scopes, so hooks would fire twice.
+
+`pre-commit` runs the fast set, `pre-push` adds the ollama axis and
+coverage. `HK=0 git commit` bypasses for one command.
+
+You do not need `hk` to reproduce a verdict: every step in `hk.pkl` is a
+plain cargo command you can paste into a shell.
+
+[hk]: https://hk.jdx.dev
+
 ## Adding a verb
 
 The command surface is a pure function -- `cli::run(args) -> Output` --
@@ -59,20 +80,27 @@ spawning the binary. To add a verb:
 
 ## What the gate checks
 
-A commit must pass all of these -- the pre-commit hook runs them:
+All of these are defined in `hk.pkl` and reached three ways from that one
+definition: the `pre-commit` hook, the `pre-push` hook, and `hk check` in
+CI. The first four run on commit; the rest on push and in CI.
 
 - **`cargo fmt --check`** -- one formatting, no debate.
 - **`cargo clippy`** -- a strict deny-list (no `unwrap`, no `panic`, no
   silent integer overflow, function- and module-length caps). The limits
   are a design tool: if a function will not fit, it usually wants
   splitting.
-- **`cargo nextest`** -- unit and property tests.
-- **repo hygiene** -- ASCII-only source, no machine-specific paths, no
-  oversized files (`.file-limits`).
-- **coverage** -- per-file, frozen. A drop is a reviewed decision, not an
-  accident. Cover the gap rather than lower the bar.
-- **lexicon** -- new identifiers are a reviewed diff, so the vocabulary
-  stays small (`itok e` beats `itok execute-estimation`).
+- **`cargo test`** -- unit, property and end-to-end tests.
+- **`itok check`** -- itok gating itself against `.context-limits`.
+- **`cargo test --features ollama`** -- the network backend, replayed
+  offline from a recorded cassette. No server, no network.
+- **coverage** -- `--fail-under-lines 98`, itok's own standalone figure.
+  Cover the gap rather than lower the bar.
+
+Three further guards run only in the monorepo where itok is developed,
+because they are host tools that do not travel with the crate: repo
+hygiene (ASCII-only source, no machine-specific paths, `.file-limits`
+ceilings), a per-file coverage freeze, and a lexicon diff that keeps the
+vocabulary small (`itok e` beats `itok execute-estimation`).
 
 ## Design laws worth knowing
 
