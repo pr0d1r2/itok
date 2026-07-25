@@ -258,27 +258,41 @@ history & commit trail, ⊥ the shipped text.
 V27: **itok self-guards — its guard config TRAVELS.** The fractal: every
 extractable unit is a mini-repo. crates/itok/ mirrors a repo root — own
 `SPEC.md`, `.file-limits`, `lexicon.txt`, `coverage-baseline.json`,
-`Cargo.toml`, `rustfmt.toml`, `clippy.toml`, + a `.uow/`. ∴ `subtree
-split` carries the GUARDS w/ the code; itok guards itself standalone, ⊥
-orphaned. Config that CHANGES a verdict (`rustfmt.toml`'s `max_width`,
+`Cargo.toml`, `rustfmt.toml`, `clippy.toml`, `.gitignore`, + the
+toolchain & gate it runs on (root `flake.nix`/`flake.lock`/`.envrc` +
+`.github/workflows/ci.yml`, V62). ∴ `subtree split` carries the GUARDS w/
+the code; itok guards itself standalone, ⊥ orphaned. Config that CHANGES a verdict (`rustfmt.toml`'s `max_width`,
 `clippy.toml`'s thresholds) ! travel beside `Cargo.toml`'s `[lints]`, else
 the standard gate (V31) silently weakens on extraction — the extracted
 `cargo fmt --check` reformats to defaults & fails (B1). Reconciles V13
 (self-contained) & V14 (dogfooded): in-repo the host RUNS the guards, but
 the config they read is itok's own.
-V28: **`.uow/` = the unit DECLARATION, root = the config DATA.** `.uow/`
-holds `unit.yml` (itok's ops × itok-scoped globs × phases × deps) +
-`flake.nix`/`flake.lock` (detachable toolchain — build on any nix box) +
-`.envrc`. The baselines (`.file-limits`, `lexicon.txt`,
-`coverage-baseline.json`, `SPEC.md`, `Cargo.toml`) sit at crates/itok/
-ROOT — where tools expect them & where they land as root after
-extraction. `.uow/` = how-to-guard; root = what-to-guard-against.
-V29: **`unit.yml` phase-splits itok's STANDARD guards** — fmt · clippy ·
-nextest(lib) on pre-commit; nextest(e2e) · `llvm-cov --fail-under-lines`
-on pre-push; heavier axes on ci. Cargo-native ONLY (V31) ∴ the split runs
-identically in-repo & extracted with no host bin present; `cargo run`
-never (a resolved-path bin, ⊥ a nested cargo). The custom guards (hygiene, lexicon, cavekit-spec,
-ascii) are ⊥ here — they run in the monorepo via root config (V31).
+V28: **the unit DECLARATION is MONOREPO-ONLY; the standalone repo is an
+ORDINARY repo.** A host-specific declaration (`.uow/unit.yml` — ops ×
+globs × phases × deps) describes work for a HOST RUNNER, & no such runner
+exists in the extracted repo ∴ shipping it there is a DEAD FILE that
+reads as law: a contributor sees a gate declaration, edits it, & nothing
+runs it (worse, it can DRIFT from the live gate & carry a stale threshold
+— exactly B4's shape, a `99` floor surviving beside CI's corrected 98).
+∴ the public repo carries only what plain tools read: root `flake.nix`/
+`flake.lock`/`.envrc` (V62) & `.github/workflows/ci.yml` (V31). The
+baselines (`.file-limits`, `lexicon.txt`, `coverage-baseline.json`,
+`SPEC.md`, `Cargo.toml`) sit at the crate ROOT — where tools expect them
+& where they land as root after extraction. Root = what-to-guard-against;
+the how-to-guard is the WORKFLOW here & the unit declaration THERE. Same
+ops either way (V31) — one verdict, two runners.
+V29: **the phase split is the HOST RUNNER's, ⊥ the repo's** — fmt ·
+clippy · nextest(lib) on pre-commit; nextest(e2e) · `llvm-cov
+--fail-under-lines` on pre-push; heavier axes on ci. That ordering is an
+optimization for an interactive hook (fail fast, cheapest first) ∴ it
+lives with the runner that HAS hooks (the monorepo). CI has no such
+gradient — it runs everything on every push — so the standalone gate is
+FLAT & complete, ⊥ phased. Cargo-native ONLY (V31) either way ∴ the same
+ops give the same verdict under both; `cargo run` never (a resolved-path
+bin, ⊥ a nested cargo). The custom guards (hygiene, lexicon,
+cavekit-spec, ascii) are ⊥ in either — they run in the monorepo via root
+config (V31). A standalone contributor who wants the gradient uses a git
+hook | a task runner — a repo-level convention, ⊥ a specced artifact.
 V30: **in-repo, itok's config is honored by NEAREST-config cascade** (a
 host feature): a file under crates/itok/ is measured against crates/itok/
 baselines, ⊥ root's (the editorconfig/gitignore cascade, V1). ∴ itok
@@ -528,6 +542,30 @@ would go stale & become a confident lie (V3). Missing rate ⇒ NO money
 column, ⊥ a guessed one (V11's unknown-model rule). Cache-read tokens
 bill at a different rate than fresh ones ∴ `--cost` ! use the cache
 split (V47) or omit the column entirely.
+V62: **the flake sits at the REPO ROOT & the dev shell PROVIDES `itok`.**
+Root, ⊥ a subdirectory, for one hard reason: a flake's source root is the
+directory it lives in ∴ a flake under `.uow/` can ! see `Cargo.toml` |
+`src/` & can therefore never build the crate — no `packages.default`, no
+`nix build`, no `nix run`. Root also makes it the shape every Rust
+project already uses (V1) & the shape `nix flake` commands assume.
+PROVIDES: itok dogfoods itself (V15) ∴ its own shell ! hand you the
+toolchain and then make you type `cargo run --` — the tool is on PATH.
+The shell's `itok` is a SHIM (`exec cargo run -q --manifest-path
+"$ITOK_MANIFEST" --bin itok -- "$@"`), ⊥ a package in the shell closure:
+a package would build the crate to ENTER the shell ∴ one compile error
+locks you out of the shell you need to fix it, & a pinned package is
+STALE against the working tree — the opposite of what a dev shell is for.
+`cargo run` no-ops on a fresh build ∴ the shim costs ~nothing & is always
+current. `ITOK_MANIFEST` is resolved AT ENTRY from `$PWD` (V37: derive,
+never hardcode a layout) so it works in-repo & extracted alike;
+`ITOK_PROFILE=release` / `ITOK_FEATURES` are the escape hatches. The dev
+files are `exclude`d from the published `.crate` (V39): consumer-
+meaningless. A real `packages.default` (`buildRustPackage` + `cargoLock.
+lockFile`, giving `nix build`/`nix run`/flake-input consumption) is
+DEFERRED, ⊥ rejected — it requires a COMMITTED `Cargo.lock` (nix flakes
+read git-TRACKED files only, & a sandboxed build cannot resolve versions
+off the network), which is now satisfied. Trigger: a user | CI wanting
+itok without a rust toolchain.
 
 ## §T TASKS
 
@@ -558,8 +596,8 @@ T15|x|`log` verb: per-commit token cost + delta across history, git grammar (`A.
 T16|x|`fit` verb: greedy subset under `--window`, pipeable path-list output|V20
 T17|x|`--ollama` backend: exact via `prompt_eval_count`, live model/window discovery, feature-gated|V22,V23
 T18|x|`--ollama` `host[:port]`-list + `.context-hosts` + stdin; fleet union; ⊥ CIDR/port-flag|V24,V25
-T19|x|`crates/itok/.uow/unit.yml`: itok guard units, ops×globs×phases, resolved-path bins|V28,V29
-T20|x|`crates/itok/.uow/flake.nix`+`flake.lock`+`.envrc`: detachable toolchain|V28
+T19|x|unit declaration (ops×globs×phases, resolved-path bins) — MONOREPO-ONLY; ⊥ shipped in the standalone repo, where `ci.yml` is the runner (superseded by T51)|V28,V29
+T20|x|pinned detachable toolchain: `flake.nix`+`flake.lock`+`.envrc` — relocated to the repo ROOT by T50|V28,V62
 T21|x|itok baselines at crates/itok/ root: `.file-limits`·`lexicon.txt`·`coverage-baseline.json`|V27
 T22|x|`gitref` primitive: token cost of a file AT a commit (`git cat-file` → dummy/bpe), shared by diff/show/log|V33
 T23|x|`show` verb: one commit's per-file delta (default HEAD), `-- path`, `<commit>:<path>` blob|V32,V33
@@ -589,6 +627,10 @@ T46|.|fuse telemetry: trip · cap · override are ledger events; `top` reports o
 T47|.|ledger REPLAY: recorded events × a policy, offline & deterministic ⇒ policy A/B with no agent & no network|V53,V5
 T48|.|session-cost regression gate: a recorded run over its input-token budget fails CI (the `--budget` shape, on a session)|V53,V16
 T49|.|SPEC compaction debt (M3 closed, now DUE): compact §V/§B prose, re-tighten `.file-limits` `SPEC.md` ceiling; one-file rule holds — more sections, ⊥ more files|V15
+T50|x|flake to repo ROOT (`git mv` out of the unit dir) + dev shell PROVIDES `itok` via a `cargo run` shim; `ITOK_MANIFEST` resolved at entry, `ITOK_PROFILE`/`ITOK_FEATURES` hatches; dev files `exclude`d from the `.crate`|V62,V15,V39
+T51|x|drop the unit declaration from the standalone repo; `ci.yml` carries all 5 ops at >= their old strength (clippy gains `--all-features -- -D warnings`, coverage keeps the corrected 98) & records what was deliberately ⊥ carried (`--test-threads=1`, the phase split)|V28,V29,V31
+T52|x|`.gitignore` (`/target`, `/.direnv`): cargo packages untracked-not-ignored files ∴ `.direnv/` (5.5MB of vendored nixpkgs source) was landing in `cargo package --list` ⇒ would ship in the `.crate`|V39,V13
+T53|x|track `Cargo.lock`: a BIN crate pins its own deps, & nix flakes read git-TRACKED files only ∴ an untracked lock is invisible to a `packages.default` build|V62,V39
 
 ## §B BUGS
 
