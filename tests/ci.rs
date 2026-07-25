@@ -27,10 +27,11 @@ fn the_gate_defines_the_standard_ops() {
     for op in [
         "cargo fmt --check",
         "cargo clippy",
-        "cargo test",
+        "cargo nextest run",
+        "cargo test --doc", // nextest skips doctests; this closes that gap
         "--features ollama", // V38: the cassette-replayed network axis
         "--fail-under-lines 98", // itok's OWN standalone coverage floor (B4)
-        "itok -- check",     // V14: itok gates itself
+        "itok -- check",    // V14: itok gates itself
     ] {
         assert!(g.contains(op), "hk.pkl missing `{op}`");
     }

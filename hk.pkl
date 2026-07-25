@@ -30,17 +30,29 @@ local fast = new Mapping<String, Step> {
     depends = List("fmt")
     check = "cargo clippy --all-targets --all-features -- -D warnings"
   }
+  // nextest runs each test in its OWN process. That isolation is why it
+  // is worth an extra tool: B5 was a race between concurrently running
+  // tests, and process-per-test makes that class harder to write in the
+  // first place.
   ["test"] {
     glob = List("**/*.rs")
     depends = List("clippy")
-    check = "cargo test"
+    check = "cargo nextest run"
+  }
+  // nextest does not run doctests -- that is the one gap it opens, so it
+  // is closed explicitly rather than left implicit. Currently zero
+  // doctests; this is what notices when the first one arrives and fails.
+  ["doctest"] {
+    glob = List("**/*.rs")
+    depends = List("test")
+    check = "cargo test --doc"
   }
   // itok gates itself (V14): `.context-limits` ceilings, checked by the
   // tool being built. Triggered by the registered paths and the registry
   // itself, so a docs-only commit still gets gated.
   ["itok"] {
     glob = List("**/*.rs", "SPEC.md", "README.md", ".context-limits")
-    depends = List("test")
+    depends = List("doctest")
     check = "cargo run -q --bin itok -- check"
   }
 }
@@ -54,14 +66,14 @@ local all = (fast) {
   ["ollama"] {
     glob = List("**/*.rs")
     depends = List("itok")
-    check = "cargo test --features ollama"
+    check = "cargo nextest run --features ollama"
   }
   // The floor is itok's OWN standalone coverage, not a workspace
   // aggregate (B4). It lives here and nowhere else.
   ["coverage"] {
     glob = List("**/*.rs")
     depends = List("ollama")
-    check = "cargo llvm-cov --features ollama --fail-under-lines 98"
+    check = "cargo llvm-cov nextest --features ollama --fail-under-lines 98"
   }
 }
 

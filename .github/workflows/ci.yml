@@ -37,6 +37,7 @@ jobs:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@cargo-llvm-cov
+      - uses: taiki-e/install-action@nextest
       - name: install hk
         run: |
           curl -fsSL "https://github.com/jdx/hk/releases/download/v${HK_VERSION}/hk-x86_64-unknown-linux-gnu.tar.gz" \
