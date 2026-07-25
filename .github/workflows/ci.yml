@@ -4,6 +4,18 @@ name: ci
 # reproduced on plain rustup -- no nix, no uow, no host guard bins. Dormant
 # in the monorepo (GitHub reads only root-level workflows); active once
 # `git subtree split` reroots this crate to a repo root.
+#
+# This is now the ONLY gate declaration in the standalone repo -- the unit
+# declaration it once mirrored is monorepo-only. Each of its five ops is
+# reproduced at or above its old strength: fmt identical; clippy gains
+# `--all-features -- -D warnings`; its lib/e2e nextest split becomes plain
+# `cargo test` (both kinds) plus the ollama axis; coverage keeps the
+# corrected 98 floor (a stale 99 there was the workspace aggregate, B4).
+# NOT carried over, on purpose: `--test-threads=1` (the tests are hermetic
+# -- temp dirs keyed by test name + pid, per-child `current_dir`, ephemeral
+# replay ports -- so serializing only hides real parallelism bugs) and the
+# pre-commit/pre-push phase split (consumed by a hook runner that does not
+# exist here; a git hook or justfile is the standalone form).
 
 on:
   push:
