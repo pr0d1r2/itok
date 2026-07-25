@@ -56,6 +56,11 @@ Per-repo `hk install` also works, but do not do both -- git aggregates
 `pre-commit` runs the fast set, `pre-push` adds the ollama axis and
 coverage. `HK=0 git commit` bypasses for one command.
 
+The gate is silent when it passes. When it fails it says what broke and
+how to fix it; [AGENTS.md](AGENTS.md) is the full playbook, written for
+agents and humans alike. Do not bypass a failure -- `HK=0`, lowering a
+threshold or silencing a lint all ship the defect with the alarm off.
+
 You do not need `hk` to reproduce a verdict: every step in `hk.pkl` is a
 plain cargo command you can paste into a shell.
 

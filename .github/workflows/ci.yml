@@ -45,4 +45,10 @@ jobs:
           hk --version
       # --check, because `hk check` defaults to running FIX commands; CI
       # must report, never rewrite. --all, because CI has no staged set.
-      - run: hk check --all --check
+      #
+      # --no-fail-fast inverts the local default on purpose. Locally the
+      # loop is cheap, so the FIRST failure is the most useful thing to
+      # surface. Here a round-trip costs minutes, so a complete list of
+      # failures beats an early one -- whoever (or whatever) fixes this
+      # should get every problem in one pass.
+      - run: hk check --all --check --no-fail-fast

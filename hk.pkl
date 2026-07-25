@@ -13,6 +13,24 @@
 /// default flag.
 amends "pkl/Config.pkl"
 
+/// Unix philosophy: a passing gate says NOTHING. `hk` reports every step
+/// on stderr by default, which is noise in the commit path -- and noise
+/// that agents and humans both learn to scroll past, which is how a real
+/// failure gets missed. Success is silence; failure is loud and carries
+/// its own remediation.
+///
+/// `fail_fast` is the default, set here explicitly because it is a
+/// decision, not an accident: locally the loop is cheap, so the FIRST
+/// failure is the most useful thing to surface, and the steps are ordered
+/// cheapest-first via `depends` so it arrives fast. CI inverts this
+/// (`--no-fail-fast`): there the round-trip is expensive, so a complete
+/// list beats an early one.
+fail_fast = true
+
+env {
+  ["HK_HIDE_WHEN_DONE"] = "true"
+}
+
 /// `depends` chains the cargo steps deliberately (V67). Cargo takes a lock
 /// on the target directory, so two cargo jobs launched in parallel do not
 /// run in parallel -- the second blocks on "Blocking waiting for file lock
@@ -109,7 +127,7 @@ local fast = new Mapping<String, Step> {
   ["itok"] {
     glob = List("**/*.rs", "SPEC.md", "README.md", ".context-limits")
     depends = List("doctest")
-    check = "cargo run -q --bin itok -- check"
+    check = "cargo run -q --bin itok -- check || { echo 'hk: a registered path is over its .context-limits ceiling. Compact the file; raising the ceiling is a reviewed decision. See AGENTS.md' >&2; exit 1; }"
   }
 }
 
@@ -122,7 +140,7 @@ local all = (fast) {
   ["ollama"] {
     glob = List("**/*.rs")
     depends = List("itok")
-    check = "cargo nextest run --features ollama"
+    check = "cargo nextest run --features ollama || { echo 'hk: the cassette-replayed network path broke. tests/fixtures is a RECORDING -- do not edit it to make a test pass. See AGENTS.md' >&2; exit 1; }"
   }
   // V23/V13/V34 claim the core builds with ZERO network deps as a
   // dummy-only tool. Until this step existed that claim rested on reading
@@ -130,7 +148,7 @@ local all = (fast) {
   ["no-default-features"] {
     glob = List("**/*.rs")
     depends = List("ollama")
-    check = "cargo nextest run --no-default-features"
+    check = "cargo nextest run --no-default-features || { echo 'hk: the zero-dependency core stopped building -- something outside a cfg gate reached for an optional dep. See AGENTS.md' >&2; exit 1; }"
   }
   // V39: the published .crate must contain only consumer files. An
   // untracked-but-unignored directory silently lands in it -- that is
@@ -139,7 +157,7 @@ local all = (fast) {
   ["package"] {
     glob = List("**/*.rs", "Cargo.toml", ".gitignore")
     depends = List("no-default-features")
-    check = "cargo package --list --allow-dirty > /dev/null"
+    check = "cargo package --list --allow-dirty > /dev/null || { echo 'hk: the published .crate would hold the wrong files -- usually an untracked-but-unignored path. See AGENTS.md' >&2; exit 1; }"
   }
   // The docs.rs badge is a promise; broken intra-doc links break it
   // there, not here, unless this runs.
@@ -154,7 +172,7 @@ local all = (fast) {
   ["coverage"] {
     glob = List("**/*.rs")
     depends = List("rustdoc")
-    check = "cargo llvm-cov nextest --features ollama --fail-under-lines 98"
+    check = "cargo llvm-cov nextest --features ollama --fail-under-lines 98 || { echo 'hk: below the coverage floor. Cover the gap; lowering the floor needs a reason in SPEC.md. See AGENTS.md' >&2; exit 1; }"
   }
 }
 

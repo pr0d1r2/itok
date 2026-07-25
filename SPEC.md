@@ -640,6 +640,21 @@ rung IS a behavior change. crates.io is IMMUTABLE (yank HIDES, ⊥ deletes)
 ∴ the first public artifact is `0.7.0-rc.1` — cargo ⊥ selects a
 pre-release by default — so the pipeline is proven before a permanent
 number is spent.
+V71: **a passing gate says NOTHING; a failing one says what to DO.** Unix
+philosophy, applied to the gate. SUCCESS = SILENCE (`HK_HIDE_WHEN_DONE`)
+∵ output that always appears is output nobody reads ∴ the one real
+failure hides in the noise everyone learned to scroll past. FAILURE =
+LOUD & ACTIONABLE: the tool's own diagnostic, + a one-line remediation
+pointer on the steps whose fix is ⊥ obvious from the command that failed
+(`itok`/`ollama`/`no-default-features`/`package`/`coverage`), + a
+playbook (`AGENTS.md`) written for agents & humans alike. FAIL-FAST is
+LOCAL, ⊥ universal: locally the loop is cheap ∴ the FIRST failure is the
+most useful thing to surface & `depends` orders steps cheapest-first so
+it arrives fast; in CI a round-trip costs minutes ∴ `--no-fail-fast` — a
+COMPLETE list beats an early one. BYPASS is ⊥ a fix: `--no-verify` ·
+`HK=0` · lowering a threshold · `#[allow]` all SHIP THE DEFECT with the
+alarm switched off. If the CHECK itself is wrong, that is a SPEC change —
+made deliberately, in its own commit, ⊥ silently at the failure site.
 
 ## §T TASKS
 
@@ -712,6 +727,7 @@ T57|x|drop `.file-limits`: no standalone runner reads it ∴ hand-maintained cei
 T59|.|public exposure: create the GitHub repo, publish `0.7.0-rc.1` FIRST (immutability -- prove the pipeline before spending a permanent number), install it from crates.io, then `0.7.0`|V70,V39
 T60|.|CI hardening: platform matrix (ubuntu + macos-arm), MSRV `1.82` axis, release automation, a green streak before `0.8.0`|V70,V39
 T61|.|closure: fold public feedback, freeze the CLI surface & the json contract, `1.0.0`|V70,V9
+T62|x|gate UX: silent on success (`HK_HIDE_WHEN_DONE`), explicit `fail_fast` locally & `--no-fail-fast` in CI, per-step remediation hints on the non-obvious failures, `AGENTS.md` playbook + CONTRIBUTING pointer|V71,V65
 T49|.|SPEC compaction debt (M3 closed, now DUE): compact §V/§B prose; one-file rule holds — more sections, ⊥ more files|V15
 T50|x|flake to repo ROOT (`git mv` out of the unit dir) + dev shell PROVIDES `itok` via a `cargo run` shim; `ITOK_MANIFEST` resolved at entry, `ITOK_PROFILE`/`ITOK_FEATURES` hatches; dev files `exclude`d from the `.crate`|V62,V15,V39
 T51|x|drop the unit declaration from the standalone repo; `ci.yml` carries all 5 ops at >= their old strength (clippy gains `--all-features -- -D warnings`, coverage keeps the corrected 98) & records what was deliberately ⊥ carried (`--test-threads=1`, the phase split)|V28,V29,V31
