@@ -566,6 +566,46 @@ DEFERRED, ⊥ rejected — it requires a COMMITTED `Cargo.lock` (nix flakes
 read git-TRACKED files only, & a sandboxed build cannot resolve versions
 off the network), which is now satisfied. Trigger: a user | CI wanting
 itok without a rust toolchain.
+V64: **ONE gate definition, many callers — eliminate the second copy, ⊥
+freeze it.** `hk.pkl` holds the OPS (which command, which flags, which
+phase, which order, the coverage floor); the workflow holds ORCHESTRATION
+ONLY (runner, toolchain, cache, full history) ∵ that half has no local
+equivalent to disagree with. ∴ one definition is reached 3 ways —
+`pre-commit`, `pre-push`, `hk check` in CI — & the ops CANNOT drift,
+having only one copy. Contrast V40, which had to FREEZE a second
+rendering ∵ `--help` text must live in Rust; here both callers can read
+the same file, & elimination beats policing (a guard detects drift only
+AFTER someone writes it). B4 is the cost of the alternative: a stale `99`
+floor sitting in one declaration beside CI's corrected `98`, both looking
+authoritative.
+V65: **the gate of record stays RUSTUP-REPRODUCIBLE — hk RUNS the ops, ⊥
+hides them.** Every step is a plain cargo command a human can paste with
+nothing but rustup ∴ the hook manager is a CONVENIENCE, ⊥ a dependency of
+the crate (V13/V31). A contributor without hk loses scheduling, never the
+ability to reproduce a verdict. Bars, by construction: no step is a
+script only hk can call, no verdict depends on hk's own logic.
+V66: **the gate's schema is VENDORED, ⊥ fetched at eval** — V12's
+reasoning, on config instead of vocab. hk's documented form amends a
+`package://` URL fetched over the network at eval time; `pkl/Config.pkl`
+ships in-tree & `hk.pkl` amends the local path (upstream's own repo does
+the same). Offline-first is the default BUILD, ⊥ merely the default flag
+(V34). Re-vendored verbatim on an hk upgrade — the pin in the dev shell,
+the vendored schema & CI's `HK_VERSION` are ONE version, moved together.
+V67: **cargo steps SERIALIZE by `depends`; parallelism is for the rest.**
+Cargo takes a lock on the target directory ∴ two cargo jobs launched
+concurrently do ⊥ run concurrently — the second blocks on "Blocking
+waiting for file lock on build directory", which READS AS A HANG. The
+chain makes the serialization explicit & intended, ⊥ emergent, & leaves
+hk free to run any future non-cargo check in parallel. Separate
+`CARGO_TARGET_DIR` per step is the escape hatch & is ⊥ worth it (full
+recompiles, multiplied disk).
+V68: **hermeticity is PROVEN by running parallel, ⊥ argued from
+inspection.** `--test-threads=1` is a DIAGNOSTIC (it localizes a race), ⊥
+a fix (it hides one) ∴ a suite that needs it has a bug, & the bug is the
+deliverable. Reading a test for per-process temp dirs & ephemeral ports
+establishes NOTHING — B5 passed that reading & still raced. The gate runs
+the suite parallel; a flake found there is fixed at the source, never
+suppressed by serializing the axis.
 
 ## §T TASKS
 
@@ -577,6 +617,7 @@ itok without a rust toolchain.
 | M4 | runtime introspection — read-only ledger (V41, V42) | T30, T31, T32, T33, T34, T35, T36, T37, T38, T49 | `itok trace`/`itok top` green on itok's OWN sessions, accounted-vs-unaccounted stated, calibration factor + `n` reported, zero interception |
 | M5 | reduction — the standalone pipe filter | T39, T40, T41 | `cmd \| itok cap 10k` useful w/ no agent & no hook, every applied rung named in the footer, cut is resumable & deterministic |
 | M6 | enforcement — policy · guard · fuse | T42, T43, T44, T45, T46 | hook adapter decides from `.context-policy`, fuse graduated + always overridable, every trip/cap/override lands in the ledger |
+| M8 | local guardrails — ONE gate definition, run by hk | T54, T55, T56 | `hk.pkl` is the only place an op is written; pre-commit/pre-push/CI all reach it; the suite is green run PARALLEL |
 | M7 | runtime CI — replay & regression | T47, T48 | a recorded ledger replays deterministically offline ∴ policy A/B w/o an agent; a run over session budget fails CI |
 
 T1|x|crate skeleton: standalone bin, Cargo.toml, MIT license, min deps|V13
@@ -626,6 +667,9 @@ T45|.|pins honored absolutely — above every tier & above a tripped fuse|V56
 T46|.|fuse telemetry: trip · cap · override are ledger events; `top` reports override-rate as the policy-quality signal|V55
 T47|.|ledger REPLAY: recorded events × a policy, offline & deterministic ⇒ policy A/B with no agent & no network|V53,V5
 T48|.|session-cost regression gate: a recorded run over its input-token budget fails CI (the `--budget` shape, on a session)|V53,V16
+T54|x|adopt hk as the gate runner: vendor `pkl/Config.pkl` (⊥ `package://`), `hk.pkl` w/ fast set + `all` amending it, `depends` chain over the cargo steps, `stash = "git"` on pre-commit, dev shell provides hk pinned to the vendored schema's version|V64,V66,V67
+T55|x|`ci.yml` = orchestration ONLY, delegating to `hk check --all --check`; `tests/ci.rs` retargeted from freezing a second copy to freezing the SINGLE definition (ops in hk.pkl, workflow restates none, schema vendored)|V64,V65
+T56|x|fix the cassette stub's request drain (B5): read to `Content-Length` before replying, `Connection: close`; verified 8/8 parallel runs green where it was 2/3 failing|V68,V38
 T49|.|SPEC compaction debt (M3 closed, now DUE): compact §V/§B prose, re-tighten `.file-limits` `SPEC.md` ceiling; one-file rule holds — more sections, ⊥ more files|V15
 T50|x|flake to repo ROOT (`git mv` out of the unit dir) + dev shell PROVIDES `itok` via a `cargo run` shim; `ITOK_MANIFEST` resolved at entry, `ITOK_PROFILE`/`ITOK_FEATURES` hatches; dev files `exclude`d from the `.crate`|V62,V15,V39
 T51|x|drop the unit declaration from the standalone repo; `ci.yml` carries all 5 ops at >= their old strength (clippy gains `--all-features -- -D warnings`, coverage keeps the corrected 98) & records what was deliberately ⊥ carried (`--test-threads=1`, the phase split)|V28,V29,V31
@@ -638,4 +682,5 @@ id|date|cause|fix
 B1|2026-07-24|extraction: `rustfmt.toml`/`clippy.toml` root-only ⇒ standalone `cargo fmt --check` reformats (default width 100 vs 80); traveling gate ⊥ reproduces verdict|V27
 B2|2026-07-24|extraction: git-command tests use `CARGO_MANIFEST_DIR.parent().parent()` as repo root + hardcode `crates/itok/…` paths ⇒ standalone `cargo nextest` fails|V37
 B3|2026-07-24|`diff --budget` test asserted a breach on live `HEAD~1..HEAD`, presuming a substantial last commit; a near-zero-delta ceiling bump as HEAD gave no breach ⇒ exit 0 ≠ 1, blocking every commit until HEAD grew|V37
+B5|2026-07-25|cassette replay stub read the request with ONE `read()`; TCP segments the only POST (`/api/generate`) so the body can arrive second ⇒ reply-then-close raced the client's write ⇒ `itok: ollama read ...: Invalid argument (os error 22)`. Flaky 2/3 runs parallel, 3/3 green serial ∴ the deleted unit declaration's `--test-threads=1` had been MASKING it, & the claim that the suite was hermetic (argued from reading temp-dir/port handling) was wrong. Surfaced the first time the new gate ran the ollama axis|V68
 B4|2026-07-25|ci.yml `--fail-under-lines 99` copied the monorepo WORKSPACE total; itok ALONE is 98.03% (siblings inflate the aggregate) ⇒ the standalone gate fails coverage. Caught by the T359 proving ground. Floor set to itok's own 98|V31
