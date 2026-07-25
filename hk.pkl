@@ -151,6 +151,15 @@ local fast = new Mapping<String, Step> {
     glob = List("**/*.sh", "**/*.bash", ".envrc")
     check = "shellcheck --shell=bash {{files}}"
   }
+  // The flake is the toolchain definition -- it decides what every other
+  // step runs with, so drift here is drift everywhere. CHECK mode only:
+  // this file is hand-commented, and a formatter that rewrites on commit
+  // would fight the comments rather than the code.
+  ["nixfmt"] {
+    glob = List("**/*.nix")
+    check = "nixfmt --check {{files}}"
+    fix = "nixfmt {{files}}"
+  }
   // itok gates itself (V14): `.context-limits` ceilings, checked by the
   // tool being built. Triggered by the registered paths and the registry
   // itself, so a docs-only commit still gets gated.

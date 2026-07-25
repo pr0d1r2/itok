@@ -682,6 +682,21 @@ makes the repo unusable for anyone who ⊥ installed the toolchain, which
 is the wrong failure mode for a CONVENIENCE — the gate of record is CI +
 `hk check` (V65), ⊥ the hook. ∴ the hook command is written BY HAND, ⊥ by
 `hk install`, whose command assumes its own binary is on PATH (B6).
+V75: **CI runs the SAME SHELL, ⊥ a parallel install path** — amends V31.
+That invariant's bare-rustup CI predated the crate carrying its own ROOT
+flake (V62); now nix IS this crate's toolchain, ⊥ a host dependency ∴
+`nix develop --command hk check` hands CI the EXACT tools pinned in
+`flake.lock`. One toolchain + one gate definition (V64) ⇒ ZERO version
+skew between a runner & a laptop, & no per-tool install action that can
+drift from what the dev shell has. hk stays LOCAL-ONLY as a DIRECT
+dependency: CI reaches it THROUGH the shell, ⊥ by installing it — same
+for every linter (V72), which is why the workflow installs none of them.
+V31's real content SURVIVES: no HOST guard bin travels w/ the crate, & the
+ops stay plain cargo commands (V65) ∴ a contributor w/o nix reproduces
+every verdict by hand. ONLY "no nix in CI" is superseded. What CI cannot
+yet validate (matrix · MSRV · caching · SHA-pinned actions · publish) is
+LISTED in the workflow, ⊥ silently absent — a gap you can read is ⊥ the
+same failure as a gap you cannot (V44's honesty rule, on infrastructure).
 
 ## §T TASKS
 
@@ -758,6 +773,8 @@ T62|x|gate UX: silent on success (`HK_HIDE_WHEN_DONE`), explicit `fail_fast` loc
 T63|x|external-tool lints: `typos`·`actionlint`·`taplo`·`shellcheck` pinned in the dev shell + at pinned versions in CI (`install-action` for 3, pinned release download for actionlint); `.typos.toml` exemptions named|V72,V73
 T64|x|dev shell installs hooks on entry, written BY HAND w/ a runner-missing guard (B6), skipped when a global install exists ∵ git aggregates `hook.*.command` across scopes ⇒ double fire|V71,V74
 T65|x|`packages.*` src narrowed via `lib.fileset` to `src/`+`Cargo.toml`+`Cargo.lock` ∴ a doc edit no longer invalidates the build|V62
+T66|x|CI = nix: `nix develop --command hk check` + `nix build` of all 3 feature configurations; hk & every linter reached THROUGH the pinned shell, ⊥ installed; pending parts (matrix·MSRV·cache·SHA pins·publish) listed in-file|V75,V64
+T67|x|`nixfmt --check` gates `*.nix`: the flake decides what every other step runs with ∴ drift there is drift everywhere. CHECK mode only -- the file is hand-commented|V72
 T49|.|SPEC compaction debt (M3 closed, now DUE): compact §V/§B prose; one-file rule holds — more sections, ⊥ more files|V15
 T50|x|flake to repo ROOT (`git mv` out of the unit dir) + dev shell PROVIDES `itok` via a `cargo run` shim; `ITOK_MANIFEST` resolved at entry, `ITOK_PROFILE`/`ITOK_FEATURES` hatches; dev files `exclude`d from the `.crate`|V62,V15,V39
 T51|x|drop the unit declaration from the standalone repo; `ci.yml` carries all 5 ops at >= their old strength (clippy gains `--all-features -- -D warnings`, coverage keeps the corrected 98) & records what was deliberately ⊥ carried (`--test-threads=1`, the phase split)|V28,V29,V31

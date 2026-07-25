@@ -60,8 +60,7 @@
           pname = "itok";
           # Read from Cargo.toml so there is ONE version, not two that can
           # disagree (V64's rule, applied to a number).
-          version =
-            (builtins.fromTOML (builtins.readFile ./Cargo.toml)).package.version;
+          version = (builtins.fromTOML (builtins.readFile ./Cargo.toml)).package.version;
           # Only what the BUILD reads. With `src = ./.` every tracked file
           # is an input, so editing SPEC.md or README rebuilt the crate
           # from scratch. Tests are excluded too -- doCheck is false, and
@@ -129,6 +128,8 @@
             pkgs.actionlint
             pkgs.taplo
             pkgs.shellcheck
+            # V72 again: `nixfmt --check` gates this very file.
+            pkgs.nixfmt
           ];
           # Pin locale so tool output is deterministic across machines.
           LANG = "C.UTF-8";

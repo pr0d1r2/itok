@@ -59,10 +59,29 @@ fn the_pkl_schema_is_vendored() {
 
 #[test]
 fn the_workflow_delegates_to_the_gate() {
+    let y = workflow();
+    assert!(y.contains("hk check"), "ci.yml must run `hk check`");
+    // Through the dev shell, never a separate install: hk is a LOCAL
+    // tool, and reaching it via `nix develop` is what keeps CI and a
+    // laptop on the same pinned versions (V75).
     assert!(
-        workflow().contains("hk check"),
-        "ci.yml must run `hk check`"
+        y.contains("nix develop --command hk check"),
+        "ci.yml must reach hk through the dev shell, not install it"
     );
+}
+
+/// V23/V13's zero-dependency core is only a claim until something builds
+/// it; CI building all three feature configurations is what makes it one.
+#[test]
+fn the_workflow_builds_every_feature_configuration() {
+    let y = workflow();
+    for pkg in [
+        "nix build .#default",
+        "nix build .#itok-minimal",
+        "nix build .#itok-ollama",
+    ] {
+        assert!(y.contains(pkg), "ci.yml missing `{pkg}`");
+    }
 }
 
 #[test]
@@ -87,11 +106,18 @@ fn fetches_full_history() {
     );
 }
 
+/// V75 amends V31: nix is now this crate's OWN toolchain rather than a
+/// host dependency, so CI uses the dev shell. What survives from V31 is
+/// the part that still matters -- no host guard bin travels with the
+/// crate, and no tool gets a second, drifting install path.
 #[test]
-fn is_bare_rust_no_host_runner() {
-    // V31: plain rustup, not the monorepo's nix/uow gate.
+fn no_host_runner_and_no_second_install_path() {
     let y = workflow();
-    assert!(y.contains("rust-toolchain"), "must use rustup");
-    assert!(!y.contains("nix develop"), "no nix devshell");
-    assert!(!y.contains("uow run"), "no uow runner");
+    assert!(!y.contains("uow run"), "no host runner");
+    for tool in ["install-action", "install hk", "actionlint_"] {
+        assert!(
+            !y.contains(tool),
+            "ci.yml installs `{tool}` separately -- tools come from the pinned shell (V75)"
+        );
+    }
 }

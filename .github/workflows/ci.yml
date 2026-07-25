@@ -1,18 +1,27 @@
 name: ci
 
-# ORCHESTRATION ONLY (V64). Which commands run, with which flags, in which
-# order, and the coverage floor all live in `hk.pkl` -- the single gate
-# definition. This file supplies what only a CI runner can: a machine, a
-# toolchain, a cache, and full git history. It must NEVER restate an op;
-# a second copy is a second thing to drift (B4).
+# The gate, run exactly the way it runs locally: `nix develop` supplies
+# the toolchain pinned in flake.lock, and `hk check` runs the ops defined
+# in hk.pkl. One definition (V64), one toolchain, no second install path,
+# and no version skew between a runner and a laptop.
 #
-# So the same verdict is reachable three ways with one definition: a local
-# `pre-commit` hook, a local `pre-push` hook, and `hk check` here.
+# hk stays a LOCAL tool: CI reaches it *through* the dev shell rather than
+# installing it, so it is never a dependency of the crate. The same goes
+# for every linter -- typos, actionlint, taplo, shellcheck and nixfmt all
+# arrive from the same pinned shell, which is why this file installs none
+# of them.
 #
-# hk runs the ops; it never hides them. Every step in `hk.pkl` is a plain
-# cargo command a human can paste into a shell with nothing but rustup
-# (V65) -- so this workflow is a convenience, not a dependency of the
-# crate.
+# This supersedes the bare-rustup workflow (V31, amended by V75). That
+# design predated the crate carrying its own root flake; now that it does,
+# nix is this crate's own toolchain rather than a host dependency.
+#
+# PENDING -- listed rather than silently absent, because none of it can be
+# validated until the repo is public:
+#   * platform matrix (macos-arm beside ubuntu)      T60 / 0.8.0
+#   * MSRV 1.82 axis                                 T60 / 0.8.0
+#   * build caching (nix store + cargo target)       T60 / 0.8.0
+#   * actions pinned to SHAs rather than tags        T60 / 0.8.0
+#   * release automation and publish                 T59 / 0.7.0
 
 on:
   push:
@@ -22,45 +31,27 @@ on:
 jobs:
   gate:
     runs-on: ubuntu-latest
-    env:
-      # Pinned to the version in the dev-shell flake, which is also the
-      # version the vendored `pkl/Config.pkl` schema was cut from.
-      HK_VERSION: "1.51.0"
-      # actionlint is not in install-action's manifest (it is Go, so the
-      # cargo-binstall fallback cannot fetch it). Pinned release download,
-      # same shape as hk. Matches the dev shell's nixpkgs version.
-      ACTIONLINT_VERSION: "1.7.12"
     steps:
       # fetch-depth: 0 -- the diff/show/log tests read HEAD~n; a shallow
       # clone has no history and would fail them (V37/B3 class).
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
-      - uses: Swatinem/rust-cache@v2
-      - uses: taiki-e/install-action@cargo-llvm-cov
-      - uses: taiki-e/install-action@nextest
-      - uses: taiki-e/install-action@typos
-      - uses: taiki-e/install-action@taplo
-      - uses: taiki-e/install-action@shellcheck
-      - name: install actionlint
-        run: |
-          curl -fsSL "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz" \
-            | tar xz -C /usr/local/bin actionlint
-          actionlint --version
-      - name: install hk
-        run: |
-          curl -fsSL "https://github.com/jdx/hk/releases/download/v${HK_VERSION}/hk-x86_64-unknown-linux-gnu.tar.gz" \
-            | tar xz -C /usr/local/bin hk
-          hk --version
+      - uses: cachix/install-nix-action@v31
+
       # --check, because `hk check` defaults to running FIX commands; CI
       # must report, never rewrite. --all, because CI has no staged set.
       #
       # --no-fail-fast inverts the local default on purpose. Locally the
       # loop is cheap, so the FIRST failure is the most useful thing to
-      # surface. Here a round-trip costs minutes, so a complete list of
-      # failures beats an early one -- whoever (or whatever) fixes this
-      # should get every problem in one pass.
-      - run: hk check --all --check --no-fail-fast
+      # surface. Here a round-trip costs minutes, so a complete list beats
+      # an early one -- whoever, or whatever, fixes this should get every
+      # problem in one pass.
+      - run: nix develop --command hk check --all --check --no-fail-fast
+
+      # All three feature configurations must build reproducibly. The
+      # minimal one is load-bearing: it is what proves the
+      # zero-dependency core actually builds (V23/V13).
+      - run: nix build .#default
+      - run: nix build .#itok-minimal
+      - run: nix build .#itok-ollama
