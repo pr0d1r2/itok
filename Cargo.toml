@@ -5,8 +5,10 @@
 # way file-config baselines do.
 [package]
 name = "itok"
-# 0.8.0: stable, pre-1.0; 1.0 = finished (V39).
-version = "0.8.0"
+# The ladder (V70): each minor is a level of GUARANTEE, not a feature
+# count. 0.2.0 = builds reproducibly anywhere (0.1.0) and cannot regress
+# locally (the gate runs in git hooks). 1.0 = contract frozen.
+version = "0.2.0"
 edition = "2021"
 # MSRV: `Option::is_none_or` (diffcmd) is stable since 1.82.
 rust-version = "1.82"

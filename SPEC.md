@@ -384,8 +384,9 @@ V39: **publishable = public gate green + honest SemVer + zero private
 reference.** crates.io needs 4: (1) the STANDARD gate reproduces on plain
 rustup CI (V31) — fmt · clippy · test · `--features ollama` · `llvm-cov
 --fail-under-lines`, NO nix & NO host bin, git history fetched FULL
-(diff/show/log read `HEAD~n`); (2) SemVer tells maturity TRUE — `0.8.0` =
-stable but pre-1.0 (API MAY move; 1.0 = finished), ⊥ default `0.0.0`; (3)
+(diff/show/log read `HEAD~n`); (2) SemVer tells maturity TRUE — the version
+is a RUNG on the ladder (V70), ⊥ default `0.0.0`; publication itself is
+`0.7.0`, ⊥ whatever number the crate happens to carry; (3)
 metadata complete (`repository`·`homepage`·`documentation`·`readme`·
 `keywords`·`categories`·`rust-version`) so crates.io/docs.rs render; (4)
 the shipped `.crate` names NO origin repo (V26) & `exclude`s non-consumer
@@ -620,6 +621,25 @@ committed registry provides. ∴ dropped here; file-size ceilings stay a
 MONOREPO guard, where a runner exists. Re-add standalone ONLY together w/
 a checker wired into the gate (V64) — the registry & its caller land in
 the same commit, ⊥ apart.
+V70: **version = MATURITY OF THE GUARANTEE, ⊥ feature count.** Each minor
+answers ONE question — *what can you rely on at this tag?*: `0.1` builds
+reproducibly on any box (`nix build`) · `0.2` cannot regress locally (the
+gate runs in git hooks) · `0.4` KNOWS what a context costs (M4 telemetry)
+· `0.6` can ACT on it (M5-M7) · `0.7` PUBLIC, featureset frozen, CI
+present but unproven · `0.8` public gate trustworthy (matrix, green
+streak, release automation) · `1.0` CONTRACT frozen. ODD minors
+(`0.3`/`0.5`/`0.9`) are RESERVED for fix/backprop releases ∴ a bugfix
+never borrows a milestone's number. The ladder ENFORCES V42
+structurally: telemetry is `0.4`, enforcement is `0.6` ∴
+observe-before-enforce stops being a rule to remember & becomes a number
+you cannot skip. `0.7` freezes the SPEC's PLANNED featureset; `1.0`
+freezes the CONTRACT (CLI surface + json, V9) — additions between them
+are ALLOWED ∵ they come from public feedback, which is the POINT of
+exposing at `0.7`. Pre-1.0 SemVer (minor MAY break) is HONEST here ∵ each
+rung IS a behavior change. crates.io is IMMUTABLE (yank HIDES, ⊥ deletes)
+∴ the first public artifact is `0.7.0-rc.1` — cargo ⊥ selects a
+pre-release by default — so the pipeline is proven before a permanent
+number is spent.
 
 ## §T TASKS
 
@@ -631,6 +651,9 @@ the same commit, ⊥ apart.
 | M4 | runtime introspection — read-only ledger (V41, V42) | T30, T31, T32, T33, T34, T35, T36, T37, T38, T49 | `itok trace`/`itok top` green on itok's OWN sessions, accounted-vs-unaccounted stated, calibration factor + `n` reported, zero interception |
 | M5 | reduction — the standalone pipe filter | T39, T40, T41 | `cmd \| itok cap 10k` useful w/ no agent & no hook, every applied rung named in the footer, cut is resumable & deterministic |
 | M6 | enforcement — policy · guard · fuse | T42, T43, T44, T45, T46 | hook adapter decides from `.context-policy`, fuse graduated + always overridable, every trip/cap/override lands in the ledger |
+| M9 | public exposure — ships as `0.7.0` | T59 | repo public, `0.7.0-rc.1` published & installed from crates.io, then `0.7.0`; badges resolve |
+| M10 | CI hardening — ships as `0.8.0` | T60 | matrix (linux + macos-arm) green over a streak, release automation, MSRV axis |
+| M11 | closure — ships as `1.0.0` | T61 | public feedback folded; CLI surface + json contract frozen |
 | M8 | local guardrails — ONE gate definition, run by hk | T54, T55, T56 | `hk.pkl` is the only place an op is written; pre-commit/pre-push/CI all reach it; the suite is green run PARALLEL |
 | M7 | runtime CI — replay & regression | T47, T48 | a recorded ledger replays deterministically offline ∴ policy A/B w/o an agent; a run over session budget fails CI |
 
@@ -686,6 +709,9 @@ T55|x|`ci.yml` = orchestration ONLY, delegating to `hk check --all --check`; `te
 T56|x|fix the cassette stub's request drain (B5): read to `Content-Length` before replying, `Connection: close`; verified 8/8 parallel runs green where it was 2/3 failing|V68,V38
 T58|x|`packages.default`/`itok-minimal`/`itok-ollama` via `buildRustPackage`+`cargoLock.lockFile`; version read from `Cargo.toml`; `doCheck = false` (no `.git` in the store); `nix build`/`nix run` verified on aarch64-darwin for all three|V62,V23
 T57|x|drop `.file-limits`: no standalone runner reads it ∴ hand-maintained ceilings gating nothing; refs scrubbed from SPEC/CONTRIBUTING/`Cargo.toml` exclude; file-size limits remain a monorepo guard|V69,V28
+T59|.|public exposure: create the GitHub repo, publish `0.7.0-rc.1` FIRST (immutability -- prove the pipeline before spending a permanent number), install it from crates.io, then `0.7.0`|V70,V39
+T60|.|CI hardening: platform matrix (ubuntu + macos-arm), MSRV `1.82` axis, release automation, a green streak before `0.8.0`|V70,V39
+T61|.|closure: fold public feedback, freeze the CLI surface & the json contract, `1.0.0`|V70,V9
 T49|.|SPEC compaction debt (M3 closed, now DUE): compact §V/§B prose; one-file rule holds — more sections, ⊥ more files|V15
 T50|x|flake to repo ROOT (`git mv` out of the unit dir) + dev shell PROVIDES `itok` via a `cargo run` shim; `ITOK_MANIFEST` resolved at entry, `ITOK_PROFILE`/`ITOK_FEATURES` hatches; dev files `exclude`d from the `.crate`|V62,V15,V39
 T51|x|drop the unit declaration from the standalone repo; `ci.yml` carries all 5 ops at >= their old strength (clippy gains `--all-features -- -D warnings`, coverage keeps the corrected 98) & records what was deliberately ⊥ carried (`--test-threads=1`, the phase split)|V28,V29,V31
