@@ -2,7 +2,7 @@
 # travels with a `git subtree split`. fmt, clippy, tests, and a coverage
 # floor -- no host guard bins (repo-hygiene, lexicon, cavekit-spec), which
 # do not travel. Ops are cargo-native argv; no `cargo run` of a guard bin
-# because there are none here (UOW-V446).
+# because there are none here.
 #
 # The schema has no `phase` field yet; the intended split the hook / CI
 # mirrors is:

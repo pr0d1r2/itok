@@ -1,9 +1,9 @@
 # itok — context-cost estimator
 
-Self-contained spec. `itok` is built inside the `unit_of_work` monorepo
-but designed to leave it: `git subtree split -P crates/itok`. So this spec
-carries its own law; any reference outside this directory is a labeled
-provenance citation (`UOW-Vxxx`, V26), never load-bearing.
+Self-contained spec. `itok` is developed inside a larger workspace but
+designed to leave it as a standalone crate (`git subtree split`). It carries
+its own law and stands on its own reasoning — no load-bearing reference
+outside this directory (V26).
 
 ## §G GOAL
 
@@ -139,13 +139,13 @@ wrong as a verb). Composes itok-NATIVE signals ONLY: fit-to-window,
 budget balance (one file dominating), noise ratio (generated/binary/lock
 share), estimate confidence (dummy-vs-bpe spread — the one signal only
 itok has, ∵ it owns the estimators). BOUNDARY: dup-detection & vocab/TTR
-are separate tools (UOW-V416) — `doctor` stays a thin composer, ⊥ grows
+are separate tools — `doctor` stays a thin composer, ⊥ grows
 tentacles.
 V18: **window override** — `--window N` gives context capacity raw;
 `--model X` resolves it from `.context-models` (extended to model →
 encoding + window). Explicit `--window` wins over `--model`. Unit =
 DECIMAL tokens (`1M` = 1_000_000, `200k` = 200_000), one parser shared
-w/ `--budget` (UOW-V489: one unit grammar, less to hold). Name `--window` ⊥
+w/ `--budget` (one unit grammar, less to hold). Name `--window` ⊥
 `--size` ∵ "size" primes BYTES (its meaning in `du`/`ls`) but a window is
 TOKENS ⇒ V2 near-collision. `--size` MAY be a silent alias for muscle
 memory, ⊥ the documented name.
@@ -154,7 +154,7 @@ evolve?*), the creep curve `diff`'s 2 points ! show. Mirrors
 `git log <path>` verbatim (V1): 1 line/commit that touched the path —
 sha·date·subject + absolute tokens + delta (like `--stat`'s +/-);
 `-n N` · `<A>..<B>` · `--reverse` · `--since`. Report-only, exit 0 — raw
-data like `git log`; judgment (flag N rises) stays OUT (scope, UOW-V416).
+data like `git log`; judgment (flag N rises) stays OUT (scope).
 Defaults to `dummy` ∵ whole history = N blobs & `git cat-file -s` gives
 blob bytes directly (near-free); `--bpe` opt-in for accurate absolutes at
 N tokenizations. Per-blob-hash cache ∴ a blob is never re-estimated.
@@ -210,7 +210,7 @@ V24: **`--ollama` takes explicit HOSTS, ⊥ a CIDR — no in-tool scanning.**
 A subnet probe is a PORT SCAN: hostile/noisy/IDS-flagging on any network
 you ⊥ fully own, sometimes a policy/legal problem — a headline liability
 for an opensource token tool that buys nothing. Scope-alien too (service
-discovery ≠ token measurement, UOW-V416) & slow+non-deterministic (breaks
+discovery ≠ token measurement) & slow+non-deterministic (breaks
 snappiness). V1: the convention for "find services" is advertise (mDNS) |
 explicit list, ⊥ scan. So `--ollama` accepts a host, a comma-list, `-`
 (stdin), or `.context-hosts`; a fleet is the UNION of models & windows
@@ -229,7 +229,7 @@ V26: **provenance is a DEV-TIME note, kept OUT of the shipped spec.** A
 reference to the origin repo's invariants is see-also / derived-from,
 NEVER load-bearing — each itok invariant stands on its own reasoning. ∴
 the SHIPPED, public `SPEC.md` names NO origin-repo invariant number: a
-`UOW-Vxxx` pointer targets a PRIVATE repo the reader can't see & leaks its
+cross-repo pointer targets a PRIVATE repo the reader can't see & leaks its
 numbering, a bare `Vxxx` collides w/ itok's own namespace & reads broken.
 The reasoning a pointer once cited is folded INLINE & self-contained. The
 scrub lives IN the monorepo (this file is kept public-clean in place) ∴
@@ -248,8 +248,8 @@ the standard gate (V31) silently weakens on extraction — the extracted
 the config they read is itok's own.
 V28: **`.uow/` = the unit DECLARATION, root = the config DATA.** `.uow/`
 holds `unit.yml` (itok's ops × itok-scoped globs × phases × deps) +
-`flake.nix`/`flake.lock` (detachable toolchain — build on any nix box,
-UOW-V145) + `.envrc`. The baselines (`.file-limits`, `lexicon.txt`,
+`flake.nix`/`flake.lock` (detachable toolchain — build on any nix box) +
+`.envrc`. The baselines (`.file-limits`, `lexicon.txt`,
 `coverage-baseline.json`, `SPEC.md`, `Cargo.toml`) sit at crates/itok/
 ROOT — where tools expect them & where they land as root after
 extraction. `.uow/` = how-to-guard; root = what-to-guard-against.
@@ -257,7 +257,7 @@ V29: **`unit.yml` phase-splits itok's STANDARD guards** — fmt · clippy ·
 nextest(lib) on pre-commit; nextest(e2e) · `llvm-cov --fail-under-lines`
 on pre-push; heavier axes on ci. Cargo-native ONLY (V31) ∴ the split runs
 identically in-repo & extracted with no host bin present; `cargo run`
-never (UOW-V446). The custom guards (hygiene, lexicon, cavekit-spec,
+never (a resolved-path bin, ⊥ a nested cargo). The custom guards (hygiene, lexicon, cavekit-spec,
 ascii) are ⊥ here — they run in the monorepo via root config (V31).
 V30: **in-repo, itok's config is honored by NEAREST-config cascade** (a
 host feature): a file under crates/itok/ is measured against crates/itok/
@@ -397,7 +397,7 @@ T22|x|`gitref` primitive: token cost of a file AT a commit (`git cat-file` → d
 T23|x|`show` verb: one commit's per-file delta (default HEAD), `-- path`, `<commit>:<path>` blob|V32,V33
 T24|x|cassette-replay the ollama backend: `vcr-cassette` dev-dep + ureq replay stub + fixtures (`/api/tags`·`/api/show`·`/api/generate`); live smoke → `#[ignore]`; `ollama` CI axis in `.uow`+hook; fold into `src/ollama/`|V38,V22,V23
 T25|.|metadata: `Cargo.toml` version `0.8.0` + `repository`·`homepage`·`documentation`·`readme`·`keywords`·`categories`·`rust-version`, `exclude` non-consumer files|V39,V13
-T26|.|public-clean provenance: scrub SPEC + src comments of origin-repo names & `UOW-Vxxx` pointers (fold inline), header un-names the workspace, `exclude=[".uow"]`|V26,V39
+T26|x|public-clean provenance: scrub SPEC + src comments of origin-repo names & cross-repo invariant pointers (fold inline), header un-names the workspace, `exclude=[".uow"]`|V26,V39
 T27|.|bare-rust `.github/workflows/ci.yml`: fmt·clippy·test·`--features ollama`·`llvm-cov --fail-under-lines 99`, `fetch-depth:0`, no nix/uow|V39,V31,V38
 T28|.|assemble README = hand narrative + the `itok docs` reference block + badges (post-ORG); `CHANGELOG.md`; crate rustdoc for docs.rs|V39,V40,V15
 T29|x|`itok docs` verb: ONE command registry (verb·synopsis·flags·exit) renders `--help` + a markdown reference; read-only to stdout; guard diffs it vs README ∴ docs can't rot|V40,V6,V9

@@ -9,6 +9,9 @@ version = "0.0.0"
 edition = "2021"
 license = "MIT"
 description = "context-cost estimator: token and window budgets for files and changes"
+# `.uow/` (the guard declaration) is meaningless to a crate consumer (V26);
+# T25 broadens the non-consumer excludes.
+exclude = [".uow"]
 
 [[bin]]
 name = "itok"
