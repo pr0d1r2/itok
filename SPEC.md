@@ -257,8 +257,8 @@ extraction stays a pure MOVE (V13), ⊥ surgery. Lineage lives in git
 history & commit trail, ⊥ the shipped text.
 V27: **itok self-guards — its guard config TRAVELS.** The fractal: every
 extractable unit is a mini-repo. crates/itok/ mirrors a repo root — own
-`SPEC.md`, `.file-limits`, `lexicon.txt`, `coverage-baseline.json`,
-`Cargo.toml`, `rustfmt.toml`, `clippy.toml`, `.gitignore`, + the
+`SPEC.md`, `lexicon.txt`, `coverage-baseline.json`, `Cargo.toml`,
+`rustfmt.toml`, `clippy.toml`, `.gitignore`, + the
 toolchain & gate it runs on (root `flake.nix`/`flake.lock`/`.envrc` +
 `.github/workflows/ci.yml`, V62). ∴ `subtree split` carries the GUARDS w/
 the code; itok guards itself standalone, ⊥ orphaned. Config that CHANGES a verdict (`rustfmt.toml`'s `max_width`,
@@ -276,8 +276,8 @@ runs it (worse, it can DRIFT from the live gate & carry a stale threshold
 — exactly B4's shape, a `99` floor surviving beside CI's corrected 98).
 ∴ the public repo carries only what plain tools read: root `flake.nix`/
 `flake.lock`/`.envrc` (V62) & `.github/workflows/ci.yml` (V31). The
-baselines (`.file-limits`, `lexicon.txt`, `coverage-baseline.json`,
-`SPEC.md`, `Cargo.toml`) sit at the crate ROOT — where tools expect them
+baselines (`lexicon.txt`, `coverage-baseline.json`, `SPEC.md`,
+`Cargo.toml`) sit at the crate ROOT — where tools expect them
 & where they land as root after extraction. Root = what-to-guard-against;
 the how-to-guard is the WORKFLOW here & the unit declaration THERE. Same
 ops either way (V31) — one verdict, two runners.
@@ -606,6 +606,15 @@ deliverable. Reading a test for per-process temp dirs & ephemeral ports
 establishes NOTHING — B5 passed that reading & still raced. The gate runs
 the suite parallel; a flake found there is fixed at the source, never
 suppressed by serializing the axis.
+V69: **a registry no runner reads is a LIE, ⊥ a guard.** `.file-limits`
+traveled with the crate (V27) but NOTHING standalone enforced it ∴ its
+ceilings were hand-maintained & obeyed by no one — it read as law while
+gating nothing. Same failure as V28's dead declaration, one level down:
+the danger is ⊥ the missing check, it is the FALSE ASSURANCE that a
+committed registry provides. ∴ dropped here; file-size ceilings stay a
+MONOREPO guard, where a runner exists. Re-add standalone ONLY together w/
+a checker wired into the gate (V64) — the registry & its caller land in
+the same commit, ⊥ apart.
 
 ## §T TASKS
 
@@ -639,7 +648,7 @@ T17|x|`--ollama` backend: exact via `prompt_eval_count`, live model/window disco
 T18|x|`--ollama` `host[:port]`-list + `.context-hosts` + stdin; fleet union; ⊥ CIDR/port-flag|V24,V25
 T19|x|unit declaration (ops×globs×phases, resolved-path bins) — MONOREPO-ONLY; ⊥ shipped in the standalone repo, where `ci.yml` is the runner (superseded by T51)|V28,V29
 T20|x|pinned detachable toolchain: `flake.nix`+`flake.lock`+`.envrc` — relocated to the repo ROOT by T50|V28,V62
-T21|x|itok baselines at crates/itok/ root: `.file-limits`·`lexicon.txt`·`coverage-baseline.json`|V27
+T21|x|itok baselines at crates/itok/ root: `lexicon.txt`·`coverage-baseline.json` (`.file-limits` dropped by T57 — unenforceable standalone)|V27,V69
 T22|x|`gitref` primitive: token cost of a file AT a commit (`git cat-file` → dummy/bpe), shared by diff/show/log|V33
 T23|x|`show` verb: one commit's per-file delta (default HEAD), `-- path`, `<commit>:<path>` blob|V32,V33
 T24|x|cassette-replay the ollama backend: `vcr-cassette` dev-dep + ureq replay stub + fixtures (`/api/tags`·`/api/show`·`/api/generate`); live smoke → `#[ignore]`; `ollama` CI axis in `.uow`+hook; fold into `src/ollama/`|V38,V22,V23
@@ -670,7 +679,8 @@ T48|.|session-cost regression gate: a recorded run over its input-token budget f
 T54|x|adopt hk as the gate runner: vendor `pkl/Config.pkl` (⊥ `package://`), `hk.pkl` w/ fast set + `all` amending it, `depends` chain over the cargo steps, `stash = "git"` on pre-commit, dev shell provides hk pinned to the vendored schema's version|V64,V66,V67
 T55|x|`ci.yml` = orchestration ONLY, delegating to `hk check --all --check`; `tests/ci.rs` retargeted from freezing a second copy to freezing the SINGLE definition (ops in hk.pkl, workflow restates none, schema vendored)|V64,V65
 T56|x|fix the cassette stub's request drain (B5): read to `Content-Length` before replying, `Connection: close`; verified 8/8 parallel runs green where it was 2/3 failing|V68,V38
-T49|.|SPEC compaction debt (M3 closed, now DUE): compact §V/§B prose, re-tighten `.file-limits` `SPEC.md` ceiling; one-file rule holds — more sections, ⊥ more files|V15
+T57|x|drop `.file-limits`: no standalone runner reads it ∴ hand-maintained ceilings gating nothing; refs scrubbed from SPEC/CONTRIBUTING/`Cargo.toml` exclude; file-size limits remain a monorepo guard|V69,V28
+T49|.|SPEC compaction debt (M3 closed, now DUE): compact §V/§B prose; one-file rule holds — more sections, ⊥ more files|V15
 T50|x|flake to repo ROOT (`git mv` out of the unit dir) + dev shell PROVIDES `itok` via a `cargo run` shim; `ITOK_MANIFEST` resolved at entry, `ITOK_PROFILE`/`ITOK_FEATURES` hatches; dev files `exclude`d from the `.crate`|V62,V15,V39
 T51|x|drop the unit declaration from the standalone repo; `ci.yml` carries all 5 ops at >= their old strength (clippy gains `--all-features -- -D warnings`, coverage keeps the corrected 98) & records what was deliberately ⊥ carried (`--test-threads=1`, the phase split)|V28,V29,V31
 T52|x|`.gitignore` (`/target`, `/.direnv`): cargo packages untracked-not-ignored files ∴ `.direnv/` (5.5MB of vendored nixpkgs source) was landing in `cargo package --list` ⇒ would ship in the `.crate`|V39,V13

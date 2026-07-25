@@ -98,7 +98,7 @@ CI. The first four run on commit; the rest on push and in CI.
 
 Three further guards run only in the monorepo where itok is developed,
 because they are host tools that do not travel with the crate: repo
-hygiene (ASCII-only source, no machine-specific paths, `.file-limits`
+hygiene (ASCII-only source, no machine-specific paths, file-size
 ceilings), a per-file coverage freeze, and a lexicon diff that keeps the
 vocabulary small (`itok e` beats `itok execute-estimation`).
 

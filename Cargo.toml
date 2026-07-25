@@ -27,7 +27,6 @@ exclude = [
   ".envrc",
   "coverage-baseline.json",
   "lexicon.txt",
-  ".file-limits",
   ".context-limits",
 ]
 
