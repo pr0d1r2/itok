@@ -1,0 +1,44 @@
+name: ci
+
+# The public, cargo-native gate (V31/V39): the same verdict as the monorepo,
+# reproduced on plain rustup -- no nix, no uow, no host guard bins. Dormant
+# in the monorepo (GitHub reads only root-level workflows); active once
+# `git subtree split` reroots this crate to a repo root.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      # fetch-depth: 0 -- the diff/show/log tests read HEAD~n; a shallow
+      # clone has no history and would fail them (V37/B3 class).
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --check
+      - run: cargo clippy --all-targets --all-features -- -D warnings
+      - run: cargo test
+      # The ollama network backend is cassette-replayed offline (V38); this
+      # axis keeps that path from rotting. The live smoke is #[ignore].
+      - run: cargo test --features ollama
+
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@cargo-llvm-cov
+      # --features ollama so the network path (covered by the cassette) is
+      # instrumented too; the floor matches the monorepo's coverage-freeze.
+      - run: cargo llvm-cov --features ollama --fail-under-lines 99

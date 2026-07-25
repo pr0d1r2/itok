@@ -398,7 +398,7 @@ T23|x|`show` verb: one commit's per-file delta (default HEAD), `-- path`, `<comm
 T24|x|cassette-replay the ollama backend: `vcr-cassette` dev-dep + ureq replay stub + fixtures (`/api/tags`·`/api/show`·`/api/generate`); live smoke → `#[ignore]`; `ollama` CI axis in `.uow`+hook; fold into `src/ollama/`|V38,V22,V23
 T25|.|metadata: `Cargo.toml` version `0.8.0` + `repository`·`homepage`·`documentation`·`readme`·`keywords`·`categories`·`rust-version`, `exclude` non-consumer files|V39,V13
 T26|x|public-clean provenance: scrub SPEC + src comments of origin-repo names & cross-repo invariant pointers (fold inline), header un-names the workspace, `exclude=[".uow"]`|V26,V39
-T27|.|bare-rust `.github/workflows/ci.yml`: fmt·clippy·test·`--features ollama`·`llvm-cov --fail-under-lines 99`, `fetch-depth:0`, no nix/uow|V39,V31,V38
+T27|x|bare-rust `.github/workflows/ci.yml`: fmt·clippy·test·`--features ollama`·`llvm-cov --fail-under-lines 99`, `fetch-depth:0`, no nix/uow|V39,V31,V38
 T28|.|assemble README = hand narrative + the `itok docs` reference block + badges (post-ORG); `CHANGELOG.md`; crate rustdoc for docs.rs|V39,V40,V15
 T29|x|`itok docs` verb: ONE command registry (verb·synopsis·flags·exit) renders `--help` + a markdown reference; read-only to stdout; guard diffs it vs README ∴ docs can't rot|V40,V6,V9
 
