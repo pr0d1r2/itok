@@ -65,6 +65,11 @@
             # via the env vars cargo-llvm-cov looks for.
             pkgs.llvmPackages.llvm
             pkgs.git # itok shells out to `git ls-files` for tracked files.
+            # The gate runner (V64): `hk.pkl` holds the ops, hk runs them
+            # locally on pre-commit/pre-push and in CI via `hk check`.
+            # Pinned here so every contributor on nix gets the same hk as
+            # the vendored pkl schema was cut from.
+            pkgs.hk
           ];
           # Pin locale so tool output is deterministic across machines.
           LANG = "C.UTF-8";

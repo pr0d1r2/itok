@@ -21,6 +21,8 @@ categories = ["command-line-utilities", "development-tools"]
 # Dev-only guard files, meaningless to a crate consumer (V26/V13).
 exclude = [
   "flake.nix",
+  "hk.pkl",
+  "pkl",
   "flake.lock",
   ".envrc",
   "coverage-baseline.json",

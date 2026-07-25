@@ -1,0 +1,90 @@
+/// itok's gate, defined ONCE (V64).
+///
+/// Every op below is a plain cargo command a human can paste into a shell.
+/// hk decides *when* they run (which files changed, which phase, in what
+/// order); it never hides *what* runs. The workflow in
+/// `.github/workflows/ci.yml` calls `hk check` rather than restating these
+/// commands, so a local hook and CI cannot disagree -- there is only one
+/// copy to disagree with.
+///
+/// The schema is VENDORED at `pkl/Config.pkl` rather than fetched from a
+/// `package://` URL at eval time, for the same reason the BPE vocab ships
+/// in-tree (V12): offline-first is the default build, not merely the
+/// default flag.
+amends "pkl/Config.pkl"
+
+/// `depends` chains the cargo steps deliberately (V67). Cargo takes a lock
+/// on the target directory, so two cargo jobs launched in parallel do not
+/// run in parallel -- the second blocks on "Blocking waiting for file lock
+/// on build directory", which reads as a hang. Chaining makes the
+/// serialization explicit and leaves hk free to run any future non-cargo
+/// check concurrently.
+local fast = new Mapping<String, Step> {
+  ["fmt"] {
+    glob = List("**/*.rs")
+    check = "cargo fmt --check"
+    fix = "cargo fmt"
+  }
+  ["clippy"] {
+    glob = List("**/*.rs")
+    depends = List("fmt")
+    check = "cargo clippy --all-targets --all-features -- -D warnings"
+  }
+  ["test"] {
+    glob = List("**/*.rs")
+    depends = List("clippy")
+    check = "cargo test"
+  }
+  // itok gates itself (V14): `.context-limits` ceilings, checked by the
+  // tool being built. Triggered by the registered paths and the registry
+  // itself, so a docs-only commit still gets gated.
+  ["itok"] {
+    glob = List("**/*.rs", "SPEC.md", "README.md", ".context-limits")
+    depends = List("test")
+    check = "cargo run -q --bin itok -- check"
+  }
+}
+
+/// pre-push and CI add the expensive axes. Amending `fast` keeps ONE
+/// definition of the cheap steps -- the slow set is the fast set plus two,
+/// never a second copy that can drift.
+local all = (fast) {
+  // V38: the network backend is cassette-replayed offline; this axis is
+  // what keeps that path from rotting.
+  ["ollama"] {
+    glob = List("**/*.rs")
+    depends = List("itok")
+    check = "cargo test --features ollama"
+  }
+  // The floor is itok's OWN standalone coverage, not a workspace
+  // aggregate (B4). It lives here and nowhere else.
+  ["coverage"] {
+    glob = List("**/*.rs")
+    depends = List("ollama")
+    check = "cargo llvm-cov --features ollama --fail-under-lines 98"
+  }
+}
+
+hooks {
+  /// Fast set only: a hook you are tempted to `--no-verify` past is worse
+  /// than no hook. `stash = "git"` is correctness, not speed -- without it
+  /// a partially staged file (`git add -p`) is checked as it looks in the
+  /// worktree, giving a verdict about code you are not committing.
+  ["pre-commit"] {
+    fix = true
+    stash = "git"
+    steps = fast
+  }
+  ["pre-push"] {
+    steps = all
+  }
+  /// What `hk check` runs -- the CI entry point. Flat and complete: CI has
+  /// no fail-fast-cheapest-first gradient to optimize for.
+  ["check"] {
+    steps = all
+  }
+  ["fix"] {
+    fix = true
+    steps = fast
+  }
+}
