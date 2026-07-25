@@ -169,25 +169,61 @@ mod ollama_cassette {
     }
 
     fn serve(mut stream: TcpStream, cassette: &Cassette) {
-        let body = response_for(cassette, &request_path(&stream));
+        let req = read_request(&stream);
+        let body = response_for(cassette, &request_path(&req));
         let out = format!(
             "HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\
-             Content-Type: application/json\r\n\r\n{body}",
+             Content-Type: application/json\r\nConnection: close\r\n\r\n{body}",
             body.len()
         );
         let _ = stream.write_all(out.as_bytes());
+        let _ = stream.flush();
     }
 
-    /// The path from the request line (`GET /api/tags HTTP/1.1`). Reads a
-    /// full chunk so ureq's whole request (incl. a POST body) is drained
-    /// before we reply -- otherwise a reply-then-close races the client's
-    /// write and breaks the pipe under parallel load.
-    fn request_path(stream: &TcpStream) -> String {
+    /// The whole request -- headers AND body -- before we reply.
+    ///
+    /// TCP is a STREAM: one `read` returns what has ARRIVED, not a request.
+    /// The single POST (`/api/generate`) can land its body in a second
+    /// segment, and replying after one read drops the socket mid-write, so
+    /// the client sees `Invalid argument (os error 22)`. Serial runs happen
+    /// to fit one segment; parallel ones do not (B5). Drain to
+    /// `Content-Length`, then answer.
+    fn read_request(stream: &TcpStream) -> String {
         let mut peek = stream.try_clone().unwrap();
-        let mut buf = [0u8; 8192];
-        let n = peek.read(&mut buf).unwrap_or(0);
-        let head = String::from_utf8_lossy(buf.get(..n).unwrap_or(&[]));
-        head.split_whitespace().nth(1).unwrap_or("").to_owned()
+        let mut buf = Vec::new();
+        let mut chunk = [0u8; 1024];
+        while !is_complete(&buf) {
+            let n = peek.read(&mut chunk).unwrap_or(0);
+            if n == 0 {
+                break;
+            }
+            buf.extend_from_slice(chunk.get(..n).unwrap_or(&[]));
+        }
+        String::from_utf8_lossy(&buf).into_owned()
+    }
+
+    /// True once the buffer holds the header block plus a full body.
+    fn is_complete(buf: &[u8]) -> bool {
+        let text = String::from_utf8_lossy(buf);
+        let Some(end) = text.find("\r\n\r\n").map(|i| i.saturating_add(4))
+        else {
+            return false;
+        };
+        text.len().saturating_sub(end) >= content_length(&text)
+    }
+
+    /// `Content-Length` from the header block; 0 when absent (a GET).
+    fn content_length(head: &str) -> usize {
+        head.lines()
+            .filter(|l| l.to_ascii_lowercase().starts_with("content-length:"))
+            .find_map(|l| l.split(':').nth(1))
+            .and_then(|v| v.trim().parse().ok())
+            .unwrap_or(0)
+    }
+
+    /// The path from the request line (`GET /api/tags HTTP/1.1`).
+    fn request_path(req: &str) -> String {
+        req.split_whitespace().nth(1).unwrap_or("").to_owned()
     }
 
     /// The recorded response body whose request path matches, else empty.
