@@ -100,22 +100,62 @@ fn coverage(answered: usize, named: usize) -> String {
     )
 }
 
-/// model -> window across the fleet, first host that answers winning; a
-/// down host is skipped (V24 union, resilient).
+/// model -> window across the fleet, merged in FLEET ORDER.
+///
+/// Probes every host CONCURRENTLY -- one thread each, no async runtime
+/// (V23), and no pool because the host list is typed by hand (V24). A
+/// dead host cost +3.05s serially on a three-host fleet; in parallel it
+/// hides behind the live ones.
+///
+/// MERGED IN FLEET ORDER, which is the load-bearing half. `first host
+/// that answers wins` would become `first host to REPLY wins` under
+/// parallelism, so two runs could report different windows for a model
+/// two hosts both serve -- a report-only verb contradicting itself (V5).
+/// Joining in list order keeps precedence exactly where it was; only the
+/// waiting overlaps.
 fn fleet_windows(fleet: &[String]) -> Seen {
-    let mut seen = Seen::default();
-    for base in fleet {
-        let Ok(models) = ollama::models(base) else {
-            continue; // down host: skipped, and COUNTED (V44)
-        };
-        seen.answered = seen.answered.saturating_add(1);
-        for m in models {
-            seen.windows
-                .entry(m.clone())
-                .or_insert_with(|| ollama::window(base, &m).ok());
-        }
-    }
-    seen
+    merge(probe_all(fleet))
+}
+
+/// What one host serves: each model with its window, or `None` for the
+/// window when `/api/show` did not answer for it.
+type Served = Vec<(String, Option<u64>)>;
+
+/// Probe all hosts at once; the result is per-host, in FLEET ORDER.
+///
+/// `None` means the host did not answer -- including a panicked probe
+/// thread, which is treated as an unreachable host rather than taking the
+/// process down with it.
+fn probe_all(fleet: &[String]) -> Vec<Option<Served>> {
+    let running: Vec<_> = fleet
+        .iter()
+        .cloned()
+        .map(|base| std::thread::spawn(move || probe(&base)))
+        .collect();
+    running
+        .into_iter()
+        .map(|h| h.join().unwrap_or(None))
+        .collect()
+}
+
+/// One host's models and their windows.
+///
+/// Every model this host serves is probed, even one another host already
+/// covered. That is a deliberate cost: per-host INDEPENDENCE is what
+/// makes hosts parallelizable at all, and the old lazy skip needed a
+/// shared map the threads would have had to contend for (V89 -- no shared
+/// mutable state, so no race to reason about).
+fn probe(base: &str) -> Option<Served> {
+    let models = ollama::models(base).ok()?;
+    Some(
+        models
+            .into_iter()
+            .map(|m| {
+                let w = ollama::window(base, &m).ok();
+                (m, w)
+            })
+            .collect(),
+    )
 }
 
 /// What the fleet actually told us, and how much of the fleet told us.
@@ -125,6 +165,24 @@ fn fleet_windows(fleet: &[String]) -> Seen {
 struct Seen {
     windows: BTreeMap<String, Option<u64>>,
     answered: usize,
+}
+
+/// Fold per-host results into the union, first host in the LIST winning.
+///
+/// Pure, so the precedence rule is testable without a network: this is
+/// the function parallelism could silently break (V5).
+fn merge(probed: Vec<Option<Served>>) -> Seen {
+    let mut seen = Seen::default();
+    for host in probed {
+        let Some(models) = host else {
+            continue; // down host: skipped, and COUNTED (V44)
+        };
+        seen.answered = seen.answered.saturating_add(1);
+        for (model, window) in models {
+            seen.windows.entry(model).or_insert(window);
+        }
+    }
+    seen
 }
 
 /// One fit row, or a note when the model's window did not resolve.
@@ -175,6 +233,62 @@ fn net_err(msg: &str) -> Output {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// V5, the property parallelism could silently break: the FIRST host
+    /// in the LIST wins, not the first to reply.
+    ///
+    /// Two hosts serving the same model with different windows is the case
+    /// that matters -- under completion-order merging, two runs of the same
+    /// command could disagree, and a report-only verb that contradicts
+    /// itself is broken. Pure, so it needs no network and cannot go flaky.
+    #[test]
+    fn the_first_host_in_the_list_wins() {
+        let a = vec![("shared".to_owned(), Some(100u64))];
+        let b = vec![("shared".to_owned(), Some(200u64))];
+        let fwd = merge(vec![Some(a.clone()), Some(b.clone())]);
+        assert_eq!(fwd.windows.get("shared"), Some(&Some(100)));
+        // Reversing the FLEET reverses the answer -- proving the order is
+        // the list's, not an accident of which value is larger or first
+        // seen in some map.
+        let rev = merge(vec![Some(b), Some(a)]);
+        assert_eq!(rev.windows.get("shared"), Some(&Some(200)));
+    }
+
+    /// The union spans hosts, and `answered` counts only those that spoke
+    /// (B11b/V44).
+    #[test]
+    fn the_union_spans_hosts_and_counts_the_silent_ones() {
+        let seen = merge(vec![
+            Some(vec![("a".to_owned(), Some(1))]),
+            None, // a host that did not answer
+            Some(vec![("b".to_owned(), Some(2))]),
+        ]);
+        assert_eq!(seen.windows.len(), 2, "union across the live hosts");
+        assert_eq!(seen.answered, 2, "the silent host is not counted");
+    }
+
+    /// A host that answered but served nothing is still ANSWERED -- an
+    /// empty fleet member is not a dead one (V47's distinction).
+    #[test]
+    fn an_empty_host_still_counts_as_answered() {
+        let seen = merge(vec![Some(Vec::new())]);
+        assert!(seen.windows.is_empty());
+        assert_eq!(seen.answered, 1);
+    }
+
+    /// A model whose window did not resolve keeps its `None` rather than
+    /// being replaced by a later host's -- precedence is by HOST, not by
+    /// which host happened to have a usable answer. Deliberate: mixing
+    /// them would make the reported window depend on a second host's
+    /// health, which is the non-determinism this whole ordering prevents.
+    #[test]
+    fn a_hosts_unresolved_window_still_takes_precedence() {
+        let seen = merge(vec![
+            Some(vec![("m".to_owned(), None)]),
+            Some(vec![("m".to_owned(), Some(9))]),
+        ]);
+        assert_eq!(seen.windows.get("m"), Some(&None));
+    }
 
     #[test]
     fn pct_is_division_safe() {

@@ -874,7 +874,14 @@ make a write race BENIGN — same key ⇒ same bytes ⇒ last writer wins &
 wins IDENTICALLY — which is a reason to prefer them, ⊥ an aesthetic.
 DELETION races are TOLERATED, ⊥ prevented: a reader hitting ENOENT
 recomputes. Every temp path ! carry the PID (our own tests do; that is
-why the suite is parallel-safe, B5).
+why the suite is parallel-safe, B5). EXERCISED, ⊥ merely claimed: the
+`--ollama` fleet now runs ONE THREAD PER HOST (T89) — itok's FIRST
+in-process concurrency. It keeps this invariant's premise ∵ each thread
+owns its own result & shares NO mutable state ∴ still a pure function of
+its inputs. & parallel I/O ! ⊥ change the ANSWER: results merge in FLEET
+ORDER, ⊥ completion order, else two runs disagree about a model served by
+two hosts w/ different windows — a report-only verb contradicting itself
+(V5).
 V90: **a cache is justified only by CROSS-INVOCATION repetition over an
 IMMUTABLE key.** Repetition WITHIN one run is MEMOIZATION — no storage,
 no directory, no invalidation, no concurrency question ∴ always try that
@@ -1146,6 +1153,7 @@ T85|.|`--model` comma-list per the §I clause|V6,V24
 T86|.|`headroom --task N` -> `tasks left`; arithmetic only|V91,V93,V59
 T87|x|`total` estimator per V102: fit fixed-overhead + scale from transcript deltas, report band + `n`, refuse a verdict inside the band; SUPERSEDES T36's clean-sample factor|V102,V48,V44
 T88|.|`partition`: pack a fileset into N bins under `--window`, coupling graph read from STDIN (⊥ derived here — V24's compose-don't-scan), cut-set REPORTED loudly (V81); synthetic fixtures w/ KNOWN size+coupling ∵ real code gives no ground truth. Reopens V20's DECLINED `pack` scope (⊥ V21's knapsack trigger — a different problem): itok itself needs ~3 bins at a realistic 48k budget, & fan-out is one of only 2 cheap levers|V20,V60,V97
+T89|x|`--ollama` fleet probed in PARALLEL: one `std::thread` per host (⊥ an async runtime, V23; the host list is explicit ∴ no pool, V24), results merged in FLEET ORDER so list-order precedence & determinism are unchanged (V5). MEASURED: one dead host cost +3.05s serially (4.07s vs 1.02s on this fleet). Cost accepted: a model on 2 hosts is now probed twice ∵ per-host INDEPENDENCE is what makes them parallelizable. Per-model `/api/show` stays serial -- separable, measure first|V89,V5,V23,V24
 T74|.|session identity: prefer an explicit harness-provided session id over newest-by-mtime; when falling back, SAY so. Two sessions in one project currently resolve to whichever was touched last|V96,V3
 T69|.|`.context-limits`/`.context-models`/`.context-policy`: an unparsable row FAILS w/ file+line+expected, ⊥ silent skip (B7); fractional units (`20.5k`) either parse or are rejected LOUDLY|V88,V11
 T49|x|SPEC compaction FIRST PASS + the machine to finish it: 25 done-`§T` rows trimmed to what+cites (method lives in the commit, V26), V62/V22/V70/V71/V31 destaled & tightened, `tests/spec_integrity.rs` guard, `.context-limits` turned into a RATCHET. MEASURED gross -2,781 chars; NET -2.1% only ∵ the pass itself added V88+B7+T69. 5 of 86 invariants touched ∴ the BULK is T70|V84,V15,V26
