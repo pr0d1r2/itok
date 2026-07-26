@@ -178,3 +178,55 @@ pub fn content_key(text: &str) -> String {
     }
     format!("{}-{hash:016x}", prefix.len())
 }
+
+/// What the model actually received on the LAST turn: the size of one
+/// context window, exact, from the harness's own usage record.
+///
+/// This -- not the cumulative bill -- is what `accounted` must be
+/// compared against. The cumulative counts the same content once per
+/// turn, so measuring attribution against it would report ~99% missing
+/// when the truth is that the same accounted bytes were re-sent (V44).
+/// `None` when no turn carried usage: absent must not read as zero (V47).
+#[must_use]
+pub fn window(turns: &[Turn]) -> Option<u64> {
+    let last = turns.last()?;
+    let parts = [last.cache_creation, last.cache_read, last.input];
+    if parts.iter().all(Option::is_none) {
+        return None;
+    }
+    Some(
+        parts
+            .iter()
+            .flatten()
+            .fold(0u64, |a, b| a.saturating_add(*b)),
+    )
+}
+
+impl Session {
+    /// One window's size (V44). See [`window`].
+    #[must_use]
+    pub fn window(&self) -> Option<u64> {
+        window(&self.turns)
+    }
+
+    /// Estimated tokens across every load event -- the ACCOUNTED share.
+    /// `bytes/4`, because no content is retained to tokenize (V45).
+    #[must_use]
+    pub fn accounted_tokens(&self) -> u64 {
+        self.events
+            .iter()
+            .map(|e| u64::try_from(e.bytes / 4).unwrap_or(u64::MAX))
+            .fold(0u64, u64::saturating_add)
+    }
+
+    /// Window minus accounted: system prompt, tool schemas, project
+    /// instructions, and the conversation itself (V44).
+    ///
+    /// Clamped at zero. `bytes/4` can over-estimate, and a negative gap
+    /// would say something false about the data rather than about the
+    /// estimator.
+    #[must_use]
+    pub fn unaccounted_tokens(&self) -> Option<u64> {
+        Some(self.window()?.saturating_sub(self.accounted_tokens()))
+    }
+}

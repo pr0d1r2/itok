@@ -67,8 +67,8 @@ fn run(raw: &Raw) -> Output {
     let parsed = claude_code::parse(crate::session::complete_prefix(&text));
     let rows = rank(&parsed, raw);
     Output::ok(match raw.format {
-        Format::Json => json(&rows),
-        Format::Human => report(&rows, &raw.style),
+        Format::Json => json(&rows, &parsed),
+        Format::Human => report(&rows, &parsed, &raw.style),
     })
 }
 
@@ -162,14 +162,49 @@ fn turns_after(turns: &[String], last: &str) -> usize {
 /// `estimate --top N`, which does the same. Consistency beats a
 /// standalone improvement here: two verbs whose `--top` meant different
 /// things would be the near-collision V2 warns about.
-fn report(rows: &[Row], style: &Style) -> String {
+fn report(rows: &[Row], parsed: &Session, style: &Style) -> String {
     let total: u64 = rows.iter().fold(0, |a, r| a.saturating_add(r.tokens));
-    if style.summarize {
-        return total_line(total, style);
-    }
-    let mut out: String = rows.iter().map(|r| line(r, style)).collect();
+    let mut out = if style.summarize {
+        String::new()
+    } else {
+        rows.iter().map(|r| line(r, style)).collect()
+    };
     out.push_str(&total_line(total, style));
+    out.push_str(&ledger(parsed, style));
     out
+}
+
+/// The accounted/unaccounted split (V44). Each number names its method
+/// (V3), because they do not share one: the window is EXACT, from the
+/// harness's own usage record, while accounted is `bytes/4`.
+///
+/// The gap therefore inherits the estimate's error and keeps the tilde
+/// even though one operand is exact -- subtracting an estimate from a
+/// measurement yields an estimate, and rendering it as a measurement
+/// would launder it.
+///
+/// The categories are NAMED but never apportioned: assigning bytes to
+/// them would be the silent attribution V44 forbids.
+fn ledger(parsed: &Session, style: &Style) -> String {
+    let Some(win) = parsed.window() else {
+        // No usage anywhere: report nothing rather than zero (V47).
+        return String::new();
+    };
+    // Named arguments throughout: positional order silently transposed
+    // `gap` and the load count on the first attempt, and both are
+    // plausible numbers, so nothing failed -- it just printed a lie.
+    format!(
+        "\n{win:>9} itok  window       (actual, last turn)\n\
+         {acc:>9} itok  accounted    (bytes/4, {loads} loads)\n\
+         {gap:>9} itok  unaccounted  (system prompt + tool schemas + conversation)\n\
+         {billed:>9} itok  billed       (actual, {turns} turns)\n",
+        win = size(win, style),
+        acc = tilde(parsed.accounted_tokens(), style),
+        loads = parsed.events.len(),
+        gap = tilde(parsed.unaccounted_tokens().unwrap_or(0), style),
+        billed = size(parsed.billed_input(), style),
+        turns = parsed.turns.len(),
+    )
 }
 
 fn total_line(total: u64, style: &Style) -> String {
@@ -203,8 +238,40 @@ fn size(n: u64, style: &Style) -> String {
 
 /// One JSON object per row (V9), same field vocabulary as every other
 /// verb so a parser learns it once.
-fn json(rows: &[Row]) -> String {
-    rows.iter().map(json_object).collect()
+fn json(rows: &[Row], parsed: &Session) -> String {
+    let mut out: String = rows.iter().map(json_object).collect();
+    out.push_str(&json_summary(parsed));
+    out
+}
+
+/// The split as one extra object, marked `summary` so a reader can tell
+/// it from a row. Additive: existing row parsers are unaffected (V9).
+/// The three counts that describe coverage rather than cost. `skipped`
+/// is here because a reader must be able to see that records were
+/// unreadable (V43/V44).
+fn json_counts(parsed: &Session) -> String {
+    format!(
+        "\"loads\":{},\"turns\":{},\"skipped\":{}",
+        parsed.events.len(),
+        parsed.turns.len(),
+        parsed.skipped,
+    )
+}
+
+fn json_summary(parsed: &Session) -> String {
+    let Some(win) = parsed.window() else {
+        return String::new();
+    };
+    let counts = json_counts(parsed);
+    format!(
+        "{{\"summary\":true,\"window\":{win},\"accounted\":{acc},\
+         \"unaccounted\":{gap},\"billed\":{billed},{counts},\
+         \"unit\":\"input_tokens\",\"window_method\":\"actual\",\
+         \"accounted_method\":\"bytes/4\"}}\n",
+        acc = parsed.accounted_tokens(),
+        gap = parsed.unaccounted_tokens().unwrap_or(0),
+        billed = parsed.billed_input(),
+    )
 }
 
 fn json_object(r: &Row) -> String {
@@ -281,8 +348,13 @@ mod tests {
         top(&args)
     }
 
+    /// The ranked rows only: everything before the total line. The
+    /// ledger footer follows it and is not a row.
     fn rows_of(out: &Output) -> Vec<&str> {
-        out.out.lines().filter(|l| !l.contains("total")).collect()
+        out.out
+            .lines()
+            .take_while(|l| !l.contains("total (bytes/4)"))
+            .collect()
     }
 
     /// V46: ranked by occupancy, biggest first.
@@ -311,10 +383,12 @@ mod tests {
 
     /// `-s` collapses to the total line, like `du -s`.
     #[test]
-    fn summarize_is_the_total_only() {
+    fn summarize_drops_the_rows_but_keeps_the_ledger() {
         let out = run_on("tool-shapes.jsonl", &["-s"]);
-        assert_eq!(out.out.lines().count(), 1);
+        assert!(rows_of(&out).is_empty(), "no per-row lines under -s");
         assert!(out.out.contains("total (bytes/4)"));
+        // The split is the point of the verb, so -s keeps it (V44).
+        assert!(out.out.contains("unaccounted"));
     }
 
     /// `-h` abbreviates, like `du -h`. Tested on the formatter directly:
@@ -367,16 +441,23 @@ mod tests {
     #[test]
     fn json_is_one_object_per_row() {
         let out = run_on("tool-shapes.jsonl", &["--format", "json"]);
-        assert_eq!(
-            out.out.lines().count(),
-            rows_of(&run_on("tool-shapes.jsonl", &[])).len()
-        );
-        for line in out.out.lines() {
+        let human = rows_of(&run_on("tool-shapes.jsonl", &[])).len();
+        let rows = json_rows(&out);
+        assert_eq!(rows.len(), human, "one object per ranked row");
+        for line in rows {
             assert!(line.contains("\"unit\":\"input_tokens\""));
             assert!(line.contains("\"estimated\":true"));
             assert!(line.contains("\"stale_turns\":"));
         }
         assert!(!out.out.contains('~'), "no tilde in a numeric field (V3)");
+    }
+
+    /// Row objects only -- the summary is marked and excluded.
+    fn json_rows(out: &Output) -> Vec<&str> {
+        out.out
+            .lines()
+            .filter(|l| !l.contains("\"summary\":true"))
+            .collect()
     }
 
     /// V3/V45: a real tier is refused with its reason, never ignored.
@@ -401,6 +482,108 @@ mod tests {
         assert_eq!(run_on("tool-shapes.jsonl", &["--nope"]).code, 2);
         assert_eq!(run_on("tool-shapes.jsonl", &["--format", "yaml"]).code, 2);
         assert_eq!(run_on("tool-shapes.jsonl", &["--top"]).code, 2);
+    }
+
+    /// V44: the split is exact arithmetic -- accounted plus unaccounted
+    /// is the window, with nothing rounded away or silently assigned.
+    #[test]
+    fn accounted_plus_unaccounted_is_the_window() {
+        let text = std::fs::read_to_string(fixture("minimal.jsonl"))
+            .unwrap_or_default();
+        let s = claude_code::parse(&text);
+        let win = s.window().unwrap_or(0);
+        let sum = s
+            .accounted_tokens()
+            .saturating_add(s.unaccounted_tokens().unwrap_or(0));
+        assert_eq!(sum, win);
+    }
+
+    /// The split is measured against ONE window, never the cumulative
+    /// bill. This fixture bills more across its turns than any single
+    /// window holds, so comparing against the cumulative would make the
+    /// gap absurd -- the regression this test exists to catch (V44).
+    #[test]
+    fn the_split_uses_one_window_not_the_cumulative_bill() {
+        let text = std::fs::read_to_string(fixture("minimal.jsonl"))
+            .unwrap_or_default();
+        let s = claude_code::parse(&text);
+        let win = s.window().unwrap_or(0);
+        assert!(
+            win <= s.billed_input(),
+            "a window can never exceed the cumulative bill"
+        );
+        assert!(
+            s.unaccounted_tokens().unwrap_or(u64::MAX) <= win,
+            "the gap is bounded by ONE window, not by the whole session"
+        );
+    }
+
+    /// V3: the gap inherits the estimate, so it keeps the tilde even
+    /// though the window it came from is exact. Laundering an estimate
+    /// into a measurement is the failure this guards.
+    #[test]
+    fn the_gap_is_marked_estimated() {
+        let out = run_on("minimal.jsonl", &["-s"]);
+        let gap = out
+            .out
+            .lines()
+            .find(|l| l.contains("unaccounted"))
+            .unwrap_or_default();
+        assert!(gap.contains('~'), "unaccounted must carry the tilde");
+        let win = out
+            .out
+            .lines()
+            .find(|l| l.contains("window"))
+            .unwrap_or_default();
+        assert!(!win.contains('~'), "the window is exact, no tilde");
+    }
+
+    /// V47: no usage anywhere means the split is ABSENT, not zero.
+    #[test]
+    fn no_usage_reports_no_split_rather_than_zero() {
+        let out = run_on("tool-shapes.jsonl", &["-s"]);
+        assert!(out.out.contains("window"), "this fixture has usage");
+        let s = crate::session::Session::default();
+        assert_eq!(s.window(), None);
+        assert_eq!(s.unaccounted_tokens(), None);
+    }
+
+    /// `bytes/4` can over-estimate, so accounted may exceed the window.
+    /// The gap clamps at zero rather than going negative, which would say
+    /// something false about the data instead of about the estimator.
+    ///
+    /// Built in memory rather than from a fixture: no real transcript has
+    /// this shape, and inventing one that did would make the fixture less
+    /// representative to test an arithmetic edge.
+    #[test]
+    fn an_over_estimate_clamps_the_gap_at_zero() {
+        let mut s = crate::session::Session::default();
+        s.turns.push(crate::session::Turn {
+            cache_read: Some(10),
+            ..crate::session::Turn::default()
+        });
+        s.events.push(crate::session::LoadEvent {
+            session: String::new(),
+            ts: String::new(),
+            source: crate::session::Source::Tool("shell".to_owned()),
+            path: None,
+            bytes: 4000,
+            spilled: None,
+        });
+        assert!(s.accounted_tokens() > s.window().unwrap_or(0));
+        assert_eq!(s.unaccounted_tokens(), Some(0), "clamped, never negative");
+    }
+
+    /// V9: the summary is one extra object, marked so a reader can tell
+    /// it from a row, and carrying a method per figure.
+    #[test]
+    fn the_json_summary_is_distinguishable_and_labelled() {
+        let out = run_on("minimal.jsonl", &["--format", "json"]);
+        let last = out.out.lines().last().unwrap_or_default();
+        assert!(last.contains("\"summary\":true"));
+        assert!(last.contains("\"window_method\":\"actual\""));
+        assert!(last.contains("\"accounted_method\":\"bytes/4\""));
+        assert!(!out.out.contains('~'), "no tilde in json (V9)");
     }
 
     /// `stale` counts turns AFTER the last load. The fixture's turns all
