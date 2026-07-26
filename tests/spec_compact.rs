@@ -24,99 +24,34 @@
 //!   cargo test --test spec_compact -- --ignored --nocapture
 //!   ITOK_ALLOW_DROP=tok,tok cargo test --test spec_compact -- --ignored
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 use std::process::Command;
 
 const DIR: &str = env!("CARGO_MANIFEST_DIR");
 
 // ---------------------------------------------------------------- derive
-
-/// One invariant's size and how many times the rest of the spec cites it.
-#[derive(Debug, PartialEq, Eq)]
-struct Inv {
-    bytes: usize,
-    cited: usize,
-    /// A WORKING principle (V80-V87) rather than a product rule.
-    working: bool,
-}
-
-/// The working-principle band: these bind how the work is done, not what
-/// is built.
-///
-/// Held apart because low citation means opposite things on either side of
-/// the line. A product invariant nobody cites is a candidate; a process
-/// invariant nobody cites is NORMAL -- tasks cite the rules they
-/// implement, and no task "implements" refute-before-you-trust. A naive
-/// orphan detector would recommend deleting exactly the invariants that
-/// govern the work (V80/V83/V85/V86 are all uncited today).
-const WORKING: std::ops::RangeInclusive<u32> = 80..=87;
-
-/// Byte size of each invariant, keyed by id, plus its citation in-degree.
-fn invariants(spec: &str) -> BTreeMap<String, Inv> {
-    let body = section(spec, "INVARIANTS");
-    let cites = citation_counts(spec);
-    let mut out = BTreeMap::new();
-    let mut cur: Option<(String, usize)> = None;
-    for line in body.lines() {
-        let n = line.len().saturating_add(1);
-        if let Some(id) = declared_id(line) {
-            flush(&mut out, cur.take(), &cites);
-            cur = Some((id, n));
-        } else {
-            grow(cur.as_mut(), n);
-        }
-    }
-    flush(&mut out, cur, &cites);
-    out
-}
-
-/// Add a continuation line's bytes to the invariant being accumulated.
-fn grow(current: Option<&mut (String, usize)>, n: usize) {
-    if let Some((_, bytes)) = current {
-        *bytes = bytes.saturating_add(n);
-    }
-}
-
-fn flush(
-    out: &mut BTreeMap<String, Inv>,
-    cur: Option<(String, usize)>,
-    cites: &BTreeMap<String, usize>,
-) {
-    if let Some((id, bytes)) = cur {
-        let num = id.trim_start_matches('V').parse::<u32>().unwrap_or(0);
-        out.insert(
-            id.clone(),
-            Inv {
-                bytes,
-                // Minus one: a declaration is not a citation of itself.
-                cited: cites.get(&id).copied().unwrap_or(0).saturating_sub(1),
-                working: WORKING.contains(&num),
-            },
-        );
-    }
-}
-
-/// `V42:` at the start of a line -> `V42`.
-fn declared_id(line: &str) -> Option<String> {
-    let rest = line.strip_prefix('V')?;
-    let idx = rest.find(':')?;
-    let num = rest.get(..idx)?;
-    let ok = !num.is_empty() && num.chars().all(|c| c.is_ascii_digit());
-    ok.then(|| format!("V{num}"))
-}
-
-/// How often each `Vnn` appears anywhere in the spec, declarations
-/// included -- the caller subtracts its own.
-fn citation_counts(spec: &str) -> BTreeMap<String, usize> {
-    let mut out: BTreeMap<String, usize> = BTreeMap::new();
-    for tok in ids_in(spec, 'V') {
-        let slot = out.entry(tok).or_insert(0usize);
-        *slot = slot.saturating_add(1);
-    }
-    out
-}
+//
+// DELETED, not moved: sizes, the citation graph and orphan detection are
+// `nanokit derive`, and this file held a second implementation of all
+// three. `derive_report` below runs the owner instead (V64).
+//
+// The one thing that did NOT move is the WORKING-PRINCIPLE reading. V80-V87
+// bind how the work is done rather than what is built, and low citation
+// means opposite things on either side of that line: a product invariant
+// nobody cites is a compaction candidate, while a process invariant nobody
+// cites is NORMAL -- tasks cite the rules they implement, and no task
+// "implements" refute-before-you-trust. So a bare orphan list recommends
+// deleting exactly the invariants that govern the work. That is itok's
+// knowledge about itok's spec, not a rule any checker owns, so it stays
+// here as a caveat printed beside the report rather than as a filter
+// reimplemented over it.
 
 /// Every `<prefix><digits>` token, e.g. every `V42` / `T30` / `B7`.
+///
+/// Kept while the derivation went: this serves `must_keep`, which is the
+/// COMPACTION VERIFIER rather than a format rule. nanokit answers "is this
+/// spec well formed"; this answers "did a rewrite silently drop a fact",
+/// which is a claim about two texts and belongs to whoever is rewriting.
 fn ids_in(text: &str, prefix: char) -> Vec<String> {
     text.split(|c: char| !c.is_ascii_alphanumeric())
         .filter_map(|t| {
@@ -125,14 +60,6 @@ fn ids_in(text: &str, prefix: char) -> Vec<String> {
             ok.then(|| t.to_owned())
         })
         .collect()
-}
-
-/// One `## section X NAME` section's body, by its NAME.
-fn section(spec: &str, name: &str) -> String {
-    let start = spec.find(name).map_or(0, |i| i);
-    let rest = spec.get(start..).unwrap_or_default();
-    let end = rest.find("\n## ").unwrap_or(rest.len());
-    rest.get(..end).unwrap_or_default().to_owned()
 }
 
 // ---------------------------------------------------------------- verify
@@ -278,99 +205,49 @@ fn spec_at(git_ref: &str) -> String {
         .unwrap_or_default()
 }
 
-// ----------------------------------------------- second-opinion checker
-
-/// A SECOND OPINION on our spec, from the crate that owns the format.
-///
-/// itok's own guards in `spec_integrity` are the TRAVELING ones (V31/V13):
-/// they must stand alone, so this can never become a dependency. It is
-/// invoked as a TOOL, out of process, and a failure to run means
-/// UNAVAILABLE rather than failing (V74: degrade, do not block).
-///
-/// Why a second opinion at all: B12. itok's gate was green for a full day
-/// while 88 tasks belonged to no milestone, because the rule that caught it
-/// lived in a checker itok's gate cannot invoke. The ported rules close that
-/// specific gap; this catches the NEXT rule the owner has and we have not.
-///
-/// Now `nanokit` rather than the host's `cavekit-spec`, which it replaced
-/// with measured parity: same rules, plus a task-status rule, a line number
-/// per violation and a ranked fix for each. It is also STRICTER -- it orders
-/// the bug rows, which neither the host checker nor our own ported guards look
-/// at -- so switching is the second opinion doing its job rather than a
-/// like-for-like swap.
-///
-/// `#[ignore]`: it shells out to cargo and reaches outside the repo, so it
-/// is by-hand machinery like the rest of this file.
-#[test]
-#[ignore = "second-opinion checker; run with --ignored --nocapture"]
-fn the_format_owner_agrees_our_spec_is_clean() {
-    let Some((clean, report)) = run_nanokit() else {
-        // LOUD about being skipped: a silently skipped check is
-        // indistinguishable from a passing one (V71/V74).
-        println!(
-            "nanokit: format checker UNAVAILABLE (needs ../nanokit) -- \
-             SKIPPED, not passed"
-        );
-        return;
-    };
-    print!("{report}");
-    assert!(
-        clean,
-        "the format owner reports violations; clear them first"
-    );
-}
-
-/// `(clean, report)`, or `None` when it could not run at all -- no cargo, no
-/// sibling checkout, or a build failure over there.
-fn run_nanokit() -> Option<(bool, String)> {
-    let manifest = std::path::Path::new(DIR).join("../nanokit/Cargo.toml");
-    if !manifest.exists() {
-        return None;
-    }
-    let out = Command::new("cargo")
-        .args(["run", "-q", "--manifest-path"])
-        .arg(&manifest)
-        .args(["--bin", "nanokit", "--", "check"])
-        .arg(std::path::Path::new(DIR).join("SPEC.md"))
-        .output()
-        .ok()?;
-    // Violations go to stderr; a clean run says nothing at all.
-    let report = String::from_utf8_lossy(&out.stderr).into_owned();
-    Some((out.status.success(), report))
-}
-
 // ----------------------------------------------------------- by-hand use
 
 /// The derivation report: what to cut, biggest first.
 ///
+/// Runs `nanokit derive`, the owner. This used to be a ported copy of the
+/// same three derivations, which is the duplication the extraction exists
+/// to end (V64): sizes, the citation graph and orphans are one
+/// implementation now, and itok reads its output instead of computing a
+/// second answer that can disagree.
+///
+/// NOT a gate, and neither is the command: `derive` exits 0 even with
+/// findings, because an uncited invariant might be a dead rule or a missing
+/// citation and only a reader can say which. A gate would answer by fiat.
+///
 /// `#[ignore]` because it is a tool, not an assertion -- the gate compiles
 /// it so it cannot rot, and a human runs it when paying down the debt
 /// (V38's shape, from `live_ollama_smoke`).
+///
+///   cargo test --test spec_compact -- --ignored --nocapture derive_report
 #[test]
 #[ignore = "derivation report; run with --ignored --nocapture"]
 fn derive_report() {
-    let spec = spec_now();
-    let inv = invariants(&spec);
-    let total: usize = inv.values().map(|i| i.bytes).sum();
-    println!("\n{} invariants, {total} bytes in section V\n", inv.len());
-    let mut by_size: Vec<_> = inv.iter().collect();
-    by_size.sort_by_key(|(_, i)| std::cmp::Reverse(i.bytes));
-    print_biggest(&by_size);
-    let orphans: Vec<_> = by_size
-        .iter()
-        .filter(|(_, i)| i.cited == 0 && !i.working)
-        .map(|(id, _)| id.as_str())
-        .collect();
-    println!("\nuncited PRODUCT invariants (candidates): {orphans:?}");
-    println!("must-keep tokens: {}", must_keep(&spec).len());
-}
-
-fn print_biggest(by_size: &[(&String, &Inv)]) {
-    println!("{:6}{:>7}{:>7}  kind", "id", "bytes", "cited");
-    for (id, i) in by_size.iter().take(20) {
-        let kind = if i.working { "working" } else { "product" };
-        println!("{id:6}{:7}{:7}  {kind}", i.bytes, i.cited);
-    }
+    let out = Command::new("nanokit")
+        .args(["derive", "--verbose"])
+        .arg(std::path::Path::new(DIR).join("SPEC.md"))
+        .output();
+    let Ok(out) = out else {
+        // The gate hard-fails without nanokit (hk.pkl), so reaching this
+        // by hand means the dev shell was not entered. Say which, rather
+        // than printing an empty report that reads like a clean spec.
+        println!("nanokit: not on PATH -- enter the dev shell with ../nanokit beside this repo");
+        return;
+    };
+    print!("{}", String::from_utf8_lossy(&out.stdout));
+    print!("{}", String::from_utf8_lossy(&out.stderr));
+    println!("\nmust-keep tokens: {}", must_keep(&spec_now()).len());
+    // The caveat the owner cannot know (see the header of this file's
+    // derive section): V80-V87 are WORKING principles, so their appearing
+    // as orphans is normal and is not an invitation to cut them.
+    println!(
+        "NOTE: V80-V87 are working principles -- uncited is NORMAL there, \
+         and an orphan in that band is not a candidate"
+    );
 }
 
 /// The verification pass: run AFTER a rewrite, against the pre-rewrite
@@ -404,41 +281,11 @@ fn verify_against_head() {
 mod tests {
     use super::*;
 
-    /// The derivation finds each invariant and sizes it, including the
-    /// continuation lines -- an invariant is a paragraph, not a line.
-    #[test]
-    fn invariants_are_sized_across_their_continuation_lines() {
-        let spec =
-            "## \u{a7}V INVARIANTS\nV1: **a.** one\ntwo\nV2: **b.** three\n\
-                    \n## \u{a7}T TASKS\n";
-        let inv = invariants(spec);
-        assert_eq!(inv.len(), 2);
-        let v1 = inv.get("V1").map(|i| i.bytes).unwrap_or(0);
-        let v2 = inv.get("V2").map(|i| i.bytes).unwrap_or(0);
-        assert!(v1 > v2, "V1 spans two lines, V2 one: {v1} vs {v2}");
-    }
-
-    /// Citation counts exclude an invariant's own declaration -- otherwise
-    /// every invariant looks cited once and no orphan is ever found.
-    #[test]
-    fn a_declaration_is_not_a_citation_of_itself() {
-        let spec = "## \u{a7}V INVARIANTS\nV1: **a.** nothing points here\n\
-                    V2: **b.** but this cites V1\n\n## \u{a7}T TASKS\n";
-        let inv = invariants(spec);
-        assert_eq!(inv.get("V1").map(|i| i.cited), Some(1));
-        assert_eq!(inv.get("V2").map(|i| i.cited), Some(0), "V2 is uncited");
-    }
-
-    /// V80-V87 are WORKING principles: uncited is normal there, and the
-    /// report must not offer them as candidates.
-    #[test]
-    fn working_principles_are_held_apart_from_product_rules() {
-        let spec = "## \u{a7}V INVARIANTS\nV79: **p.** product\n\
-                    V83: **w.** working\n\n## \u{a7}T TASKS\n";
-        let inv = invariants(spec);
-        assert_eq!(inv.get("V79").map(|i| i.working), Some(false));
-        assert_eq!(inv.get("V83").map(|i| i.working), Some(true));
-    }
+    // The three derivation units that stood here are gone with the
+    // derivation itself: sizing across continuation lines, a declaration
+    // not citing itself, and the working-principle split. The first two are
+    // nanokit's rules and it tests them; the third was only ever needed to
+    // support the local orphan filter, which is now a printed caveat.
 
     /// V80's rule mechanised: a dropped fact is CAUGHT, because a rewrite
     /// cannot be trusted to audit itself.
