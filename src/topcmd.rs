@@ -8,11 +8,22 @@
 //! often, how long ago. Whether that is healthy is judgment, and judgment
 //! belongs to `doctor` (V59).
 //!
-//! `stale` is turns-since-last-load, deliberately NOT `bytes x turns`.
-//! The multiplication is the compounding-cost story, but it assumes every
-//! one of those turns re-sent the item, which the transcript does not
-//! record per item. The count is observed; the product would be a model
-//! (V3). The reader can multiply.
+//! `stale` is turns-since-last-load; `carried` is the compounding-cost
+//! story it used to refuse. The multiplication was withheld while its
+//! premise -- that every one of those turns re-sent the item -- was an
+//! assumption the transcript did not record per item. It is now OBSERVED:
+//! `cache_read` is the whole window on every warm turn and the window
+//! only grows, so an item entering at turn N of T really does carry
+//! ~`size x (T-N)` of cache-read billing (V98). Reported with the caveat
+//! it rests on: UNCOMPACTED sessions, which is all that has been seen.
+//!
+//! Charged PER LOAD EVENT, never as the summed total times the earliest
+//! entry: a re-read enters later and carries fewer remaining turns, so
+//! the shortcut would overcount exactly the paths that repeat most.
+//!
+//! It earns a column because it is the number that makes EARLY reduction
+//! visible (V94): the value of dropping something is `size x turns
+//! remaining`, not its one-time load cost.
 //!
 //! Sizes are `bytes/4` estimates for the same reason as `trace`: no
 //! content is retained (V45), so there is nothing for a real tokenizer to
@@ -36,12 +47,14 @@ struct Raw {
     chdir: Option<String>,
 }
 
-/// One ranked line: what was loaded, how much, how often, how stale.
+/// One ranked line: what was loaded, how much, how often, how stale, and
+/// how much re-billing it has carried since it entered (V98).
 struct Row {
     what: String,
     tokens: u64,
     loads: usize,
     stale: usize,
+    carried: u64,
 }
 
 pub(crate) fn top(rest: &[String]) -> Output {
@@ -110,7 +123,7 @@ fn turn_times(parsed: &Session) -> Vec<String> {
 fn group(events: &[&LoadEvent], turns: &[String]) -> Vec<Row> {
     let mut acc: BTreeMap<String, Sum> = BTreeMap::new();
     for e in events {
-        acc.entry(identity(e)).or_default().absorb(e);
+        acc.entry(identity(e)).or_default().absorb(e, turns);
     }
     acc.into_iter()
         .map(|(what, s)| Row {
@@ -118,6 +131,7 @@ fn group(events: &[&LoadEvent], turns: &[String]) -> Vec<Row> {
             tokens: s.tokens,
             loads: s.loads,
             stale: turns_after(turns, &s.last),
+            carried: s.carried,
         })
         .collect()
 }
@@ -135,12 +149,22 @@ struct Sum {
     tokens: u64,
     loads: usize,
     last: String,
+    carried: u64,
 }
 
 impl Sum {
-    fn absorb(&mut self, e: &LoadEvent) {
-        self.tokens = self.tokens.saturating_add(tokens_of(e.bytes));
+    /// Each load is charged from ITS OWN entry (V98): a re-read arrives
+    /// later and has fewer turns left to be re-billed across, so summing
+    /// per event is the honest product. Multiplying the accumulated total
+    /// by the earliest entry instead would inflate every repeated path.
+    fn absorb(&mut self, e: &LoadEvent, turns: &[String]) {
+        let tokens = tokens_of(e.bytes);
+        self.tokens = self.tokens.saturating_add(tokens);
         self.loads = self.loads.saturating_add(1);
+        let remaining = u64::try_from(turns_after(turns, &e.ts)).unwrap_or(0);
+        self.carried = self
+            .carried
+            .saturating_add(tokens.saturating_mul(remaining));
         if e.ts > self.last {
             self.last.clone_from(&e.ts);
         }
@@ -170,9 +194,26 @@ fn report(rows: &[Row], parsed: &Session, style: &Style) -> String {
         rows.iter().map(|r| line(r, style)).collect()
     };
     out.push_str(&total_line(total, style));
+    if !style.summarize {
+        out.push_str(CARRIED_LEGEND);
+    }
     out.push_str(&ledger(parsed, style));
     out
 }
+
+/// What the `carried` column means and what it assumes (V98).
+///
+/// Printed only when rows are (under `-s` there is no column to explain),
+/// and states the CAVEAT rather than leaving it implicit: the product
+/// holds for uncompacted sessions, which is all that has been observed.
+/// If items ever do leave a context, it becomes an upper bound -- saying
+/// so here is what keeps it from silently becoming a claim (V3).
+///
+/// No advice, no verdict: the arithmetic and its premise, nothing else
+/// (V59).
+const CARRIED_LEGEND: &str =
+    "  carried = itok x turns since entry (cache re-billing; \
+     assumes no compaction)\n";
 
 /// The accounted/unaccounted split (V44). Each number names its method
 /// (V3), because they do not share one: the window is EXACT, from the
@@ -255,12 +296,18 @@ fn total_line(total: u64, style: &Style) -> String {
     format!("{:>8} itok  total (bytes/4)\n", tilde(total, style))
 }
 
+/// `carried` sits AFTER `stale`, the two counts it is built from staying
+/// where they were: a reader who knows the old layout reads the new one
+/// unchanged, and an appended column is the cheapest addition there is
+/// (V1/V2). It carries the tilde because it is an estimate multiplied by
+/// a count -- exact arithmetic over a crude operand is still crude (V3).
 fn line(r: &Row, style: &Style) -> String {
     format!(
-        "{:>6}  {:>8} itok  {:>6}  {}\n",
+        "{:>6}  {:>8} itok  {:>6}  {:>10} itok  {}\n",
         r.loads,
         tilde(r.tokens, style),
         r.stale,
+        tilde(r.carried, style),
         r.what
     )
 }
@@ -342,14 +389,25 @@ fn json_summary(parsed: &Session) -> String {
     )
 }
 
+/// Additive: `carried` and its method join the existing vocabulary
+/// without moving a field, so a parser written against the old shape
+/// keeps working (V9).
+///
+/// The method string carries the caveat the human legend states. It lives
+/// on the ROW rather than in the summary object because the summary is
+/// emitted only when a turn reported usage, and a caveat that disappears
+/// with the window would leave the number looking unconditional (V3).
 fn json_object(r: &Row) -> String {
     format!(
         "{{\"what\":\"{}\",\"tokens\":{},\"loads\":{},\"stale_turns\":{},\
+         \"carried\":{},\"carried_method\":\"bytes/4 x turns-since-entry \
+         (assumes no compaction)\",\
          \"unit\":\"input_tokens\",\"estimated\":true,\"method\":\"bytes/4\"}}\n",
         escape(&r.what),
         r.tokens,
         r.loads,
         r.stale,
+        r.carried,
     )
 }
 
@@ -826,6 +884,118 @@ mod tests {
             cache_creation: Some(write),
             cache_read: Some(read),
             ..crate::session::Turn::default()
+        }
+    }
+
+    /// The `carried` cell of a row, parsed back out of the rendered line.
+    fn carried_cell(out: &Output) -> &str {
+        rows_of(out)
+            .first()
+            .and_then(|r| r.split_whitespace().nth(4))
+            .unwrap_or_default()
+    }
+
+    /// V98/V94: an item entering at turn N of T carries `size x (T-N)`.
+    /// `/w/one.txt` is read (1 itok with 2 turns left) then edited, and an
+    /// edit result carries a PATCH rather than content, so it weighs 0 and
+    /// adds nothing: 1x2 + 0x1 = 2. Which is the point -- what a load
+    /// carries is its BILLED size (V76), never the file it names.
+    #[test]
+    fn carried_is_size_times_turns_after_entry() {
+        let out = run_on("tool-shapes.jsonl", &["--", "/w/one.txt"]);
+        assert_eq!(carried_cell(&out), "~2");
+    }
+
+    /// V94's real point: the EARLIEST entries dominate. The last thing
+    /// loaded has no turns left to be re-billed across, so its leverage is
+    /// zero however big it is.
+    #[test]
+    fn the_last_load_has_carried_nothing() {
+        let out = run_on("tool-shapes.jsonl", &["--", "/w/two.txt"]);
+        assert_eq!(carried_cell(&out), "~0");
+    }
+
+    /// V98: charged PER LOAD EVENT. The shortcut -- summed tokens times
+    /// the turns after the EARLIEST entry -- would say 6000 here, because
+    /// it bills the re-read for turns that preceded it. Built in memory:
+    /// the arithmetic is the subject, and a fixture would only obscure it.
+    #[test]
+    fn carried_charges_each_load_from_its_own_entry() {
+        let turns: Vec<String> = ["01", "03", "05", "07"]
+            .iter()
+            .map(|t| (*t).into())
+            .collect();
+        let mut sum = Sum::default();
+        sum.absorb(&load_at("02", 4000), &turns); // 1000 x 3 turns left
+        sum.absorb(&load_at("04", 4000), &turns); // 1000 x 2 turns left
+        assert_eq!(sum.tokens, 2000);
+        assert_eq!(sum.carried, 5000);
+        let shortcut = sum.tokens * 3;
+        assert_ne!(sum.carried, shortcut, "the summed-total product inflates");
+    }
+
+    fn load_at(ts: &str, bytes: usize) -> LoadEvent {
+        LoadEvent {
+            session: String::new(),
+            ts: ts.to_owned(),
+            source: crate::session::Source::Tool("Read".to_owned()),
+            path: Some("/w/one.txt".to_owned()),
+            bytes,
+            spilled: None,
+        }
+    }
+
+    /// V98: the caveat is STATED, not implicit. The product holds for
+    /// uncompacted sessions, and that is all that has been observed.
+    #[test]
+    fn the_report_states_the_uncompacted_caveat() {
+        let out = run_on("tool-shapes.jsonl", &[]);
+        assert!(out.out.contains("carried = itok x turns since entry"));
+        assert!(out.out.contains("assumes no compaction"));
+    }
+
+    /// V59: the legend explains the arithmetic and its premise. It does
+    /// not tell the reader what to do about the number.
+    #[test]
+    fn the_carried_column_gives_no_advice() {
+        for word in ["should", "consider", "unhealthy", "reduce", "too"] {
+            assert!(
+                !CARRIED_LEGEND.to_lowercase().contains(word),
+                "no advice: {word}"
+            );
+        }
+    }
+
+    /// Under `-s` there is no column, so there is nothing to explain --
+    /// output that always appears is output nobody reads.
+    #[test]
+    fn the_caveat_is_absent_when_no_rows_are_shown() {
+        let out = run_on("tool-shapes.jsonl", &["-s"]);
+        assert!(!out.out.contains("carried ="));
+    }
+
+    /// V3: exact arithmetic over a crude operand is still crude, so the
+    /// human cell keeps the tilde. V9: json carries the same intent
+    /// structurally, never a tilde in a numeric field.
+    #[test]
+    fn carried_keeps_the_tilde_and_json_does_not() {
+        assert!(carried_cell(&run_on("tool-shapes.jsonl", &[])).contains('~'));
+        let out = run_on("tool-shapes.jsonl", &["--format", "json"]);
+        assert!(!out.out.contains('~'));
+    }
+
+    /// V9: additive -- the field and its method join the vocabulary
+    /// without moving anything a parser already reads.
+    #[test]
+    fn json_rows_carry_the_leverage_field_and_its_method() {
+        let out = run_on("tool-shapes.jsonl", &["--format", "json"]);
+        for line in json_rows(&out) {
+            assert!(line.contains("\"carried\":"));
+            assert!(line.contains("\"carried_method\":\"bytes/4 x turns"));
+            assert!(line.contains("(assumes no compaction)"));
+            // The pre-existing fields are untouched.
+            assert!(line.contains("\"stale_turns\":"));
+            assert!(line.contains("\"tokens\":"));
         }
     }
 
