@@ -13,6 +13,7 @@ use crate::args::Opts;
 use crate::cli::Output;
 use crate::estimate::{count, select};
 use crate::ollama;
+use crate::ollama::pick::{self, Resolved};
 use std::collections::BTreeMap;
 use std::path::Path;
 
@@ -21,58 +22,16 @@ pub(crate) fn run(opts: &Opts, root: &Path) -> Output {
         Ok(f) => f,
         Err(e) => return net_err(&e),
     };
-    let tokens = fileset_tokens(opts, root);
+    // A directory / unreadable path is the user's error, not the
+    // network's, so it keeps exit 2 rather than becoming a net_err (B11d).
+    let tokens = match fileset_tokens(opts, root) {
+        Ok(t) => t,
+        Err(e) => return arg_err(&e),
+    };
     match &opts.model {
         Some(m) => fleet_model(&fleet, m, tokens),
         None => fleet_all(&fleet, tokens),
     }
-}
-
-/// How a requested `--model` resolved against what the fleet serves.
-enum Resolved<'a> {
-    One(&'a str),
-    Ambiguous(Vec<&'a str>),
-    Missing,
-}
-
-/// Resolve a requested name against the served set (V6's rule, on a
-/// DISCOVERED set instead of the verb table).
-///
-/// Exact first, then ollama's OWN `name` = `name:latest`, then a unique
-/// prefix. Step two matters: `ollama run codestral` means
-/// `codestral:latest`, so meaning anything else by the same token would
-/// invoke that prior and then violate it -- V2's expensive failure. The
-/// prefix rung extends past ollama's grammar rather than bending it.
-///
-/// Never silent-picks: several hits is Ambiguous, and the caller names
-/// the candidates.
-fn resolve<'a>(names: &[&'a str], want: &str) -> Resolved<'a> {
-    if let Some(n) = named(names, want) {
-        return Resolved::One(n);
-    }
-    let hits: Vec<&'a str> = names
-        .iter()
-        .copied()
-        .filter(|n| n.starts_with(want))
-        .collect();
-    match hits.as_slice() {
-        [one] => Resolved::One(one),
-        [] => Resolved::Missing,
-        _ => Resolved::Ambiguous(hits),
-    }
-}
-
-/// The two rungs that are NOT inference: a fully spelled name, then
-/// ollama's own `name` = `name:latest`. Checked in that order so a fleet
-/// carrying both `foo` and `foo:latest` resolves `foo` to itself rather
-/// than to whichever the list happened to hold first.
-fn named<'a>(names: &[&'a str], want: &str) -> Option<&'a str> {
-    let latest = format!("{want}:latest");
-    names
-        .iter()
-        .copied()
-        .find(|n| *n == want)
-        .or_else(|| names.iter().copied().find(|n| *n == latest))
 }
 
 /// One named model across the fleet: "does this fit, anywhere?" (V22/V24).
@@ -83,29 +42,21 @@ fn named<'a>(names: &[&'a str], want: &str) -> Option<&'a str> {
 /// -- the old message reported `no fleet host serves 'gpt-oss'` while
 /// saying nothing about the models sitting right there (V71).
 fn fleet_model(fleet: &[String], want: &str, tokens: u64) -> Output {
-    let windows = fleet_windows(fleet);
-    if windows.is_empty() {
+    let seen = fleet_windows(fleet);
+    if seen.windows.is_empty() {
         return net_err("no models on the ollama fleet");
     }
-    let names: Vec<&str> = windows.keys().map(String::as_str).collect();
-    match resolve(&names, want) {
-        Resolved::One(m) => {
-            Output::ok(row(m, tokens, windows.get(m).copied().flatten()) + "\n")
+    let names: Vec<&str> = seen.windows.keys().map(String::as_str).collect();
+    let hosts = (seen.answered, fleet.len());
+    match pick::resolve(&names, want) {
+        Resolved::One(m) => Output::ok(
+            row(m, tokens, seen.windows.get(m).copied().flatten()) + "\n",
+        ),
+        Resolved::Ambiguous(c) => arg_err(&pick::ambiguous_msg(want, &c)),
+        Resolved::Missing => {
+            arg_err(&pick::missing_msg(want, &names, hosts.0, hosts.1))
         }
-        Resolved::Ambiguous(c) => arg_err(&ambiguous_msg(want, &c)),
-        Resolved::Missing => arg_err(&missing_msg(want, &names)),
     }
-}
-
-fn ambiguous_msg(want: &str, candidates: &[&str]) -> String {
-    format!("'{want}' is ambiguous: {}", candidates.join(", "))
-}
-
-fn missing_msg(want: &str, served: &[&str]) -> String {
-    format!(
-        "no fleet host serves '{want}' -- served: {}",
-        served.join(", ")
-    )
 }
 
 /// A bad `--model` is a USAGE error, not a network one. The fleet
@@ -120,33 +71,60 @@ fn arg_err(msg: &str) -> Output {
 /// answer no static table gives. A model's window comes from the first
 /// host that answers; a host that is down is skipped, not fatal.
 fn fleet_all(fleet: &[String], tokens: u64) -> Output {
-    let windows = fleet_windows(fleet);
-    if windows.is_empty() {
+    let seen = fleet_windows(fleet);
+    if seen.windows.is_empty() {
         return net_err("no models on the ollama fleet");
     }
     let mut s = format!("context: {tokens} itok\n");
-    for (model, window) in &windows {
+    for (model, window) in &seen.windows {
         s.push_str(&row(model, tokens, *window));
         s.push('\n');
     }
+    s.push_str(&coverage(seen.answered, fleet.len()));
     Output::ok(s)
+}
+
+/// Says so when a named host did NOT answer.
+///
+/// B11b: this union was byte-identical whether every host replied or only
+/// one did, so a partial answer read as a whole one. Silence is only safe
+/// when nothing was missed -- the line appears when it was (V44). Still
+/// not fatal: V24's resilience is right, its silence was not.
+fn coverage(answered: usize, named: usize) -> String {
+    if answered >= named {
+        return String::new();
+    }
+    format!(
+        "  note: {answered}/{named} host(s) answered -- this union is \
+         PARTIAL; a model may live on a host that did not reply\n"
+    )
 }
 
 /// model -> window across the fleet, first host that answers winning; a
 /// down host is skipped (V24 union, resilient).
-fn fleet_windows(fleet: &[String]) -> BTreeMap<String, Option<u64>> {
-    let mut windows = BTreeMap::new();
+fn fleet_windows(fleet: &[String]) -> Seen {
+    let mut seen = Seen::default();
     for base in fleet {
         let Ok(models) = ollama::models(base) else {
-            continue;
+            continue; // down host: skipped, and COUNTED (V44)
         };
+        seen.answered = seen.answered.saturating_add(1);
         for m in models {
-            windows
+            seen.windows
                 .entry(m.clone())
                 .or_insert_with(|| ollama::window(base, &m).ok());
         }
     }
-    windows
+    seen
+}
+
+/// What the fleet actually told us, and how much of the fleet told us.
+/// The count travels WITH the data so a caller cannot report the union
+/// without being able to say how complete it is (B11b).
+#[derive(Default)]
+struct Seen {
+    windows: BTreeMap<String, Option<u64>>,
+    answered: usize,
 }
 
 /// One fit row, or a note when the model's window did not resolve.
@@ -160,11 +138,11 @@ fn row(model: &str, tokens: u64, window: Option<u64>) -> String {
 /// The fileset's token cost for the fit check. Counts on the bpe proxy
 /// when built (a fit gauge wants the honest estimate, V36), independent of
 /// the `--ollama` tier -- `doctor --ollama` needs no separate `--bpe`.
-fn fileset_tokens(opts: &Opts, root: &Path) -> u64 {
-    select(opts, root)
+fn fileset_tokens(opts: &Opts, root: &Path) -> Result<u64, String> {
+    Ok(select(opts, root)?
         .iter()
         .filter_map(|f| count(&root.join(f), cfg!(feature = "bpe")))
-        .fold(0u64, u64::saturating_add)
+        .fold(0u64, u64::saturating_add))
 }
 
 fn fit_line(model: &str, tokens: u64, window: u64) -> String {
@@ -222,86 +200,5 @@ mod tests {
     #[test]
     fn a_network_failure_is_exit_seven() {
         assert_eq!(net_err("boom").code, 7);
-    }
-
-    const FLEET: [&str; 4] = [
-        "codestral:latest",
-        "gpt-oss:20b",
-        "qwen3-coder:30b",
-        "qwen3-coder:7b",
-    ];
-
-    fn one(want: &str) -> Option<&'static str> {
-        match resolve(&FLEET, want) {
-            Resolved::One(m) => Some(m),
-            _ => None,
-        }
-    }
-
-    /// The ask: a family name narrows to the one model serving it.
-    #[test]
-    fn a_unique_prefix_resolves() {
-        assert_eq!(one("gpt-oss"), Some("gpt-oss:20b"));
-        assert_eq!(one("gpt"), Some("gpt-oss:20b"));
-    }
-
-    /// An exact name still wins outright -- the prefix rung never gets to
-    /// second-guess a fully spelled model.
-    #[test]
-    fn an_exact_name_wins() {
-        assert_eq!(one("gpt-oss:20b"), Some("gpt-oss:20b"));
-        assert_eq!(one("qwen3-coder:7b"), Some("qwen3-coder:7b"));
-    }
-
-    /// V2: `ollama run codestral` means `codestral:latest`, so the same
-    /// token must mean that here. Bare `codestral` is ALSO a prefix of
-    /// `codestral:latest`, so this passes either way -- the case that
-    /// proves the rule is the one below, where the two rungs disagree.
-    #[test]
-    fn a_bare_name_means_latest_as_ollama_means_it() {
-        assert_eq!(one("codestral"), Some("codestral:latest"));
-    }
-
-    /// Where `:latest` and the prefix rung DISAGREE, ollama's grammar
-    /// wins: `qwen3-coder` prefixes two models, but a `qwen3-coder:latest`
-    /// on the fleet is what ollama itself would run.
-    #[test]
-    fn latest_beats_an_otherwise_ambiguous_prefix() {
-        let with_latest =
-            ["qwen3-coder:latest", "qwen3-coder:30b", "qwen3-coder:7b"];
-        let got = match resolve(&with_latest, "qwen3-coder") {
-            Resolved::One(m) => Some(m),
-            _ => None,
-        };
-        assert_eq!(got, Some("qwen3-coder:latest"));
-    }
-
-    /// V6: several hits ERROR with the candidates, never a silent pick.
-    #[test]
-    fn an_ambiguous_prefix_names_its_candidates() {
-        let got = match resolve(&FLEET, "qwen") {
-            Resolved::Ambiguous(c) => c,
-            _ => Vec::new(),
-        };
-        assert_eq!(got, vec!["qwen3-coder:30b", "qwen3-coder:7b"]);
-    }
-
-    #[test]
-    fn an_unserved_name_is_missing() {
-        assert!(matches!(resolve(&FLEET, "llama"), Resolved::Missing));
-        assert!(matches!(resolve(&[], "gpt-oss"), Resolved::Missing));
-    }
-
-    /// V71: both failure paths NAME the alternatives. The old message
-    /// said only that the model was absent, while the fleet's models sat
-    /// right there unmentioned.
-    #[test]
-    fn both_failures_name_what_is_served_and_are_usage_errors() {
-        let missing = arg_err("no fleet host serves 'x' -- served: a, b");
-        assert_eq!(missing.code, 2, "the fleet answered: not a network error");
-        assert!(missing.err.contains("served: a, b"));
-        let ambiguous = arg_err("'q' is ambiguous: q:1, q:2");
-        assert_eq!(ambiguous.code, 2);
-        assert!(ambiguous.err.contains("q:1, q:2"));
     }
 }

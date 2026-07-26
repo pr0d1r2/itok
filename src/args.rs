@@ -177,10 +177,40 @@ fn valued(
         "--window" => o.window = Some(take_count(rest, i)?),
         "--model" => o.model = Some(take_val(rest, i)?),
         "-C" => o.chdir = Some(take_val(rest, i)?),
-        p if p.starts_with('-') => return Err(format!("unknown flag '{p}'")),
+        p if p.starts_with('-') => return Err(unknown(p)),
         p => o.paths.push(p.to_owned()),
     }
     Ok(())
+}
+
+/// The diagnostic for an unrecognized flag.
+///
+/// A flag whose TIER was compiled out is KNOWN, not unknown. Saying
+/// `unknown flag '--ollama'` sends the reader hunting for a typo while
+/// `--help`, printed directly below it, advertises that very flag -- and
+/// `cli.rs` already gets this right for the runtime verbs ("the runtime
+/// verbs need the `session` feature"). The rule was simply never carried
+/// to the tier flags (B11e/V71: a failure says what to DO).
+///
+/// Reaching here with a gated flag PROVES its feature is off: with the
+/// feature on, `boolean`/`apply` match it first and never fall through.
+fn unknown(flag: &str) -> String {
+    match gated(flag) {
+        Some(f) => format!(
+            "{flag} needs the `{f}` feature -- this binary was built \
+             without it: rebuild with `--features {f}`"
+        ),
+        None => format!("unknown flag '{flag}'"),
+    }
+}
+
+/// The feature a gated flag belongs to.
+fn gated(flag: &str) -> Option<&'static str> {
+    match flag {
+        "--bpe" => Some("bpe"),
+        f if f == "--ollama" || f.starts_with("--ollama=") => Some("ollama"),
+        _ => None,
+    }
 }
 
 /// Consume the value after a flag, advancing the cursor.
@@ -329,6 +359,31 @@ mod tests {
         let p = parse(&v(&["--ollama", "SPEC.md"])).ok().unwrap_or_default();
         assert_eq!(p.ollama_hosts, None);
         assert_eq!(p.paths, v(&["SPEC.md"]));
+    }
+
+    /// B11e/V71: a compiled-out flag is KNOWN, and the message names the
+    /// FEATURE plus what to do. `unknown flag` sent the reader hunting for
+    /// a typo while `--help`, printed directly below, advertised the flag.
+    #[test]
+    fn a_gated_flag_names_its_feature_not_a_typo() {
+        for (flag, feature) in [
+            ("--bpe", "bpe"),
+            ("--ollama", "ollama"),
+            ("--ollama=h", "ollama"),
+        ] {
+            let m = unknown(flag);
+            assert!(m.contains(feature), "names the feature: {m}");
+            assert!(!m.contains("unknown flag"), "not a typo: {m}");
+            assert!(m.contains("--features"), "says what to do: {m}");
+        }
+    }
+
+    /// A genuine typo still reads as one -- the gated path must not
+    /// swallow every unrecognized flag.
+    #[test]
+    fn a_real_typo_still_says_unknown() {
+        assert!(unknown("--noshuchthing").contains("unknown flag"));
+        assert_eq!(gated("--nope"), None);
     }
 
     #[cfg(not(feature = "ollama"))]

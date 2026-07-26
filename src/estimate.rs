@@ -26,9 +26,11 @@ pub fn dummy(bytes: u64) -> u64 {
 }
 
 /// Estimate each selected file, biggest-first, capped by `--top`.
-#[must_use]
-pub(crate) fn measure(opts: &Opts, root: &Path) -> Vec<Estimate> {
-    let ests: Vec<Estimate> = select(opts, root)
+pub(crate) fn measure(
+    opts: &Opts,
+    root: &Path,
+) -> Result<Vec<Estimate>, String> {
+    let ests: Vec<Estimate> = select(opts, root)?
         .iter()
         .filter_map(|f| {
             count(&root.join(f), opts.is_bpe()).map(|tokens| Estimate {
@@ -37,7 +39,7 @@ pub(crate) fn measure(opts: &Opts, root: &Path) -> Vec<Estimate> {
             })
         })
         .collect();
-    cap(ests, opts.top)
+    Ok(cap(ests, opts.top))
 }
 
 /// A file's token count on the selected tier. The dummy tier needs only
@@ -76,12 +78,42 @@ pub(crate) fn cap(
 }
 
 /// Explicit paths win; otherwise the git-tracked set (V8).
-pub(crate) fn select(opts: &Opts, root: &Path) -> Vec<String> {
-    if opts.paths.is_empty() {
-        tracked(root)
-    } else {
-        opts.paths.clone()
+pub(crate) fn select(opts: &Opts, root: &Path) -> Result<Vec<String>, String> {
+    select_paths(&opts.paths, root)
+}
+
+/// The selection rule itself, over a bare path list -- `fit` has its own
+/// options struct and would otherwise need a second copy (V64).
+pub(crate) fn select_paths(
+    paths: &[String],
+    root: &Path,
+) -> Result<Vec<String>, String> {
+    if paths.is_empty() {
+        return Ok(tracked(root));
     }
+    for p in paths {
+        usable(&root.join(p), p)?;
+    }
+    Ok(paths.to_vec())
+}
+
+/// An explicit path must be a readable FILE.
+///
+/// V8 keeps this a FLAT fileset -- no recursive walk -- so a directory is
+/// not a small file, it is a category error. Both old behaviours lied:
+/// `bytes()` returned the inode size, and the bpe tier's read failed and
+/// the row was silently DROPPED, so `estimate --bpe src` reported 0 itok
+/// and `fit --window 40k src` emitted `src` as something that fits. A zero
+/// reads as a measurement (V47); B11d.
+fn usable(full: &Path, shown: &str) -> Result<(), String> {
+    let md = std::fs::metadata(full).map_err(|e| format!("{shown}: {e}"))?;
+    if md.is_dir() {
+        return Err(format!(
+            "{shown} is a directory -- itok costs a flat fileset, so name \
+             files, or omit paths for the git-tracked set"
+        ));
+    }
+    Ok(())
 }
 
 /// Files whose estimate exceeds `budget` -- the `--budget` breaches (V16).
@@ -100,6 +132,43 @@ pub(crate) fn over_budget(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// B11d/V47: a DIRECTORY is refused with its reason, never counted.
+    /// Both old behaviours lied -- the dummy tier returned the inode size,
+    /// and the bpe tier's read failed so the row was silently dropped and
+    /// the total read 0 itok, which looks like a measurement of empty.
+    #[test]
+    fn a_directory_argument_is_refused_with_its_reason() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let err = select_paths(&["src".to_owned()], root)
+            .err()
+            .unwrap_or_default();
+        assert!(err.contains("src"), "names the path: {err}");
+        assert!(err.contains("directory"), "names the reason: {err}");
+        assert!(err.contains("flat fileset"), "names the rule: {err}");
+    }
+
+    /// An unreadable path is named too, rather than dropped from the set.
+    #[test]
+    fn a_missing_path_is_named_not_dropped() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let err = select_paths(&["no/such/file".to_owned()], root)
+            .err()
+            .unwrap_or_default();
+        assert!(err.contains("no/such/file"), "{err}");
+    }
+
+    /// Real files still pass, and the tracked default needs no check --
+    /// git only lists files.
+    #[test]
+    fn files_and_the_tracked_default_still_select() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+        assert_eq!(
+            select_paths(&["Cargo.toml".to_owned()], root),
+            Ok(vec!["Cargo.toml".to_owned()])
+        );
+        assert!(select_paths(&[], root).is_ok());
+    }
     use proptest::prelude::*;
 
     #[test]
@@ -117,13 +186,19 @@ mod tests {
         assert_eq!(dummy(1000), 250);
     }
 
+    /// CHANGED by T83, deliberately: a named path that cannot be read is
+    /// an ERROR, not a silent omission. This test previously asserted the
+    /// empty result -- which is the same defect as B11d one field over,
+    /// since a total computed from fewer files than you named understates
+    /// without saying so (V47).
     #[test]
-    fn a_missing_file_is_skipped() {
+    fn a_missing_named_file_is_an_error_not_an_omission() {
         let opts = Opts {
             paths: vec!["no-such-itok-file-xyz".to_owned()],
             ..Default::default()
         };
-        assert!(measure(&opts, Path::new(".")).is_empty());
+        let err = measure(&opts, Path::new(".")).err().unwrap_or_default();
+        assert!(err.contains("no-such-itok-file-xyz"), "{err}");
     }
 
     #[test]

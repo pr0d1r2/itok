@@ -84,8 +84,30 @@ pub(crate) fn usage() -> String {
     let body: String = COMMANDS.iter().map(terse).collect();
     format!(
         "itok -- context-cost estimator\n\n\
-         usage: itok <command> [args]\n\ncommands:\n{body}"
+         usage: itok <command> [args]\n\ncommands:\n{body}{}",
+        tiers()
     )
+}
+
+/// Which optional tiers THIS binary actually has.
+///
+/// The synopses above list every flag itok can offer, and the README block
+/// is frozen against `markdown()` so it must stay build-independent (V40).
+/// So the build-specific honesty lives here, in `--help` only: without it,
+/// a stripped binary prints `unknown flag '--ollama'` immediately above a
+/// synopsis advertising `--ollama` (B11e).
+fn tiers() -> String {
+    let mut on = vec!["bytes/4"];
+    if cfg!(feature = "bpe") {
+        on.push("--bpe (o200k)");
+    }
+    if cfg!(feature = "ollama") {
+        on.push("--ollama (exact)");
+    }
+    if cfg!(feature = "session") {
+        on.push("runtime verbs (trace/top/headroom)");
+    }
+    format!("\ntiers in this build: {}\n", on.join(", "))
 }
 
 fn terse(c: &Command) -> String {
@@ -156,6 +178,29 @@ mod tests {
                 "verb `{v}` has no docs row"
             );
         }
+    }
+
+    /// B11e: `--help` states which tiers this binary HAS, because the
+    /// synopses list every flag itok can offer and the README block is
+    /// frozen build-independently. Without the line, a stripped binary
+    /// advertises what it will then reject.
+    #[test]
+    fn usage_names_the_tiers_this_build_has() {
+        let u = usage();
+        assert!(u.contains("tiers in this build:"));
+        assert!(u.contains("bytes/4"), "the always-present tier");
+        assert_eq!(
+            u.contains("--bpe (o200k)"),
+            cfg!(feature = "bpe"),
+            "the line must track the BUILD, not the synopsis"
+        );
+    }
+
+    /// The frozen block must NOT vary by feature, or the freeze would
+    /// fail under a different feature set (V40).
+    #[test]
+    fn the_markdown_block_is_build_independent() {
+        assert!(!markdown().contains("tiers in this build"));
     }
 
     #[test]

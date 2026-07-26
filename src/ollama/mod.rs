@@ -14,6 +14,7 @@
 use std::time::Duration;
 
 pub(crate) mod hosts;
+pub(crate) mod pick;
 
 const DEFAULT_PORT: &str = "11434";
 

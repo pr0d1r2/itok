@@ -15,7 +15,6 @@ use crate::cli::Output;
 use crate::estimate::count;
 use crate::render::{DUMMY, O200K};
 use crate::units;
-use crate::walk::tracked;
 use std::path::{Path, PathBuf};
 
 /// A parsed fit request. `--window` is required; without it there is no
@@ -42,31 +41,37 @@ fn run(req: &Req) -> Output {
         return Output::usage_err("itok: fit needs --window N".to_owned());
     };
     let root = PathBuf::from(req.chdir.as_deref().unwrap_or("."));
-    let (picked, tokens) = pack(&candidates(req, &root), window);
+    let items = match candidates(req, &root) {
+        Ok(i) => i,
+        Err(e) => return Output::usage_err(format!("itok: {e}")),
+    };
+    let (picked, tokens) = pack(&items, window);
     match req.format {
         Format::Json => Output::ok(json(window, tokens, req.bpe, &picked)),
         Format::Human => Output::ok(path_list(&picked)),
     }
 }
 
+/// A costed candidate list: path and its token cost, in selection order.
+type Candidates = Vec<(String, u64)>;
+
 /// The candidate `(path, cost)` list: explicit paths or the git-tracked
 /// set (V8), each costed on the selected tier, missing files dropped.
 /// `--by size` orders smallest-first to fit the MOST files (V20);
 /// otherwise argv/tracked order is the caller's priority.
-fn candidates(req: &Req, root: &Path) -> Vec<(String, u64)> {
-    let files = if req.paths.is_empty() {
-        tracked(root)
-    } else {
-        req.paths.clone()
-    };
-    let mut items: Vec<(String, u64)> = files
+fn candidates(req: &Req, root: &Path) -> Result<Candidates, String> {
+    // The same selection rule every other verb uses (V64). `fit` carried
+    // its own copy, which is why it emitted `src` as a path that "fits"
+    // after counting a directory as 0 (B11d).
+    let files = crate::estimate::select_paths(&req.paths, root)?;
+    let mut items: Candidates = files
         .iter()
         .filter_map(|f| count(&root.join(f), req.bpe).map(|c| (f.clone(), c)))
         .collect();
     if req.by_size {
         items.sort_by_key(|(_, c)| *c);
     }
-    items
+    Ok(items)
 }
 
 /// Greedy pack: walk the candidates in order and take each whose cost

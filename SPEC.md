@@ -1132,10 +1132,10 @@ T77|.|the advice block: V97's two levers ONLY, mid-session eviction NAMED as a t
 T78|x|`--ollama=HOSTS`, & the `=` form generally for optional-value flags ∴ the documented bare `host` becomes reachable; heuristic kept as convenience; tests pin a BARE host & a bare IP|V101,V24,V25
 T79|.|remote-tier method label names the ENDPOINT (`exact via HOST`) ∴ a count from an unintended tokenizer is VISIBLE; needs `Method.label` to carry an owned endpoint, ⊥ a `&'static str`|V101,V3,V22
 T80|x|`--model` narrowing over an `--ollama` fleet: enumerate ONCE, then exact > `:latest` > unique prefix; ambiguous & not-found errors NAME the candidates. Reuses `fleet_all`'s enumeration, ⊥ a second fetch|V6,V22,V71
-T81|.|carry `--model` resolution to `estimate --ollama` (B11a): ONE resolver shared w/ `discover`, ⊥ a second copy|V6,V64
-T82|.|name the SKIPPED fleet hosts (B11b): report answered-vs-named ∴ a partial union ⊥ reads as whole, & `no fleet host serves X` says how many answered|V44
-T83|.|a DIRECTORY arg is REFUSED w/ its reason, ⊥ counted as 0 (B11d); `fit` never emits an unmeasured path|V47,V8
-T84|.|a feature-gated flag is KNOWN, ⊥ unknown (B11e): the diagnostic names the FEATURE + how to get it, & the docs registry marks gated tiers ∴ `--help` ⊥ advertises what this build lacks|V71,V23,V40
+T81|x|carry `--model` resolution to `estimate --ollama` (B11a): ONE resolver shared w/ `discover`, ⊥ a second copy|V6,V64
+T82|x|name the SKIPPED fleet hosts (B11b): report answered-vs-named ∴ a partial union ⊥ reads as whole, & `no fleet host serves X` says how many answered|V44
+T83|x|a DIRECTORY arg is REFUSED w/ its reason, ⊥ counted as 0 (B11d); `fit` never emits an unmeasured path|V47,V8
+T84|x|a feature-gated flag is KNOWN, ⊥ unknown (B11e): the diagnostic names the FEATURE + how to get it, & the docs registry marks gated tiers ∴ `--help` ⊥ advertises what this build lacks|V71,V23,V40
 T85|.|`--model` comma-list per the §I clause|V6,V24
 T86|.|`headroom --task N` -> `tasks left`; arithmetic only|V91,V93,V59
 T87|.|`total` estimator per V102: fit fixed-overhead + scale from transcript deltas, report band + `n`, refuse a verdict inside the band; SUPERSEDES T36's clean-sample factor|V102,V48,V44

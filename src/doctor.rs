@@ -11,7 +11,7 @@ use crate::cli::Output;
 use crate::doctorfmt::{human, json, Health};
 use crate::estimate::dummy;
 use crate::render::Method;
-use crate::walk::{bytes, tracked};
+use crate::walk::bytes;
 use std::path::{Path, PathBuf};
 
 pub(crate) fn doctor(rest: &[String]) -> Output {
@@ -33,7 +33,10 @@ fn run(opts: &Opts) -> Output {
     match crate::models::tier(opts.model.as_deref(), &root) {
         Ok(model) => {
             let window = opts.window.or(model.window);
-            Output::ok(assess(opts, &root, model.encoding, window))
+            match assess(opts, &root, model.encoding, window) {
+                Ok(out) => Output::ok(out),
+                Err(e) => Output::usage_err(format!("itok: {e}")),
+            }
         }
         Err(e) => Output::usage_err(format!("itok: {e}")),
     }
@@ -44,17 +47,15 @@ fn assess(
     root: &Path,
     method: &'static Method,
     window: Option<u64>,
-) -> String {
-    let files = if opts.paths.is_empty() {
-        tracked(root)
-    } else {
-        opts.paths.clone()
-    };
+) -> Result<String, String> {
+    // ONE selection rule, shared (V64): doctor used to carry its own copy,
+    // which is how it kept B11d after estimate was fixed.
+    let files = crate::estimate::select(opts, root)?;
     let h = health(&files, root, window, method);
-    match opts.format {
+    Ok(match opts.format {
         Format::Json => json(&h),
         Format::Human => human(&h),
-    }
+    })
 }
 
 fn health(

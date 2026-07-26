@@ -31,16 +31,25 @@ fn graded(opts: &Opts) -> Output {
     let root = PathBuf::from(opts.chdir.as_deref().unwrap_or("."));
     #[cfg(feature = "ollama")]
     if opts.is_ollama() {
-        return match exact_measure(opts, &root) {
-            Ok(ests) => present(&ests, opts),
-            Err(e) => Output {
-                out: String::new(),
-                err: format!("itok: {e}\n"),
-                code: 7,
-            },
-        };
+        return exact(opts, &root);
     }
-    present(&measure(opts, &root), opts)
+    match measure(opts, &root) {
+        Ok(ests) => present(&ests, opts),
+        Err(e) => Output::usage_err(format!("itok: {e}")),
+    }
+}
+
+/// The exact tier's run, with its failure carrying the exit code it earns.
+#[cfg(feature = "ollama")]
+fn exact(opts: &Opts, root: &Path) -> Output {
+    match exact_measure(opts, root) {
+        Ok(ests) => present(&ests, opts),
+        Err(f) => Output {
+            out: String::new(),
+            err: format!("itok: {}\n", f.msg),
+            code: f.code,
+        },
+    }
 }
 
 /// Render the estimates and apply `--budget`; shared by every tier.
@@ -57,8 +66,28 @@ fn present(ests: &[Estimate], opts: &Opts) -> Output {
 /// The exact tier (V22): each file's TRUE count from a local model's own
 /// tokenizer via ollama. Fallible -- a missing host/model aborts the whole
 /// run with exit 7 rather than a partial or estimated number.
+/// An exact-tier failure and the exit code it EARNS.
+///
+/// A network failure is 7; a bad `--model` is 2. Everything used to be 7,
+/// which made a typo indistinguishable from an unreachable host -- so a CI
+/// retry loop would spin on the typo. `From<String>` keeps 7 as the
+/// default, so existing `?` sites are unchanged and only the argument path
+/// opts into 2 (the exit table's own split).
 #[cfg(feature = "ollama")]
-fn exact_measure(opts: &Opts, root: &Path) -> Result<Vec<Estimate>, String> {
+struct Fail {
+    msg: String,
+    code: u8,
+}
+
+#[cfg(feature = "ollama")]
+impl From<String> for Fail {
+    fn from(msg: String) -> Self {
+        Self { msg, code: 7 }
+    }
+}
+
+#[cfg(feature = "ollama")]
+fn exact_measure(opts: &Opts, root: &Path) -> Result<Vec<Estimate>, Fail> {
     // Counting needs ONE host+model; a fleet's union is the doctor concept
     // (V24). Use the first resolved host.
     let fleet =
@@ -66,7 +95,11 @@ fn exact_measure(opts: &Opts, root: &Path) -> Result<Vec<Estimate>, String> {
     let base = fleet.first().ok_or_else(|| "no ollama host".to_owned())?;
     let model = pick_model(opts, base)?;
     let mut ests = Vec::new();
-    for f in crate::estimate::select(opts, root) {
+    // A directory / unreadable path is the USER's error, not the
+    // network's, so it keeps exit 2 rather than inheriting 7 (B11d).
+    let files = crate::estimate::select(opts, root)
+        .map_err(|msg| Fail { msg, code: 2 })?;
+    for f in files {
         let text = std::fs::read_to_string(root.join(&f))
             .map_err(|e| format!("{f}: {e}"))?;
         let tokens = crate::ollama::count(base, &model, &text)?;
@@ -78,13 +111,36 @@ fn exact_measure(opts: &Opts, root: &Path) -> Result<Vec<Estimate>, String> {
 /// The model to tokenize with: `--model` if given, else the host's first
 /// served model (the common single-model case).
 #[cfg(feature = "ollama")]
-fn pick_model(opts: &Opts, base: &str) -> Result<String, String> {
-    match &opts.model {
-        Some(m) => Ok(m.clone()),
-        None => crate::ollama::models(base)?
-            .into_iter()
-            .next()
-            .ok_or_else(|| "ollama host serves no models".to_owned()),
+fn pick_model(opts: &Opts, base: &str) -> Result<String, Fail> {
+    let served = crate::ollama::models(base)?;
+    let names: Vec<&str> = served.iter().map(String::as_str).collect();
+    let Some(want) = opts.model.as_deref() else {
+        return names
+            .first()
+            .map(|m| (*m).to_owned())
+            .ok_or_else(|| "ollama host serves no models".to_owned().into());
+    };
+    resolved(want, &names)
+}
+
+/// The SAME resolution `doctor` uses (V6), reached through the shared
+/// module rather than reimplemented -- B11a was the second copy's absence,
+/// not its divergence: `estimate --ollama --model gpt-oss` posted the
+/// literal name and 404'd while `doctor` resolved it (V64).
+#[cfg(feature = "ollama")]
+fn resolved(want: &str, names: &[&str]) -> Result<String, Fail> {
+    use crate::ollama::pick::{self, Resolved};
+    match pick::resolve(names, want) {
+        Resolved::One(m) => Ok(m.to_owned()),
+        Resolved::Ambiguous(c) => Err(Fail {
+            msg: pick::ambiguous_msg(want, &c),
+            code: 2,
+        }),
+        // One host here (counting needs one tokenizer), so answered = 1.
+        Resolved::Missing => Err(Fail {
+            msg: pick::missing_msg(want, names, 1, 1),
+            code: 2,
+        }),
     }
 }
 
