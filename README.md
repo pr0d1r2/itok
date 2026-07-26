@@ -168,6 +168,14 @@ check [-C dir] [--format human|json]
 
 Gate registered paths against `.context-limits` (pinned `--bpe`, so the verdict is deterministic). Exit 1 on any breach.
 
+### `guard`
+
+```text
+guard
+```
+
+Hook adapter for a harness: reads one hook payload on stdin, writes a decision on stdout, one process per call. Decides from `.context-policy` -- per-glob and per-tool budgets, with pins allowed absolutely. No policy file means allow, silently, so enforcement never self-enables. The decision is in the JSON, never in the exit code.
+
 ### `fit`
 
 ```text

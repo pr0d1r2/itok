@@ -26,13 +26,17 @@ mod estcmd;
 pub mod estimate;
 mod fitcmd;
 mod gitref;
+mod glob;
+mod guardcmd;
 #[cfg(feature = "session")]
 mod headroom;
+mod hook;
 pub mod json;
 mod logcmd;
 mod models;
 #[cfg(feature = "ollama")]
 mod ollama;
+mod policy;
 pub mod render;
 #[cfg(feature = "session")]
 pub mod session;

@@ -45,6 +45,11 @@ const COMMANDS: &[Command] = &[
         blurb: "Gate registered paths against `.context-limits` (pinned `--bpe`, so the verdict is deterministic). Exit 1 on any breach.",
     },
     Command {
+        name: "guard",
+        synopsis: "guard",
+        blurb: "Hook adapter for a harness: reads one hook payload on stdin, writes a decision on stdout, one process per call. Decides from `.context-policy` -- per-glob and per-tool budgets, with pins allowed absolutely. No policy file means allow, silently, so enforcement never self-enables. The decision is in the JSON, never in the exit code.",
+    },
+    Command {
         name: "fit",
         synopsis: "fit --window N [--by size] [--bpe] [--format human|json] [-C dir] [paths...]",
         blurb: "Greedy subset of files that fits a token window; emits a pipeable path list (git-tracked by default). `itok fit --window 200k src/ | xargs cat` builds a context bundle under budget.",

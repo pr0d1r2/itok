@@ -3,9 +3,11 @@
 //! non-prefix typo suggests the nearest verb but never runs it. Canonical
 //! names are the full words; prefixes are convenience, never promised.
 //!
-//! Only READ-ONLY verbs are inferred. A mutating verb (none yet) is
-//! excluded from this table and must be spelled in full, so a
-//! fat-fingered prefix can never trigger a write.
+//! Only READ-ONLY verbs are inferred. A verb that DECIDES is excluded from
+//! that table and must be spelled in full, so a fat-fingered prefix can
+//! never trigger one. `guard` is the first: it is a gate (V53), and `itok
+//! g` resolving to a gate is exactly the accident this rule was written
+//! for while there was still nothing to exclude.
 //!
 //! `edit_distance_1` is reimplemented here rather than imported from the
 //! host's repo-guard -- zero host deps (V13), so this survives extraction.
@@ -25,6 +27,8 @@ pub(crate) enum Verb {
     Headroom,
     Calibrate,
     Cap,
+    /// The runtime gate (V52/V53). NOT prefix-inferred -- see `EXACT`.
+    Guard,
 }
 
 /// Read-only verbs, the only ones prefix-inference resolves. `fit` selects
@@ -44,6 +48,10 @@ pub(crate) const VERBS: &[(&str, Verb)] = &[
     ("cap", Verb::Cap),
 ];
 
+/// Verbs that must be spelled IN FULL. Never prefix-matched, never
+/// suggested as a completion -- a gate is not something a typo reaches.
+pub(crate) const EXACT: &[(&str, Verb)] = &[("guard", Verb::Guard)];
+
 /// The outcome of resolving a verb token.
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum Resolution {
@@ -53,6 +61,11 @@ pub(crate) enum Resolution {
 }
 
 pub(crate) fn resolve(input: &str) -> Resolution {
+    // Full spelling of a gate wins before inference is even attempted, and
+    // nothing else can reach it.
+    if let Some(&(_, v)) = EXACT.iter().find(|(n, _)| *n == input) {
+        return Resolution::Verb(v);
+    }
     resolve_in(input, VERBS)
 }
 

@@ -149,6 +149,9 @@ fn dispatch(v: Verb, rest: &[String], input: Input) -> Output {
         // The one verb that reads a stream, so the one place `input` is
         // called at all (V49: `cap` is a pipe filter, not a file reader).
         Verb::Cap => crate::capcmd::cap(rest, &input()),
+        // The other stream reader, and for the same reason: the harness
+        // hands the payload over on stdin (V52).
+        Verb::Guard => crate::guardcmd::guard(&input()),
         Verb::Estimate => crate::estcmd::estimate(rest),
         Verb::Doctor => crate::doctor::doctor(rest),
         Verb::Diff => crate::diffcmd::diff(rest),
