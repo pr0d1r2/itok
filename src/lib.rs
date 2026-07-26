@@ -12,6 +12,7 @@ mod args;
 pub mod bpe;
 #[cfg(feature = "session")]
 mod calibrate;
+mod capcmd;
 mod checkcmd;
 pub mod cli;
 mod diffargs;

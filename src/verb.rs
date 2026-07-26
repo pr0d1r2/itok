@@ -24,6 +24,7 @@ pub(crate) enum Verb {
     Top,
     Headroom,
     Calibrate,
+    Cap,
 }
 
 /// Read-only verbs, the only ones prefix-inference resolves. `fit` selects
@@ -40,6 +41,7 @@ pub(crate) const VERBS: &[(&str, Verb)] = &[
     ("top", Verb::Top),
     ("headroom", Verb::Headroom),
     ("calibrate", Verb::Calibrate),
+    ("cap", Verb::Cap),
 ];
 
 /// The outcome of resolving a verb token.
@@ -129,12 +131,13 @@ mod tests {
         assert_eq!(resolve("f"), Resolution::Verb(Verb::Fit));
     }
 
-    /// V6: `calibrate` and `check` share a `c`, so the bare prefix must
-    /// ERROR with candidates rather than silently picking one. The verb
-    /// name is specced in the interface section, so the collision is accepted and HANDLED --
-    /// what V6 forbids is the silent pick, not the ambiguity.
+    /// V6: `calibrate`, `check` and `cap` share a `c`, so the bare prefix
+    /// must ERROR with candidates rather than silently picking one. Each
+    /// verb name is specced in the interface section, so the collision is
+    /// accepted and HANDLED -- what V6 forbids is the silent pick, not the
+    /// ambiguity.
     #[test]
-    fn c_is_ambiguous_between_calibrate_and_check() {
+    fn c_is_ambiguous_across_the_three_c_verbs() {
         let got = match resolve("c") {
             Resolution::Ambiguous(mut c) => {
                 c.sort_unstable();
@@ -142,10 +145,24 @@ mod tests {
             }
             other => vec![format!("{other:?}").leak() as &str],
         };
-        assert_eq!(got, vec!["calibrate", "check"]);
+        assert_eq!(got, vec!["calibrate", "cap", "check"]);
         // Longer prefixes still resolve, so the cost is one keystroke.
         assert_eq!(resolve("cal"), Resolution::Verb(Verb::Calibrate));
         assert_eq!(resolve("ch"), Resolution::Verb(Verb::Check));
+        assert_eq!(resolve("cap"), Resolution::Verb(Verb::Cap));
+    }
+
+    /// The COST of adding `cap`, pinned rather than discovered later: `ca`
+    /// used to resolve to `calibrate` and is now ambiguous. V6 promises
+    /// canonical FULL names, never a particular prefix, so this is a
+    /// legitimate change -- but it is a change, and an ambiguity that
+    /// appeared silently would be exactly the surprise V6 forbids.
+    #[test]
+    fn adding_cap_made_ca_ambiguous_rather_than_a_silent_pick() {
+        assert_eq!(
+            resolve("ca"),
+            Resolution::Ambiguous(vec!["calibrate", "cap"])
+        );
     }
 
     /// Longer prefixes still resolve, so the ambiguity costs nothing.

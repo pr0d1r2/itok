@@ -208,6 +208,14 @@ calibrate [<session>] [-h] [--format human|json] [-C dir]
 
 What this session's context actually cost, against what itok estimated: a fixed overhead the transcript cannot see (system prompt + tool schemas) and a scale from `bytes/4` to real tokens. Reports the error BAND measured on turns the fit never saw, plus `n` -- never a bare factor. Too few turns reports `n` and no factor. The scale absorbs message framing and unrecorded reasoning, so it is not a tokenizer ratio and is derived per session. Report-only.
 
+### `cap`
+
+```text
+cap [N] [--footer human|json]
+```
+
+Token-budget filter for a pipe: reads stdin, emits the longest whole-line prefix that fits N tokens, and ANNOUNCES the cut in a footer -- what was kept, what was elided, and the line and byte offset to resume from, so the next read continues rather than restarting (the line number is exact on any stream; the byte offset is of the decoded text, so it is for UTF-8 input). `head` truncates silently by lines or bytes; this truncates by tokens and says so. Without N nothing is cut and the footer just reports the cost. Report-only, exit 0.
+
 ### `docs`
 
 ```text

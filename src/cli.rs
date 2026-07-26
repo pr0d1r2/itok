@@ -52,16 +52,41 @@ impl Output {
     }
 }
 
-/// Run itok over `args` (argv without the program name).
+/// Where a filter verb's input comes from. A closure, not a `String`, so
+/// the process's stdin is touched ONLY when the resolved verb actually
+/// reads it -- and so a test can drive `cap` with fixed input instead of
+/// whatever the test runner happens to attach. Without that, the totality
+/// proptest below would block on a terminal the moment it generated `cap`.
+pub type Input<'a> = &'a dyn Fn() -> String;
+
+/// Run itok over `args` (argv without the program name), reading stdin if
+/// the verb calls for it.
 #[must_use]
 pub fn run(args: &[String]) -> Output {
+    run_with(args, &stdin_text)
+}
+
+/// The same run, over a supplied input source (V89: still a pure function
+/// of its inputs -- the impurity is now the caller's to hand in).
+#[must_use]
+pub fn run_with(args: &[String], input: Input) -> Output {
     match args.split_first() {
         None => Output::usage(crate::docs::usage()),
-        Some((first, rest)) => head(first, rest),
+        Some((first, rest)) => head(first, rest, input),
     }
 }
 
-fn head(first: &str, rest: &[String]) -> Output {
+/// stdin as lossy UTF-8. A filter takes whatever the pipe hands it: a
+/// binary blob is counted and passed through, never a crash and never an
+/// error the caller did not ask for (V49 -- `cmd | itok cap 10k` must work
+/// on any `cmd`).
+fn stdin_text() -> String {
+    let mut buf = Vec::new();
+    let _ = std::io::Read::read_to_end(&mut std::io::stdin().lock(), &mut buf);
+    String::from_utf8_lossy(&buf).into_owned()
+}
+
+fn head(first: &str, rest: &[String], input: Input) -> Output {
     match first {
         "--version" | "-V" => Output::ok(format!("itok {VERSION}\n")),
         "--help" | "-h" => Output::ok(crate::docs::usage()),
@@ -70,20 +95,25 @@ fn head(first: &str, rest: &[String]) -> Output {
         // markdown reference to stdout; `itok docs > README.md` is the
         // user's redirect -- the tool never writes (V40).
         "docs" => Output::ok(crate::docs::markdown()),
-        verb => run_verb(verb, rest),
+        verb => run_verb(verb, rest, input),
     }
 }
 
-fn run_verb(verb: &str, rest: &[String]) -> Output {
-    handle(resolve(verb), verb, rest)
+fn run_verb(verb: &str, rest: &[String], input: Input) -> Output {
+    handle(resolve(verb), verb, rest, input)
 }
 
 /// Map a resolution to an Output. Split from `run_verb` so every arm --
 /// including Ambiguous, which `resolve` cannot yet produce with one verb
 /// -- is unit-testable without faking a second verb.
-fn handle(res: Resolution, verb: &str, rest: &[String]) -> Output {
+fn handle(
+    res: Resolution,
+    verb: &str,
+    rest: &[String],
+    input: Input,
+) -> Output {
     match res {
-        Resolution::Verb(v) => dispatch(v, rest),
+        Resolution::Verb(v) => dispatch(v, rest, input),
         Resolution::Ambiguous(c) => Output::usage(ambiguous_msg(verb, &c)),
         Resolution::Unknown(n) => Output::usage(unknown_msg(verb, &n)),
     }
@@ -114,8 +144,11 @@ fn runtime(_v: Verb, _rest: &[String]) -> Output {
     )
 }
 
-fn dispatch(v: Verb, rest: &[String]) -> Output {
+fn dispatch(v: Verb, rest: &[String], input: Input) -> Output {
     match v {
+        // The one verb that reads a stream, so the one place `input` is
+        // called at all (V49: `cap` is a pipe filter, not a file reader).
+        Verb::Cap => crate::capcmd::cap(rest, &input()),
         Verb::Estimate => crate::estcmd::estimate(rest),
         Verb::Doctor => crate::doctor::doctor(rest),
         Verb::Diff => crate::diffcmd::diff(rest),
@@ -155,6 +188,12 @@ mod tests {
 
     fn args(parts: &[&str]) -> Vec<String> {
         parts.iter().map(|s| (*s).to_owned()).collect()
+    }
+
+    /// An empty input source: the tests that are not about `cap` must
+    /// never reach for the runner's stdin.
+    fn nothing() -> String {
+        String::new()
     }
 
     #[test]
@@ -221,7 +260,7 @@ mod tests {
         // resolve() can't yet yield Ambiguous (one verb); handle() maps
         // it, so drive that arm directly with a synthetic resolution.
         let res = Resolution::Ambiguous(vec!["diff", "doctor"]);
-        let o = handle(res, "d", &[]);
+        let o = handle(res, "d", &[], &nothing);
         assert_eq!(o.code, 2);
         assert!(o.err.contains("ambiguous"));
         assert!(o.err.contains("diff") && o.err.contains("doctor"));
@@ -243,6 +282,22 @@ mod tests {
         assert!(out("trace").contains("\"ts\":"), "trace");
     }
 
+    /// `cap` is the only verb fed from the input source, and it is fed the
+    /// SUPPLIED one -- the wiring a lib test can check without a process.
+    #[test]
+    fn cap_reads_the_input_source_and_announces_its_cut() {
+        let text = || "one\ntwo\nthree\n".to_owned();
+        let o = run_with(&args(&["cap", "2"]), &text);
+        assert_eq!(o.code, 0);
+        assert!(
+            o.out.starts_with("one\n"),
+            "body passes through: {:?}",
+            o.out
+        );
+        assert!(o.out.contains("[itok cap:"), "footer: {:?}", o.out);
+        assert!(o.out.contains("resume:"), "selector: {:?}", o.out);
+    }
+
     fn arg() -> impl Strategy<Value = String> {
         prop_oneof![
             Just("estimate".to_owned()),
@@ -259,9 +314,14 @@ mod tests {
 
         /// Totality (V245): no arg vector ever panics; the code is one
         /// itok actually returns.
+        ///
+        /// Driven through `run_with`, not `run`: a generated `cap` would
+        /// otherwise read the runner's stdin, which is a terminal under
+        /// plain `cargo test` -- a hang that appears only on some seeds is
+        /// the flake class V68 forbids suppressing later.
         #[test]
         fn run_never_panics(a in prop::collection::vec(arg(), 0..7)) {
-            let o = run(&a);
+            let o = run_with(&a, &nothing);
             prop_assert!(o.code == 0 || o.code == 1 || o.code == 2);
         }
     }

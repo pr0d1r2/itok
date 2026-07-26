@@ -137,6 +137,25 @@ fn fit_without_a_window_is_a_usage_error() {
         .stderr(predicate::str::contains("--window"));
 }
 
+// `cap` is the only verb fed by a STREAM, so it is the only one whose
+// wiring a lib test cannot reach: `run` takes its input as a closure, and
+// only `main` binds that closure to the process's real stdin (V49).
+#[test]
+fn cap_filters_real_stdin_and_announces_the_cut() {
+    itok()
+        .args(["cap", "2"])
+        .write_stdin("aaaaaaa\nbbbbbbb\nccccccc\n")
+        .assert()
+        .success()
+        .stdout(
+            predicate::str::starts_with("aaaaaaa\n")
+                .and(predicate::str::contains("ccccccc").not())
+                .and(predicate::str::contains(
+                    "resume: line 2 (byte offset 8)",
+                )),
+        );
+}
+
 // V38: the ollama network backend is CASSETTE-REPLAYED here -- a local
 // stub serves the recorded responses (tests/fixtures/ollama.json, standard
 // vcr-cassette format) so the full path (cli -> estcmd/discover -> ureq ->

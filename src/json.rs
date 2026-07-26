@@ -8,7 +8,7 @@ use crate::estimate::Estimate;
 use crate::render::Method;
 
 /// The unit, spelled out for machines (the human table uses `itok`).
-const UNIT: &str = "input_tokens";
+pub(crate) const UNIT: &str = "input_tokens";
 
 /// One JSONL object for a file's estimate.
 #[must_use]

@@ -1093,7 +1093,7 @@ T35|.|fan-out rollup: ledger keyed by session, sidechain/subagent sessions rolle
 T36|x|`calibrate` verb: factor + `n` reported, application opt-in & labelled. DELIVERED by T87 w/ a BETTER method (a 2-parameter fit, ⊥ single-load turns) ∴ closed here rather than left declaring a superseded mechanism as open work — a dead row reads as law (V28/V69)|V48,V4,V102
 T37|.|DOGFOOD: run `trace`/`top`/`calibrate` over itok's OWN dev sessions; the measured waste (re-read, stale, cache-bust) sets M6's default thresholds, ⊥ guessed ones|V42,V15
 T38|.|`--cost` rendering: rate column in `.context-models`, cache-split aware; missing rate ⇒ no column|V61,V11
-T39|.|`cap` verb: stdin→stdout token filter + ANNOUNCED elision footer (human/json) carrying a resume selector|V49,V51
+T39|x|`cap` verb: stdin→stdout token filter + ANNOUNCED elision footer (human/json) carrying a resume selector|V49,V51
 T40|.|reduction ladder rungs `strip`·`dedup`·`elide`·`outline`: applied lossless→lossiest, stop at budget, applied rungs named in the footer; lossy rungs opt-in|V50
 T41|.|`cap` determinism + resume round-trip tests: same input ⇒ same cut; footer selector actually continues (proptest the tail)|V51,V5
 T42|.|`.context-policy` parser: per-glob & per-tool budgets · pins · fuse tiers; reuses the V18 unit grammar & existing glob semantics; absent ⇒ no enforcement|V57,V18,V53
