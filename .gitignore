@@ -1,3 +1,10 @@
 /target
 /.direnv
 hk.local.pkl
+
+# Harness transcripts hold real conversation content -- file bodies,
+# message text, whatever a hook printed. One must never be committed
+# (V45), and git history is forever. Curated fixtures are exempt: they
+# are hand-written, synthetic, and the tests need them.
+*.jsonl
+!tests/fixtures/**/*.jsonl

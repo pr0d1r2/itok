@@ -79,3 +79,56 @@ fn no_debug_macros_left_behind() {
         }
     }
 }
+
+/// A harness transcript must never be committed (V45). `.gitignore`
+/// catches the common path, but a rename defeats a filename pattern --
+/// so this checks CONTENT, which a rename cannot change.
+///
+/// The signature is deliberately narrow: a `sessionId` field beside the
+/// per-turn token accounting only a real transcript carries. itok's own
+/// sources discuss those field names in prose, so the test reads TRACKED
+/// DATA FILES and skips `.rs` and `.md`, where the words are the subject
+/// rather than the payload.
+/// Repo-relative paths of tracked files that could carry a payload.
+/// `.rs` and `.md` are skipped: itok's own sources and spec DISCUSS these
+/// field names in prose, where the words are the subject rather than the
+/// content.
+fn tracked_data_files(root: &Path) -> Vec<String> {
+    let Ok(out) = std::process::Command::new("git")
+        .args(["ls-files", "-z"])
+        .current_dir(root)
+        .output()
+    else {
+        return Vec::new(); // no git here; the gate runs this elsewhere
+    };
+    String::from_utf8_lossy(&out.stdout)
+        .split('\0')
+        .filter(|s| !s.is_empty())
+        .filter(|s| !(s.ends_with(".rs") || s.ends_with(".md")))
+        .map(str::to_owned)
+        .collect()
+}
+
+/// A `sessionId` beside the per-turn token accounting: the pair only a
+/// real transcript carries.
+fn looks_like_a_transcript(text: &str) -> bool {
+    text.contains("\"sessionId\"")
+        && text.contains("\"cache_read_input_tokens\"")
+}
+
+/// A harness transcript must never be committed (V45). `.gitignore`
+/// catches the common path, but a rename defeats a filename pattern --
+/// so this checks CONTENT, which a rename cannot change.
+#[test]
+fn no_harness_transcript_is_committed() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    for rel in tracked_data_files(root) {
+        let text = std::fs::read_to_string(root.join(&rel)).unwrap_or_default();
+        assert!(
+            !looks_like_a_transcript(&text),
+            "{rel} looks like a harness transcript -- it carries real \
+             conversation content and must not be committed (V45). Use a \
+             synthetic fixture instead."
+        );
+    }
+}

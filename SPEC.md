@@ -424,13 +424,17 @@ API `usage` ∴ ACTUAL, ⊥ estimate — the closed loop for free. itok NEVER
 writes/moves/mutates it. FOREIGN & unversioned schema ∴ parse
 defensively: unknown fields ignored, malformed record SKIPPED w/ a
 counted total, ⊥ crash, ⊥ a hard schema assert. ONE reader module,
-harness-PLUGGABLE (a new harness = a new reader, ⊥ a new tool).
+harness-PLUGGABLE (a new harness = a new reader, ⊥ a new tool). The file
+APPENDS LIVE while a session runs (measured: 1483→1496→1499 lines across
+3 consecutive reads) ∴ read a SNAPSHOT & tolerate a TORN TAIL — the last
+line MAY be half-written. Two reads a second apart otherwise disagree, &
+a report-only verb that contradicts ITSELF is broken (V5, one level up).
 V44: **the ledger is a LOWER BOUND & says so** — V3's honesty rule on
 the runtime axis. Load events cannot see system prompt, tool schemas,
 `CLAUDE.md`, or prior turns ∴ report `accounted` vs `total` & label the
-gap `unaccounted`; NEVER silently attribute the remainder. Where real
-`usage` is present the TOTAL is exact & only the ATTRIBUTION is partial —
-say which. Every number names its method (V3): `ledger(actual)` ≠
+gap `unaccounted`; NEVER silently attribute the remainder. MEASURED: `usage` is on 100% of assistant
+records (495/495) ∴ the TOTAL is EXACT & only the ATTRIBUTION is partial
+— say which, & ⊥ hedge the total as though it were estimated. Every number names its method (V3): `ledger(actual)` ≠
 `ledger(bytes/4)`.
 V45: **content NEVER enters the ledger & never leaves the box.** Record
 path · content hash · count · ts · tool · session; ⊥ file bodies, ⊥
@@ -697,6 +701,32 @@ every verdict by hand. ONLY "no nix in CI" is superseded. What CI cannot
 yet validate (matrix · MSRV · caching · SHA-pinned actions · publish) is
 LISTED in the workflow, ⊥ silently absent — a gap you can read is ⊥ the
 same failure as a gap you cannot (V44's honesty rule, on infrastructure).
+V76: **the transcript records what was BILLED, ⊥ what exists on disk.**
+A tool result is TRUNCATED before it enters context & the overflow is
+spilled to a side file: MEASURED, `persistedOutputSize` 5,749,032 bytes
+vs `stdout` 30,000 chars — the same event, 190x apart. The CONTEXT COST
+is the truncated content ∴ NEVER substitute an on-disk size for a load
+size; that direction overcounts by orders of magnitude & would make the
+ledger confidently wrong (V3). Corollary: tool-result shapes are
+TOOL-SPECIFIC & sometimes a bare STRING, ⊥ an object — there is no
+uniform load record to key on (V43's defensive parse is load-bearing,
+⊥ decoration).
+V77: **session snapshots are CONTENT-ADDRESSED & cached OUTSIDE the
+tree.** key = hash of the COMPLETE-LINE PREFIX (⊥ the whole file, which
+changes on every append) ∴ a re-run w/ no new turns hits the SAME key &
+does ZERO work — idempotent BY CONSTRUCTION, ⊥ by a staleness check.
+This extends V19's per-blob-hash rule ("a blob is never re-estimated")
+from blobs to sessions. Cache lives in the XDG cache dir, NEVER the repo:
+transcripts carry real content (V45) & OUTSIDE-THE-TREE beats gitignored
+∵ a rename defeats a filename pattern but cannot reach a directory git
+does ⊥ track. BOUNDED per session — a cache that only grows is a disk
+leak wearing a nice name.
+V78: **the LOAD CLASSES are tool results AND attachments.** Hook output,
+reminders & injected context are loads too: MEASURED, 266 `hook_success`
+attachments ≈ 45k itok in one session — invisible today & fully
+attributable w/o storing any content (V45). Counting only tool results
+would under-report the accounted share & inflate `unaccounted` (V44)
+while the data sat right there.
 
 ## §T TASKS
 
@@ -742,7 +772,10 @@ T26|x|public-clean provenance: scrub SPEC + src comments of origin-repo names & 
 T27|x|bare-rust `.github/workflows/ci.yml`: fmt·clippy·test·`--features ollama`·`llvm-cov --fail-under-lines 98`, `fetch-depth:0`, no nix/uow|V39,V31,V38
 T28|x|assemble README = hand narrative + the `itok docs` reference block + badges (post-ORG); `CHANGELOG.md`; crate rustdoc for docs.rs|V39,V40,V15
 T29|x|`itok docs` verb: ONE command registry (verb·synopsis·flags·exit) renders `--help` + a markdown reference; read-only to stdout; guard diffs it vs README ∴ docs can't rot|V40,V6,V9
-T30|.|session reader module: harness-PLUGGABLE, defensive JSONL parse → load events; unknown fields ignored, malformed records skipped & COUNTED; ⊥ writes to the transcript|V43,V45
+T30|.|session reader module: harness-PLUGGABLE, defensive JSONL parse → load events; unknown fields ignored, malformed records skipped & COUNTED; torn tail tolerated; ⊥ writes to the transcript|V43,V45,V76
+T30a|.|content-addressed snapshot cache (XDG, outside the tree, bounded, idempotent by construction) — the stable view `trace`/`top` read|V77,V19
+T30b|.|synthetic fixtures under `tests/fixtures/session/`: minimal · tool-shapes · truncated · torn-tail · weird (bare-string result, null isSidechain, unknown type). Hand-written & tiny; a REAL transcript is ⊥ committed (V45)|V43,V45,V76
+T30c|.|attachment load class: hook output / reminders / injected context counted beside tool results|V78,V44
 T31|.|`trace` verb: 1 line/load event, chronological, `-n`·`--since`·`--reverse`·json|V46,V9,V59
 T32|.|`top` verb: ranked occupancy, `-h`·`-s`·`--top N`, dup + stale columns, `-- <path>` per-path attribution (⊥ a `blame` verb)|V46,V59
 T33|.|accounted-vs-unaccounted split; method label on every runtime number (`ledger(actual)` ≠ `ledger(bytes/4)`)|V44,V3
@@ -775,6 +808,7 @@ T64|x|dev shell installs hooks on entry, written BY HAND w/ a runner-missing gua
 T65|x|`packages.*` src narrowed via `lib.fileset` to `src/`+`Cargo.toml`+`Cargo.lock` ∴ a doc edit no longer invalidates the build|V62
 T66|x|CI = nix: `nix develop --command hk check` + `nix build` of all 3 feature configurations; hk & every linter reached THROUGH the pinned shell, ⊥ installed; pending parts (matrix·MSRV·cache·SHA pins·publish) listed in-file|V75,V64
 T67|x|`nixfmt --check` gates `*.nix`: the flake decides what every other step runs with ∴ drift there is drift everywhere. CHECK mode only -- the file is hand-commented|V72
+T68|x|transcript guards BEFORE the capability: `.gitignore` transcript patterns (fixtures exempt) + a CONTENT-signature hygiene test (a rename defeats a filename pattern; content cannot be renamed), verified by planting a real sample|V45,V71
 T49|.|SPEC compaction debt (M3 closed, now DUE): compact §V/§B prose; one-file rule holds — more sections, ⊥ more files|V15
 T50|x|flake to repo ROOT (`git mv` out of the unit dir) + dev shell PROVIDES `itok` via a `cargo run` shim; `ITOK_MANIFEST` resolved at entry, `ITOK_PROFILE`/`ITOK_FEATURES` hatches; dev files `exclude`d from the `.crate`|V62,V15,V39
 T51|x|drop the unit declaration from the standalone repo; `ci.yml` carries all 5 ops at >= their old strength (clippy gains `--all-features -- -D warnings`, coverage keeps the corrected 98) & records what was deliberately ⊥ carried (`--test-threads=1`, the phase split)|V28,V29,V31
