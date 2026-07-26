@@ -1049,7 +1049,7 @@ tokenizer ratio; a compaction breaks the monotonic premise (V98).
 | M9 | public exposure — ships as `0.7.0` | T59 | repo public, `0.7.0-rc.1` published & installed from crates.io, then `0.7.0`; badges resolve |
 | M10 | CI hardening — ships as `0.8.0` | T60 | matrix (linux + macos-arm) green over a streak, release automation, MSRV axis |
 | M11 | closure — ships as `1.0.0` | T61 | public feedback folded; CLI surface + json contract frozen |
-| M8 | local guardrails — ONE gate definition, run by hk | T50, T51, T54-T58, T62-T68, T70, T71 | `hk.pkl` is the only place an op is written; pre-commit/pre-push/CI all reach it; the suite is green run PARALLEL |
+| M8 | local guardrails — ONE gate definition, run by hk | T50, T51, T54-T58, T62-T68, T70, T71, T90 | `hk.pkl` is the only place an op is written; pre-commit/pre-push/CI all reach it; the suite is green run PARALLEL |
 | M12 | correctness sweep -- one rule per PATH (B11) | T81-T84, T89 | every rule carried to every sibling path; a gated flag names its feature; the fleet answers in parallel |
 | M7 | runtime CI — replay & regression | T47, T48 | a recorded ledger replays deterministically offline ∴ policy A/B w/o an agent; a run over session budget fails CI |
 
@@ -1144,6 +1144,7 @@ T86|.|`headroom --task N` -> `tasks left`; arithmetic only|V91,V93,V59
 T87|x|`total` estimator per V102: fit fixed-overhead + scale from transcript deltas, report band + `n`, refuse a verdict inside the band; SUPERSEDES T36's clean-sample factor|V102,V48,V44
 T88|.|`partition`: pack a fileset into N bins under `--window`, coupling graph read from STDIN (⊥ derived here — V24's compose-don't-scan), cut-set REPORTED loudly (V81); synthetic fixtures w/ KNOWN size+coupling ∵ real code gives no ground truth. Reopens V20's DECLINED `pack` scope (⊥ V21's knapsack trigger — a different problem): itok itself needs ~3 bins at a realistic 48k budget, & fan-out is one of only 2 cheap levers|V20,V60,V97
 T89|x|`--ollama` fleet probed in PARALLEL: one `std::thread` per host (⊥ an async runtime, V23; the host list is explicit ∴ no pool, V24), results merged in FLEET ORDER so list-order precedence & determinism are unchanged (V5). MEASURED: one dead host cost +3.05s serially (4.07s vs 1.02s on this fleet). Cost accepted: a model on 2 hosts is now probed twice ∵ per-host INDEPENDENCE is what makes them parallelizable. Per-model `/api/show` stays serial -- separable, measure first|V89,V5,V23,V24
+T90|.|`cavekit-spec` as a dev-time FORMAT check, and CLEAR every violation it reports (0 today, 92 before B12 -- the count is the point). It lives in the host workspace & itok ⊥ gain a path dep on it (V13: extraction is a move) ∴ the host grows a thin bin & itok an `#[ignore]` test that runs it WHEN PRESENT, printing one line when absent (V74: degrade, ⊥ block). Rust only -- repo tooling adds no second syntax. The ported rules in `tests/spec_integrity.rs` stay the TRAVELING guard; this is a SECOND OPINION, ⊥ a replacement (B12). RUN FIRST in any batch: a format violation makes every later diff suspect|V13,V31,V74,V79
 
 ## §B BUGS
 
