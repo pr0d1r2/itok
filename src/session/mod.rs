@@ -136,3 +136,45 @@ impl Session {
             .fold(0usize, usize::saturating_add)
     }
 }
+
+/// The part of a transcript that is safe to read: everything up to and
+/// including the last complete line.
+///
+/// The file appends while a session runs, so the tail may be a
+/// half-written record (V43). Truncating here is what makes two reads a
+/// second apart AGREE -- a report-only verb that contradicts itself is
+/// broken (V5). The determinism comes from this truncation, not from
+/// storing a snapshot anywhere: an on-disk cache was measured at 8ms of
+/// benefit and rejected (V77/B8).
+#[must_use]
+pub fn complete_prefix(text: &str) -> &str {
+    match text.rfind('\n') {
+        // Include the newline: the prefix ends at a record boundary.
+        Some(i) => text.get(..i.saturating_add(1)).unwrap_or(""),
+        // No newline at all: nothing is complete yet.
+        None => "",
+    }
+}
+
+/// A content key over the complete-line prefix.
+///
+/// Keys the CONTENT, not the file: appending a partial record leaves the
+/// key unchanged, and a whole new record changes it (V77). Two reads that
+/// produce the same key describe the same session state.
+///
+/// FNV-1a over the prefix, paired with its length. Hand-rolled on
+/// purpose: `std`'s `DefaultHasher` is explicitly not stable across Rust
+/// releases, so a toolchain upgrade would silently change every key --
+/// and a hashing crate is a dependency this does not need (V13). The
+/// length pairing makes a collision unreachable at this scale; this is a
+/// cache key, never a security primitive.
+#[must_use]
+pub fn content_key(text: &str) -> String {
+    let prefix = complete_prefix(text);
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for b in prefix.as_bytes() {
+        hash ^= u64::from(*b);
+        hash = hash.wrapping_mul(0x100_0000_01b3);
+    }
+    format!("{}-{hash:016x}", prefix.len())
+}

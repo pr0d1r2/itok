@@ -707,16 +707,26 @@ ledger confidently wrong (V3). Corollary: tool-result shapes are
 TOOL-SPECIFIC & sometimes a bare STRING, ⊥ an object — there is no
 uniform load record to key on (V43's defensive parse is load-bearing,
 ⊥ decoration).
-V77: **session snapshots are CONTENT-ADDRESSED & cached OUTSIDE the
-tree.** key = hash of the COMPLETE-LINE PREFIX (⊥ the whole file, which
-changes on every append) ∴ a re-run w/ no new turns hits the SAME key &
-does ZERO work — idempotent BY CONSTRUCTION, ⊥ by a staleness check.
-This extends V19's per-blob-hash rule ("a blob is never re-estimated")
-from blobs to sessions. Cache lives in the XDG cache dir, NEVER the repo:
-transcripts carry real content (V45) & OUTSIDE-THE-TREE beats gitignored
-∵ a rename defeats a filename pattern but cannot reach a directory git
-does ⊥ track. BOUNDED per session — a cache that only grows is a disk
-leak wearing a nice name.
+V77: **a session read is CONTENT-ADDRESSED & truncated at the last
+COMPLETE LINE.** The file appends live ∴ hashing the WHOLE file gives a
+different key every second; hashing the complete-line PREFIX gives the
+SAME key until a whole new record lands. A torn tail therefore ⊥ change
+the key, & two reads a second apart AGREE — which is the requirement
+(V43), ⊥ a nicety: a report-only verb that contradicts itself is broken
+(V5). Determinism comes from the TRUNCATION, ⊥ from storing anything.
+The on-disk CACHE is REJECTED, ⊥ merely deferred: MEASURED, a 2.7MB
+transcript parses in 8ms (file read 0.6ms) ∴ a cache would buy 8ms &
+cost itok its FIRST user-level state — a home directory to choose
+(XDG is Linux's convention, ⊥ macOS's `~/Library/Caches` | Windows's
+`%LOCALAPPDATA%`), an invalidation scheme, a pruning policy, & AMBIENT
+STATE in a tool that is today a PURE FUNCTION of its inputs (every
+config it reads is project-local). Stale ambient state is V5's hazard
+one level up. V19's per-blob-hash rule stands for BLOBS (a git history
+walk re-estimates the same blob many times); a session is read ONCE per
+invocation, so the rule does ⊥ transfer. Trigger to revisit: a verb that
+must re-parse MANY sessions inside an interactive loop, w/ a MEASURED
+slowness — 100 sessions is 0.8s today, which is ⊥ slow. Considered &
+rejected, escape hatch recorded.
 V78: **the LOAD CLASSES are tool results AND attachments.** Hook output,
 reminders & injected context are loads too: MEASURED, 266 `hook_success`
 attachments ≈ 45k itok in one session — invisible today & fully
@@ -866,7 +876,7 @@ T27|x|bare-rust `.github/workflows/ci.yml`: fmt·clippy·test·`--features ollam
 T28|x|assemble README = hand narrative + the `itok docs` reference block + badges|V39,V40,V15
 T29|x|`itok docs` verb: ONE command registry (verb·synopsis·flags·exit) renders `--help` + a markdown reference|V40,V6,V9
 T30|x|session reader module: harness-PLUGGABLE, defensive JSONL parse → load events; unknown fields ignored, malformed records skipped & COUNTED; torn tail tolerated; ⊥ writes to the transcript|V43,V45,V76
-T30a|.|content-addressed snapshot cache (XDG, outside the tree, bounded, idempotent by construction) — the stable view `trace`/`top` read|V77,V19
+T30a|x|stable read: truncate at the last COMPLETE line + a content key over that prefix ∴ a torn tail ⊥ changes the answer; NO cache dir (measured 8ms, B8)|V77,V43
 T30b|x|synthetic fixtures under `tests/fixtures/session/`|V43,V45,V76,V79
 T30c|.|attachment load class: hook output / reminders / injected context counted beside tool results|V78,V44
 T31|.|`trace` verb: 1 line/load event, chronological, `-n`·`--since`·`--reverse`·json|V46,V9,V59
@@ -916,6 +926,7 @@ id|date|cause|fix
 B1|2026-07-24|extraction: `rustfmt.toml`/`clippy.toml` root-only ⇒ standalone `cargo fmt --check` reformats (default width 100 vs 80); traveling gate ⊥ reproduces verdict|V27
 B2|2026-07-24|extraction: git-command tests use `CARGO_MANIFEST_DIR.parent().parent()` as repo root + hardcode `crates/itok/…` paths ⇒ standalone `cargo nextest` fails|V37
 B3|2026-07-24|`diff --budget` test asserted a breach on live `HEAD~1..HEAD`, presuming a substantial last commit; a near-zero-delta ceiling bump as HEAD gave no breach ⇒ exit 0 ≠ 1, blocking every commit until HEAD grew|V37
+B8|2026-07-26|SPEC defect, mine: V77 specced an on-disk snapshot cache w/o EVER measuring the cost it was meant to avoid. Measured after the fact: 2.7MB parses in 8ms ∴ the cache bought 8ms & would have cost itok its first user-level state + a cross-platform cache-dir question + invalidation + pruning. Generalized MY workflow annoyance (re-copying a snapshot to scratchpad) into the tool's runtime w/o checking the cost transferred. KISS is an invariant-level rule now, ⊥ a preference|V77,V87
 B7|2026-07-26|`.context-limits` silently SKIPS a row whose limit it cannot parse: `SPEC.md 20.5k` ⇒ `checked:1` of 2 registered paths, exit 0, NO diagnostic ∴ the ratchet set by T49 gated NOTHING & read as if it did. V11 already forbids exactly this for `.context-models` (unknown model ⇒ FAIL, ⊥ silent fallback); the rule was never carried to the sibling registry. Found by TESTING the new ceiling instead of trusting it (V80)|V88
 B6|2026-07-25|dev-shell auto-install wrote `hk install`'s command, which assumes `hk` on PATH. Outside the shell: `hk: command not found` ⇒ hook exit nonzero ⇒ EVERY git commit in the repo blocked, ⊥ merely ungated. Caught within one minute, by the very next commit failing|V74
 B5|2026-07-25|cassette replay stub read the request with ONE `read()`; TCP segments the only POST (`/api/generate`) so the body can arrive second ⇒ reply-then-close raced the client's write ⇒ `itok: ollama read ...: Invalid argument (os error 22)`. Flaky 2/3 runs parallel, 3/3 green serial ∴ the deleted unit declaration's `--test-threads=1` had been MASKING it, & the claim that the suite was hermetic (argued from reading temp-dir/port handling) was wrong. Surfaced the first time the new gate ran the ollama axis|V68

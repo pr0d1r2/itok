@@ -235,3 +235,74 @@ fn wholly_unparsable_input_yields_a_counted_empty_session() {
     assert_eq!(s.skipped, 2);
     assert_eq!(s.billed_input(), 0);
 }
+
+/// V77: the prefix ends at a record boundary, so a half-written tail is
+/// simply not there.
+#[test]
+fn the_complete_prefix_excludes_a_torn_tail() {
+    let torn = read("torn-tail.jsonl");
+    let prefix = itok::session::complete_prefix(&torn);
+    assert!(prefix.len() < torn.len(), "the torn tail must be dropped");
+    assert!(prefix.ends_with('\n'), "the prefix ends at a boundary");
+    // And parsing the prefix finds nothing to skip: the tear was absence,
+    // not damage. Parsing the RAW text still counts it, because `parse`
+    // reads exactly what it is given.
+    assert_eq!(claude_code::parse(prefix).skipped, 0);
+    assert_eq!(claude_code::parse(&torn).skipped, 1);
+}
+
+/// V77: appending a PARTIAL record leaves the key unchanged -- that is
+/// the whole point. Two reads a second apart agree while the harness is
+/// mid-write.
+#[test]
+fn a_partial_append_does_not_change_the_key() {
+    let base = read("minimal.jsonl");
+    let mid_write = format!("{base}{{\"type\":\"assist");
+    assert_eq!(
+        itok::session::content_key(&base),
+        itok::session::content_key(&mid_write),
+        "a half-written record must not change the answer"
+    );
+}
+
+/// A WHOLE new record does change it -- otherwise the key would not
+/// track session state at all.
+#[test]
+fn a_complete_append_changes_the_key() {
+    let base = read("minimal.jsonl");
+    let grown = format!("{base}{{\"type\":\"user\",\"uuid\":\"u9\"}}\n");
+    assert_ne!(
+        itok::session::content_key(&base),
+        itok::session::content_key(&grown)
+    );
+}
+
+/// Deterministic: the same content always yields the same key, in this
+/// process and any other. That is why the hash is hand-rolled rather than
+/// `DefaultHasher`, which is not stable across Rust releases.
+#[test]
+fn the_key_is_deterministic_and_content_addressed() {
+    let a = read("weird.jsonl");
+    assert_eq!(
+        itok::session::content_key(&a),
+        itok::session::content_key(&a)
+    );
+    // Same length, different bytes -> different key.
+    assert_ne!(
+        itok::session::content_key("aaaa\n"),
+        itok::session::content_key("aaab\n")
+    );
+    // The key names the prefix length, so a reader can see what it covers.
+    assert!(itok::session::content_key("aaaa\n").starts_with("5-"));
+}
+
+/// Nothing complete yet: no newline means no whole record.
+#[test]
+fn a_prefix_with_no_newline_is_empty() {
+    assert_eq!(itok::session::complete_prefix("{\"type\":\"assi"), "");
+    assert_eq!(itok::session::complete_prefix(""), "");
+    assert_eq!(
+        claude_code::parse(itok::session::complete_prefix("x")).skipped,
+        0
+    );
+}
