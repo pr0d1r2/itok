@@ -909,6 +909,38 @@ direction). Note the distribution is HEAVY-TAILED (median 285 vs mean
 ~900 itok/turn) ∴ a high rate often means ONE big read landed recently,
 ⊥ that everything is heavy — the triple's SPREAD is the signal, ⊥ any
 single number.
+V94: **cache-READ volume is CHEAP; the fuse's premise needs the split,
+⊥ the total.** MEASURED (1012 turns, this repo's own session): 354M
+billed input = 99.5% cache READ · 0.001% fresh. Caching does ⊥ reduce
+the token VOLUME, it reduces the RATE on nearly all of it ∴ V50's
+reduction ladder & V54's load fuse mostly save CHEAP tokens, & any claim
+about what enforcement is WORTH ! be stated against the cache split
+(V47), ⊥ the headline total. itok bundles NO price list (V61) ∴ it
+reports the split & the reader applies their own rates.
+V95: **n=2 is an ANECDOTE; the fuse gets NO new target from it.** Two
+turns wrote 250,657 each (26% of all cache writes) & the obvious reading
+— "agents bust the prefix cache constantly, so retarget the fuse" — was
+DRAFTED & then REFUTED by looking: both sit 19s apart w/ byte-identical
+write AND read, immediately after `Login expired · Please run /login`. A
+RE-AUTH left the cache cold; the prefix was re-written from scratch,
+twice. ⊥ agent behavior · ⊥ context mutation · ⊥ cache pressure · ⊥ the
+concurrent sessions in OTHER trees (different prefixes ∴ nothing of ours
+to evict; & eviction of a GROWING context could ⊥ produce identical
+sizes). ∴ there is currently NO evidence that normal agent behavior
+causes expensive cache busts here, & V50/V54 keep their shape until
+there is. The cold-cache event is worth REPORTING (~250x a normal turn's
+write, one line to explain) & is an OBSERVATION, ⊥ a threshold (V42).
+This invariant exists ∵ the wrong version was one question away from
+being specced: V80's refute-first & V82's low-believability-for-
+inspection both earned their place the day they were written.
+V96: **session identity comes from the HARNESS when it offers one.**
+`newest_transcript` picks by mtime ∴ w/ two sessions in ONE project it
+can silently read the WRONG one — a report about someone else's context,
+labelled as yours. MEASURED-adjacent: this machine ran 3 concurrent
+sessions, saved only by their being in different projects. Prefer an
+explicit id from the environment; fall back to newest-by-mtime ONLY when
+none is offered, & SAY which was used (V3) — "the newest transcript" & "your
+session" are different claims.
 
 ## §T TASKS
 
@@ -994,6 +1026,8 @@ T68|x|transcript guards BEFORE the capability: `.gitignore` transcript patterns 
 T70|.|scripted bulk compaction: CPU derives (sizes·citation graph·orphans·stale refs·shared n-grams·must-keep fact sets), ONE inference call rewrites the top-N under a byte budget, CPU VERIFIES every citation/number/identifier survived, named `--allow-drop` for deliberate removals. Seeded by T49's measurements|V84,V73,V80
 T71|.|concurrency guard: a test that runs N itok processes at once over the same tree & asserts identical output + zero writes outside `target/`; keeps V89's free property from being lost silently|V89
 T72|.|`headroom` verb: `df` columns (window·used·avail·use%) + the rate triple (10/50/200 turns) + `~turns left`; `-h`·`--model`·`--window`·json; zero-window turns excluded from the rate|V91,V92,V93
+T73|.|report cold-cache events: a turn whose cache WRITE dwarfs its read is a prefix re-write; name the cost (~250x a normal turn) & leave the cause to the reader. Observation only -- ⊥ a fuse input (V95)|V94,V95,V47
+T74|.|session identity: prefer an explicit harness-provided session id over newest-by-mtime; when falling back, SAY so. Two sessions in one project currently resolve to whichever was touched last|V96,V3
 T69|.|`.context-limits`/`.context-models`/`.context-policy`: an unparsable row FAILS w/ file+line+expected, ⊥ silent skip (B7); fractional units (`20.5k`) either parse or are rejected LOUDLY|V88,V11
 T49|x|SPEC compaction FIRST PASS + the machine to finish it: 25 done-`§T` rows trimmed to what+cites (method lives in the commit, V26), V62/V22/V70/V71/V31 destaled & tightened, `tests/spec_integrity.rs` guard, `.context-limits` turned into a RATCHET. MEASURED gross -2,781 chars; NET -2.1% only ∵ the pass itself added V88+B7+T69. 5 of 86 invariants touched ∴ the BULK is T70|V84,V15,V26
 T50|x|flake to repo ROOT (`git mv` out of the unit dir) + dev shell PROVIDES `itok` via a `cargo run` shim|V62,V15,V39
