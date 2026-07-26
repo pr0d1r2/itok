@@ -76,8 +76,9 @@ who knows those tools needs no teaching.
   (`avail`/N, tilde'd, naming the declared cost); `>= 1` is the
   can-I-finish question & the VERDICT stays `doctor --session` (V99). `df` for a context: window · used · avail · use% ·
   the rate triple · turns left. Report-only (V91).
-- `itok calibrate [<session>]` — estimate-vs-actual factor from CLEAN
-  samples only, reports `n`; `--format json`. Report-only (V48).
+- `itok calibrate [<session>]` — `-h` · `--format json` · `-C <dir>`. The
+  context FIT: fixed overhead + scale (`bytes/4`→actual) + the HELD-OUT
+  band + `n`. Too few turns ⇒ `n` & NO factor. Report-only (V102).
 - `itok cap [N]` — stdin→stdout token filter. `--strip` · `--dedup` ·
   `--elide` · `--outline` (the reduction ladder, V50) · `--footer
   human|json`. Announces its elision; resumable (V49/V51).
@@ -480,13 +481,18 @@ V47: **cache accounting is READ, ⊥ inferred.** `cache_creation` /
 modelled. Report it as seen & name it; ⊥ a heuristic "you probably busted
 the cache" (that would be a confident guess, V3). Absent fields ⇒ no
 cache column, ⊥ a zero (a zero reads as a measurement).
-V48: **calibration on CLEAN SAMPLES only.** The estimate-vs-actual
-correction factor is derived ONLY from turns where exactly ONE load event
-explains the `usage` delta; noisy turns DISCARDED & the surviving `n`
-reported beside the factor. A factor from dirty samples is a confident
-lie (V3). The factor is REPORTED, ⊥ silently folded into the estimators —
-the ladder's rungs stay honest & unmodified (V4). Applying it is opt-in &
-LABELLED as derived: `~186k itok (bytes/4 ×1.12 cal:n=340)`.
+V48: **calibration is REPORTED, ⊥ folded — & the sample is never
+LAUNDERED.** The correction is reported beside its `n`, ⊥ silently folded
+into the estimators — the ladder's rungs stay honest & unmodified (V4).
+Applying it is opt-in & LABELLED as derived: `~186k itok (bytes/4 ×1.12
+cal:n=340)`. A factor whose sample is ⊥ stated is a confident lie (V3).
+CORRECTED, method only: this invariant originally derived the factor from
+turns where exactly ONE load explained the `usage` delta, DISCARDING the
+rest. That paid most of the sample to dodge per-item attribution — & a
+2-parameter fit needs NO attribution at all ∴ uses every turn & yields the
+fixed overhead as a second output (V102, MEASURED in T87). "Clean samples"
+was the wrong MECHANISM, ⊥ the wrong goal; the rules above are what
+survived.
 V49: **`cap` = token-unit filter, visibly ⊥ `head`.** stdin→stdout, pipe
 shape (V1). `head`/`tail` truncate SILENTLY by bytes/lines; `cap`
 truncates by TOKENS & ANNOUNCES the elision with a machine-parsable
@@ -1094,7 +1100,7 @@ T32|x|`top` verb: ranked occupancy, `-h`·`-s`·`--top N`, dup + stale columns, 
 T33|x|accounted-vs-unaccounted split; method label on every runtime number (`ledger(actual)` ≠ `ledger(bytes/4)`)|V44,V3
 T34|x|cache columns read from `usage` (`cache_creation`/`cache_read`); fields absent ⇒ NO column, ⊥ a zero|V47
 T35|.|fan-out rollup: ledger keyed by session, sidechain/subagent sessions rolled to parent, SUM reported|V60
-T36|.|`calibrate` verb: factor from single-load turns ONLY, discards counted, `n` reported; application opt-in & labelled `×1.12 cal:n=340`|V48,V4
+T36|x|`calibrate` verb: factor + `n` reported, application opt-in & labelled. DELIVERED by T87 w/ a BETTER method (a 2-parameter fit, ⊥ single-load turns) ∴ closed here rather than left declaring a superseded mechanism as open work — a dead row reads as law (V28/V69)|V48,V4,V102
 T37|.|DOGFOOD: run `trace`/`top`/`calibrate` over itok's OWN dev sessions; the measured waste (re-read, stale, cache-bust) sets M6's default thresholds, ⊥ guessed ones|V42,V15
 T38|.|`--cost` rendering: rate column in `.context-models`, cache-split aware; missing rate ⇒ no column|V61,V11
 T39|.|`cap` verb: stdin→stdout token filter + ANNOUNCED elision footer (human/json) carrying a resume selector|V49,V51
