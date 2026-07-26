@@ -1,1040 +1,149 @@
 # itok — context-cost estimator
 
-Self-contained spec. `itok` is developed inside a larger workspace but
-designed to leave it as a standalone crate (`git subtree split`). It carries
-its own law and stands on its own reasoning — no load-bearing reference
-outside this directory (V26).
+Self-contained spec. `itok` is developed inside a larger workspace but designed to leave it as a standalone crate (`git subtree split`). It carries its own law and stands on its own reasoning — no load-bearing reference outside this directory (V26).
 
 ## §G GOAL
 
-Estimate the token / context-window cost of files & changes, from the
-command line, with `git`- and `du`-shaped grammar so a human or an agent
-who knows those tools needs no teaching.
+Estimate the token / context-window cost of files & changes, from the command line, with `git`- and `du`-shaped grammar so a human or an agent who knows those tools needs no teaching.
 
 ## §C CONSTRAINTS
 
 - Rust. One bin: `itok`. MIT licensed.
-- Offline & deterministic by default; runs fully in a NETWORKLESS SANDBOX
-  (V34). Network only behind the opt-in `--ollama` tier (LAN, keyless),
-  ⊥ in core, ⊥ any paid/authed cloud API (V35).
+- Offline & deterministic by default; runs fully in a NETWORKLESS SANDBOX (V34). Network only behind the opt-in `--ollama` tier (LAN, keyless), ⊥ in core, ⊥ any paid/authed cloud API (V35).
 - ASCII-only source (Trojan-Source, LLM-friendliness).
 - Zero deps on any host-project internals ⇒ extraction is a move.
-- Estimation, ⊥ measurement: no public Claude tokenizer exists ∴ the
-  default is a labelled proxy, never a claim of truth.
-- Runtime axis (V41) reads the HARNESS's own on-disk transcript,
-  READ-ONLY. ⊥ store content, ⊥ egress, ⊥ touch credentials (V43/V45).
-- Enforcement is opt-in & ADAPTER-shaped: no daemon, no server, no
-  in-flight interception, ⊥ in the request path (V52/V53/V58).
-- WORKING principles (V80-V87) bind how the work is done, ⊥ only what is
-  built. Lineage: `pr0d1r2/set-and-setting` `set/skills/principles`
-  (Dalio's Principles + DRY/KISS/SOLID/POLA) — a SEE-ALSO, ⊥
-  load-bearing: each invariant below stands on its OWN reasoning & its
-  own evidence FROM THIS REPO (V26's rule, applied to an external
-  source). Already-encoded ones are ⊥ restated: truth=V3/V44/V47/V48/V61
-  · reality=V68/V38 · rootcause & progress=the §B→§V loop ·
-  machine=V71/V64/V42 · transparency=§V itself · POLA=V1/V2/V46/V49 ·
-  KISS=V20/V21/V24/V25/V35/V58 · DRY=V64/V40/V33/V66 · SOLID=the clippy
-  caps + V33/V43/V52.
+- Estimation, ⊥ measurement: no public Claude tokenizer exists ∴ the default is a labelled proxy, never a claim of truth.
+- Runtime axis (V41) reads the HARNESS's own on-disk transcript, READ-ONLY. ⊥ store content, ⊥ egress, ⊥ touch credentials (V43/V45).
+- Enforcement is opt-in & ADAPTER-shaped: no daemon, no server, no in-flight interception, ⊥ in the request path (V52/V53/V58).
+- WORKING principles (V80-V87) bind how the work is done, ⊥ only what is built. Lineage: `pr0d1r2/set-and-setting` `set/skills/principles` (Dalio's Principles + DRY/KISS/SOLID/POLA) — a SEE-ALSO, ⊥ load-bearing: each invariant below stands on its OWN reasoning & its own evidence FROM THIS REPO (V26's rule, applied to an external source). Already-encoded ones are ⊥ restated: truth=V3/V44/V47/V48/V61 · reality=V68/V38 · rootcause & progress=the §B→§V loop · machine=V71/V64/V42 · transparency=§V itself · POLA=V1/V2/V46/V49 · KISS=V20/V21/V24/V25/V35/V58 · DRY=V64/V40/V33/V66 · SOLID=the clippy caps + V33/V43/V52.
 
 ## §I INTERFACE
 
-- `itok estimate <path>` — `-s` summarize · `-h` human · `--top N` ·
-  `--budget N` · `--bpe` · `--format json` · `-C <dir>`.
-- `itok diff [<ref>|<A> <B>|<A>..<B>] [-- <path>]` — `--staged` ·
-  `--budget N` · `--exit-code` · `--bpe`.
-- `itok show [<commit>] [-- <path>]` | `itok show <commit>:<path>` — one
-  commit's per-file token delta (default HEAD); `<commit>:<path>` = a
-  blob's cost at a ref. Report-only · `--bpe` · `--format json`.
+- `itok estimate <path>` — `-s` summarize · `-h` human · `--top N` · `--budget N` · `--bpe` · `--format json` · `-C <dir>`.
+- `itok diff [<ref>|<A> <B>|<A>..<B>] [-- <path>]` — `--staged` · `--budget N` · `--exit-code` · `--bpe`.
+- `itok show [<commit>] [-- <path>]` | `itok show <commit>:<path>` — one commit's per-file token delta (default HEAD); `<commit>:<path>` = a blob's cost at a ref. Report-only · `--bpe` · `--format json`.
 - `itok check` — reads `.context-limits`, pinned `--bpe`, pass/fail.
-- `itok doctor <path> | --session [<id>]` — `--model X[,Y...]` (a
-  comma-list narrows to those models, each resolved by V6; ONE
-  unresolvable element FAILS the call, naming it) · `--window N` ·
-  `--format json` · `-C <dir>`. Advisory: fit-to-window · balance · noise
-  · estimate confidence. `--session` retargets it at a CONTEXT:
-  progression (use% · rate · `~turns left`) + per-item `projected` +
-  V97's two levers. Paths w/ `--session` = usage error (V2). Reports &
-  suggests; never gates.
-- `itok log <path>` — `-n N` · `<A>..<B>` · `--reverse` · `--since` ·
-  `--bpe` · `--format json`. Per-commit cost + delta; report-only.
-- `itok fit --window N [paths]` — `--by size` · `--bpe` · `--format json`.
-  Greedy subset that fits the budget; emits a pipeable path list.
-- `--ollama[=HOSTS]` (estimate/doctor) — exact counts via the
-  server's tokenizer + live model→window. Each host `[scheme://]host[:port]`
-  (default `11434`); a comma-list, `-` (stdin), or `.context-hosts`; a BARE
-  host needs the `=` form (V101);
-  honors `OLLAMA_HOST`. Fleet = union of models. Network, the SLOWEST-REMOTE
-  rung (V4); never on `check`/`log`. No CIDR (V24), no `--ollama-port` (V25).
-- `itok trace [<session>]` — `-n N` · `--since D` · `--reverse` ·
-  `--format json`. Runtime LOAD EVENTS, 1 line each, chronological.
-  Report-only.
-- `itok top [<session>] [-- <path>]` — `-h` · `-s` · `--top N` ·
-  `--cost` · `--format json`. Ranked context OCCUPANCY + dup · stale ·
-  cache columns. `-- <path>` = that path's loads (per-path attribution;
-  ⊥ a separate `blame` verb, V46). Report-only.
-- `itok headroom [<session>]` — `--model X` · `--window N` · `--task N` ·
-  `-h` · `--format json`. `--task N` adds a `tasks left` column
-  (`avail`/N, tilde'd, naming the declared cost); `>= 1` is the
-  can-I-finish question & the VERDICT stays `doctor --session` (V99). `df` for a context: window · used · avail · use% ·
-  the rate triple · turns left. Report-only (V91).
-- `itok calibrate [<session>]` — `-h` · `--format json` · `-C <dir>`. The
-  context FIT: fixed overhead + scale (`bytes/4`→actual) + the HELD-OUT
-  band + `n`. Too few turns ⇒ `n` & NO factor. Report-only (V102).
-- `itok cap [N]` — stdin→stdout token filter. `--strip` · `--dedup` ·
-  `--elide` · `--outline` (the reduction ladder, V50) · `--footer
-  human|json`. Announces its elision; resumable (V49/V51).
-- `itok guard` — hook ADAPTER: harness hook JSON on stdin → decision
-  JSON on stdout; reads `.context-policy`. The runtime gate (V52/V53).
-  Signals in JSON, ⊥ via exit code — the harness reads stdout.
-- Config: `.context-limits` (per-path ceiling), `.context-models`
-  (model → encoding + window + optional RATE column, `--cost`),
-  `.context-policy` (per-glob/per-tool budget · pins · fuse tiers).
+- `itok doctor <path> | --session [<id>]` — `--model X[,Y...]` (a comma-list narrows to those models, each resolved by V6; ONE unresolvable element FAILS the call, naming it) · `--window N` · `--format json` · `-C <dir>`. Advisory: fit-to-window · balance · noise · estimate confidence. `--session` retargets it at a CONTEXT: progression (use% · rate · `~turns left`) + per-item `projected` + V97's two levers. Paths w/ `--session` = usage error (V2). Reports & suggests; never gates.
+- `itok log <path>` — `-n N` · `<A>..<B>` · `--reverse` · `--since` · `--bpe` · `--format json`. Per-commit cost + delta; report-only.
+- `itok fit --window N [paths]` — `--by size` · `--bpe` · `--format json`. Greedy subset that fits the budget; emits a pipeable path list.
+- `--ollama[=HOSTS]` (estimate/doctor) — exact counts via the server's tokenizer + live model→window. Each host `[scheme://]host[:port]` (default `11434`); a comma-list, `-` (stdin), or `.context-hosts`; a BARE host needs the `=` form (V101); honors `OLLAMA_HOST`. Fleet = union of models. Network, the SLOWEST-REMOTE rung (V4); never on `check`/`log`. No CIDR (V24), no `--ollama-port` (V25).
+- `itok trace [<session>]` — `-n N` · `--since D` · `--reverse` · `--format json`. Runtime LOAD EVENTS, 1 line each, chronological. Report-only.
+- `itok top [<session>] [-- <path>]` — `-h` · `-s` · `--top N` · `--cost` · `--format json`. Ranked context OCCUPANCY + dup · stale · cache columns. `-- <path>` = that path's loads (per-path attribution; ⊥ a separate `blame` verb, V46). Report-only.
+- `itok headroom [<session>]` — `--model X` · `--window N` · `--task N` · `-h` · `--format json`. `--task N` adds a `tasks left` column (`avail`/N, tilde'd, naming the declared cost); `>= 1` is the can-I-finish question & the VERDICT stays `doctor --session` (V99). `df` for a context: window · used · avail · use% · the rate triple · turns left. Report-only (V91).
+- `itok calibrate [<session>]` — `-h` · `--format json` · `-C <dir>`. The context FIT: fixed overhead + scale (`bytes/4`→actual) + the HELD-OUT band + `n`. Too few turns ⇒ `n` & NO factor. Report-only (V102).
+- `itok cap [N]` — stdin→stdout token filter. `--strip` · `--dedup` · `--elide` · `--outline` (the reduction ladder, V50) · `--footer human|json`. Announces its elision; resumable (V49/V51).
+- `itok guard` — hook ADAPTER: harness hook JSON on stdin → decision JSON on stdout; reads `.context-policy`. The runtime gate (V52/V53). Signals in JSON, ⊥ via exit code — the harness reads stdout.
+- Config: `.context-limits` (per-path ceiling), `.context-models` (model → encoding + window + optional RATE column, `--cost`), `.context-policy` (per-glob/per-tool budget · pins · fuse tiers).
 - Exit: 0 ok · 1 breach/delta · 2 usage · 7 network (`--ollama`).
 
 ## §V INVARIANTS
 
-V1: **convention over novelty.** Default to the form `git`/`du`/`rg`
-already use, even when a novel one is "better". Convention lives in the
-model's pretrained prior & in muscle memory ∴ costs 0 to invoke. Novelty
-is taxed on 4 recurring axes — teaching (paid every session), retry
-(wrong-guess round-trips), surprisal (low-probability form ⇒ the model
-hedges), parsing (novel output re-inferred). Ship novelty only when
-value-added > cost-to-teach.
-V2: **near-collision is the expensive failure** ∴ match a convention's
-SEMANTICS exactly | be visibly different — never almost. A `diff` that
-looks like `git diff` but acts differently invokes the prior then
-violates it ⇒ costs more than honest novelty.
-V3: **name = estimation; the number self-describes.** Output ALWAYS
-names its unit & method: `~166k itok (bytes/4)`. `itok` = INPUT tokens
-(what a file costs fed INTO a model, ⊥ output/generation) ∴ an agent
-needs no external knowledge — the number says what it is (V15); `i`/`o`
-is the most burned-in split in computing (V1). The `~` marks a CRUDE
-estimate — dummy tier ONLY; `--bpe`/`--ollama` drop it (`166k itok
-(o200k)`, `166k itok (exact)`) ∵ they are a real tokenizer's true count.
-Tilde presence = the estimate-vs-truth signal at a glance. (`--exact` was
-the old flag name for the true rung; it is now `--ollama`, V35.) json (T3)
-carries the same intent structurally (`unit`, `estimated`), ⊥ w/ a tilde
-in a numeric field (V9).
-V4: **precision ladder, ordered FASTEST-LOCAL → SLOWEST-REMOTE.** `dummy`
-(bytes/4 + word proxy, zero-dep, instant) | `--bpe` (tiktoken, offline,
-deterministic, the honest proxy) | `--ollama` (a local model's OWN
-tokenizer, LAN localhost, keyless, exact for that model — V22). Each rung
-labelled; `dummy` & `--bpe` are honestly "estimation", `--ollama`
-transcends it. The local rungs (`dummy`, `--bpe`) are the CORE & the only
-tiers a networkless sandbox needs (V34); `--ollama` is the opt-in remote
-rung. NO cloud/paid-API rung — a provider `count_tokens` behind an API key
-is rejected (V35).
-V5: **only `check` gates.** It pins `--bpe` ∴ deterministic & cacheable
-by content hash. `estimate` & `diff` are report-only, exit 0. A gate that
-varies per run is ⊥ a gate.
-V6: **prefix-inference, read-only verbs only.** Unambiguous prefix ⇒
-resolve silently (`itok e`, `itok di`, `itok ch`). Ambiguous ⇒ error listing
-candidates, never silent-pick. Non-prefix typo ⇒ SUGGEST (edit-distance),
-⊥ run. Canonical names are the full words; prefixes are convenience,
-never promised. Any future MUTATING verb requires its full name — no
-inference into a write. SAME rule binds a name resolved from a DISCOVERED
-SET: `--model` over an `--ollama` fleet resolves exact > ollama's own
-`name`=`name:latest` > unique prefix; ambiguous ⇒ error LISTING
-candidates, absent ⇒ error listing what IS served (V71). Step 2 keeps
-ollama's grammar EXACTLY where it applies ∵ an almost-match is V2's
-expensive failure. One prefix grammar, ⊥ a per-domain reinvention (V1).
-⊥ `.context-models`: that is a REVIEWED registry & V11 wants an exact
-row. Write-safety above is untouched ∵ `doctor` is read-only.
-V7: **`diff` mirrors `git diff` arg-forms verbatim** — working-tree,
-`--staged`, `<A> <B>`, `<ref>`, `-- <path>`, `--exit-code`. Zero new
-mental model (V1).
-V8: **`estimate` mirrors `du`** — `-s`/`-h`/`--top` — & operates on
-git-tracked files by default (like `rg` respects `.gitignore`); explicit
-paths reach untracked files directly. `du`'s `-d` (recursion depth) & `-a`/
-`--all` are ⊥ shipped: `estimate` costs a FLAT fileset (git-tracked list |
-argv), ⊥ a recursive walk, so depth has nothing to recurse & untracked is
-a named path away. Add either only when a real need appears.
-V9: **porcelain/plumbing split.** Human table MAY evolve; `--format json`
-(one object per file) is a STABLE contract. Agents parse json; the pretty
-table stays cosmetic.
-V10: **`.context-limits` is opt-in**, ⊥ fail-by-default. Unlike a
-repo-guard registry, `itok` runs on arbitrary repos ∴ an unregistered path
-is simply unchecked. `check` gates only what the user registered.
-V11: **`.context-models`: unknown model ⇒ FAIL, name an encoding.** No
-silent fallback to a default BPE — a silent wrong-tokenizer is the V2
-failure. A new model is a reviewed row.
-V12: **BPE vocab VENDORED**, with license provenance, ⊥ fetched at
-runtime. Offline-first + opensource both demand the data ship in-tree.
-V13: **zero host-internal deps** ∴ extraction = `git subtree split -P
-crates/itok`, ⊥ surgery. Own `Cargo.toml`, own license, own `SPEC.md`,
-own vocab. Nothing imported from the monorepo.
-V14: **self-checked & dogfooded.** `cavekit-spec` validates THIS
-`SPEC.md`; while `itok` lives in the host it runs as a host guard unit
-(`itok check` in pre-commit, invoked by resolved path). It wears both
-hats — product & guardrail — like the other extractable crates.
-V15: **`itok` dogfoods its own metric** — it measures token cost ∴ it must
-be the cheapest tool to learn (V1). A token tool that needed teaching
-would refute its own thesis.
-V16: **budget IS the switch** — `--budget N` on `estimate`/`diff` ⇒ exit
-nonzero when a file (or a change's delta) exceeds N. A threshold intends
-a gate ∴ no separate `--guard` boolean. Name = `budget`: ⊥ `--guard`
-(novel jargon, V1), ⊥ `--max-tokens` (near-collides w/ the API
-`max_tokens` = GENERATION cap, opposite meaning ∴ V2's expensive
-failure). Complements `check`: `--budget` is the inline one-shot (no
-registry, the CI one-liner), `check` is committed policy
-(`.context-limits`). Both gate; both pin `--bpe` when accuracy matters.
-`--budget` on `diff` needs no registry ∴ "no commit adds > N tokens" is a
-review gate anyone can drop into CI.
-V17: **`doctor` = advisory pre-flight** — "is this context healthy to
-hand a model?" Answers *should I?* where `estimate` answers *how much?* &
-`check` answers *passes policy?*. Report-only, suggests fixes; ⊥ a gate.
-Name = `doctor` ∵ convention (`brew`/`flutter`/`npm doctor`) is in the
-prior (V1); ⊥ `sane` (novel, collides w/ the SANE scanner API, reads
-wrong as a verb). Composes itok-NATIVE signals ONLY: fit-to-window,
-budget balance (one file dominating), noise ratio (generated/binary/lock
-share), estimate confidence (dummy-vs-bpe spread — the one signal only
-itok has, ∵ it owns the estimators). BOUNDARY: dup-detection & vocab/TTR
-are separate tools — `doctor` stays a thin composer, ⊥ grows
-tentacles.
-V18: **window override** — `--window N` gives context capacity raw;
-`--model X` resolves it from `.context-models` (extended to model →
-encoding + window). Explicit `--window` wins over `--model`. Unit =
-DECIMAL tokens (`1M` = 1_000_000, `200k` = 200_000), one parser shared
-w/ `--budget` (one unit grammar, less to hold). Name `--window` ⊥
-`--size` ∵ "size" primes BYTES (its meaning in `du`/`ls`) but a window is
-TOKENS ⇒ V2 near-collision. `--size` MAY be a silent alias for muscle
-memory, ⊥ the documented name.
-V19: **`log` = cost across history** — the 5th question (*how did it
-evolve?*), the creep curve `diff`'s 2 points ! show. Mirrors
-`git log <path>` verbatim (V1): 1 line/commit that touched the path —
-sha·date·subject + absolute tokens + delta (like `--stat`'s +/-);
-`-n N` · `<A>..<B>` · `--reverse` · `--since`. Report-only, exit 0 — raw
-data like `git log`; judgment (flag N rises) stays OUT (scope).
-Defaults to `dummy` ∵ whole history = N blobs & `git cat-file -s` gives
-blob bytes directly (near-free); `--bpe` opt-in for accurate absolutes at
-N tokenizations. Per-blob-hash cache ∴ a blob is never re-estimated.
-V20: **`fit` = greedy pack, ⊥ knapsack** — select the subset of
-candidates that fills a `--window` budget. Knapsack (NP-hard) only bites
-when items approach capacity; context files are KB against a 1M-token
-window ∴ each is a tiny fraction & greedy-by-order ≈ optimal (fractional
-≈ integral when item ≪ capacity). Order candidates (argv/manifest order
-default; `--by size` to fit-most), take while running total ≤ window,
-emit survivors. Reuses `--window` parser (V18), estimate tiers (V4,
-dummy default), tracked-default (V8). Output = a pipeable PATH LIST
-(NUL/newline, `git ls-files`/`rg -l` shape) ∴ `itok fit --window 200k
-src/ | xargs cat` assembles a context bundle under budget — useful w/o
-any programmatic assembler. Report-only, exit 0. Name = `fit` (the
-question *what fits?*) ⊥ `pack` (implies the bin-packing optimization we
-⊥ do). It SELECTS ⊥ reports ∴ its own category beside the 5 report verbs.
-V21: **optimal fit DEFERRED (⊥ rejected)** — true 0/1 knapsack (max
-priority under budget for near-capacity large items) & per-file priority
-tables. Greedy (V20) covers the KB-files-vs-1M-window case; the solver
-earns its complexity only when large near-capacity items make greedy
-visibly wrong. Trigger: a real fileset where greedy drops a
-better-fitting combination.
-V22: **`--ollama [HOST]` = self-hosted exact + live windows** — THE
-slowest-remote rung (V4), keyless & free: `localhost:11434` plain HTTP,
-no TLS/API key/payment. Ladder = dummy|bpe|`--ollama`; NO cloud rung
-(V35). Gives 2: (1) EXACT counts via the model's OWN tokenizer
-(`prompt_eval_count` from a `num_predict:0` generate) ∴ a local
-llama/qwen is measured true, ⊥ by an o200k proxy that is wrong for it;
-(2) live model→window from `/api/tags`+`/api/show` (`context_length`).
-`doctor --ollama` w/o `--model` enumerates ALL local models & reports
-fit-% against each — the answer no static table gives. Honors
-`OLLAMA_HOST` (V1); bare `--ollama` = `OLLAMA_HOST`|`localhost:11434`,
-`--ollama HOST` overrides. Applies to `estimate` & `doctor` ONLY — the
-verbs where an exact count earns its network cost. `diff` (a gate) &
-`fit` (a packer) stay on margin'd `--bpe`: a gate wants a CONSERVATIVE
-estimate, ⊥ a true count (V36) — exact there DEFERRED, ⊥ rejected
-(trigger: a real need for exact deltas/packing). NEVER `check` (V5) |
-`log` (history×network). Precedence: live endpoint > `.context-models` >
-error; the table is the offline fallback & the only source for cloud
-windows. Non-deterministic + network ∴ all remote-tier rules (V4/V23).
-Content LEAVES the process to the endpoint — LAN self-hosted is the
-private path vs cloud, a conscious tradeoff.
-V23: **network tier feature-gated** — `--ollama` lives behind a cargo
-feature (`ollama`) w/ a tiny blocking client (e.g. `ureq`, ⊥ an async
-runtime; `localhost` HTTP ∴ no TLS stack). ∴ the core ships ZERO network
-deps, stays small for extraction (V13), & runs in a networkless sandbox
-(V34). Offline-first is the default BUILD, ⊥ merely the default flag. NO
-cloud client ships at all (V35).
-V24: **`--ollama` takes explicit HOSTS, ⊥ a CIDR — no in-tool scanning.**
-A subnet probe is a PORT SCAN: hostile/noisy/IDS-flagging on any network
-you ⊥ fully own, sometimes a policy/legal problem — a headline liability
-for an opensource token tool that buys nothing. Scope-alien too (service
-discovery ≠ token measurement) & slow+non-deterministic (breaks
-snappiness). V1: the convention for "find services" is advertise (mDNS) |
-explicit list, ⊥ scan. So `--ollama` accepts a host, a comma-list, `-`
-(stdin), or `.context-hosts`; a fleet is the UNION of models & windows
-across named hosts (`doctor --ollama box1,box2` = which model anywhere
-holds this). Discovery, if truly wanted, is COMPOSED — `nmap -p11434 …
-| … | itok doctor --ollama - .` — a dedicated scanner pipes hosts in; itok
-never ships a scanner. Considered & rejected, escape hatch recorded.
-V25: **port lives in the host (`host[:port]`), ⊥ a `--ollama-port`
-flag.** `OLLAMA_HOST=1.2.3.4:6666` is Ollama's own form ∴ `host:port` is
-already in the prior (V1) & universal (ssh/redis/pg/git-remote). A
-separate `--ollama-port` can't express per-host ports in a fleet list
-(`box1:11434,box2:6666`) & works in none of stdin/`.context-hosts`.
-Default port `11434`; a `scheme://` prefix carries TLS for a proxied
-server — same slot, no new flag. Considered & rejected.
-V26: **provenance is a DEV-TIME note, kept OUT of the shipped spec.** A
-reference to the origin repo's invariants is see-also / derived-from,
-NEVER load-bearing — each itok invariant stands on its own reasoning. ∴
-the SHIPPED, public `SPEC.md` names NO origin-repo invariant number: a
-cross-repo pointer targets a PRIVATE repo the reader can't see & leaks its
-numbering, a bare `Vxxx` collides w/ itok's own namespace & reads broken.
-The reasoning a pointer once cited is folded INLINE & self-contained. The
-scrub lives IN the monorepo (this file is kept public-clean in place) ∴
-extraction stays a pure MOVE (V13), ⊥ surgery. Lineage lives in git
-history & commit trail, ⊥ the shipped text.
-V27: **itok self-guards — its guard config TRAVELS.** The fractal: every
-extractable unit is a mini-repo. crates/itok/ mirrors a repo root — own
-`SPEC.md`, `lexicon.txt`, `coverage-baseline.json`, `Cargo.toml`,
-`rustfmt.toml`, `clippy.toml`, `.gitignore`, + the
-toolchain & gate it runs on (root `flake.nix`/`flake.lock`/`.envrc` +
-`.github/workflows/ci.yml`, V62). ∴ `subtree split` carries the GUARDS w/
-the code; itok guards itself standalone, ⊥ orphaned. Config that CHANGES a verdict (`rustfmt.toml`'s `max_width`,
-`clippy.toml`'s thresholds) ! travel beside `Cargo.toml`'s `[lints]`, else
-the standard gate (V31) silently weakens on extraction — the extracted
-`cargo fmt --check` reformats to defaults & fails (B1). Reconciles V13
-(self-contained) & V14 (dogfooded): in-repo the host RUNS the guards, but
-the config they read is itok's own.
-V28: **the unit DECLARATION is MONOREPO-ONLY; the standalone repo is an
-ORDINARY repo.** A host-specific declaration (`.uow/unit.yml` — ops ×
-globs × phases × deps) describes work for a HOST RUNNER, & no such runner
-exists in the extracted repo ∴ shipping it there is a DEAD FILE that
-reads as law: a contributor sees a gate declaration, edits it, & nothing
-runs it (worse, it can DRIFT from the live gate & carry a stale threshold
-— exactly B4's shape, a `99` floor surviving beside CI's corrected 98).
-∴ the public repo carries only what plain tools read: root `flake.nix`/
-`flake.lock`/`.envrc` (V62) & `.github/workflows/ci.yml` (V31). The
-baselines (`lexicon.txt`, `coverage-baseline.json`, `SPEC.md`,
-`Cargo.toml`) sit at the crate ROOT — where tools expect them
-& where they land as root after extraction. Root = what-to-guard-against;
-the how-to-guard is the WORKFLOW here & the unit declaration THERE. Same
-ops either way (V31) — one verdict, two runners.
-V29: **the phase split is the HOST RUNNER's, ⊥ the repo's** — fmt ·
-clippy · nextest(lib) on pre-commit; nextest(e2e) · `llvm-cov
---fail-under-lines` on pre-push; heavier axes on ci. That ordering is an
-optimization for an interactive hook (fail fast, cheapest first) ∴ it
-lives with the runner that HAS hooks (the monorepo). CI has no such
-gradient — it runs everything on every push — so the standalone gate is
-FLAT & complete, ⊥ phased. Cargo-native ONLY (V31) either way ∴ the same
-ops give the same verdict under both; `cargo run` never (a resolved-path
-bin, ⊥ a nested cargo). The custom guards (hygiene, lexicon,
-cavekit-spec, ascii) are ⊥ in either — they run in the monorepo via root
-config (V31). A standalone contributor who wants the gradient uses a git
-hook | a task runner — a repo-level convention, ⊥ a specced artifact.
-V30: **in-repo, itok's config is honored by NEAREST-config cascade** (a
-host feature): a file under crates/itok/ is measured against crates/itok/
-baselines, ⊥ root's (the editorconfig/gitignore cascade, V1). ∴ itok
-growth is reviewed vs itok ceilings & root config retires its
-`crates/itok/**` entries. Bootstrap (single root config) → cascade is the
-dir-walking native tier the host adds; until then root governs by
-exact-path (the current `crates/itok/SPEC.md` entry).
-V31: **the traveling gate is STANDARD-ONLY; custom guards are
-monorepo-only.** The fancy guards are HOST crates (`repo-guard`,
-`cavekit-spec`) — they do ⊥ travel ∴ the gate uses cargo-native tools
-alone (fmt, clippy, nextest, llvm-cov). Coverage is a
-`--fail-under-lines` FLOOR, ⊥ the per-file `coverage-freeze` ratchet (a
-host bin); `coverage-baseline.json` travels as reference, ⊥ enforced
-standalone. The floor is the UNIT's OWN coverage (itok ≈ 98%), ⊥ the
-monorepo WORKSPACE total (siblings inflate it to 99%, B4): a floor copied
-from the aggregate FAILS the single crate. Two-tier by design — the
-monorepo is itok's full-guard home; the public repo runs the standard
-gate. A graft lands public, flows back, & hits the full guards in the
-monorepo (external contribution, internal tending). Extracting the
-toolkit is DEFERRED; trigger = the public repo wanting the fancy guards
-independently. AMENDED by V75: the runner is now the pinned dev shell, ⊥
-bare rustup — the OPS stayed cargo-native, only the DELIVERY changed.
-V32: **`diff`/`show`/`log` = git's triad, matched to git's CLI.** Three
-questions at three granularities, git's own split (V1): `diff` = any two
-points (working · `--staged` · `<A> <B>` · `<A>..<B>`); `show` = ONE
-commit, deep + per-file (default HEAD, like `git show`); `log` = many
-commits, one delta-line each. `show <A>..<B>` is ⊥ a thing — a range is
-`diff` (endpoints) | `log` (walk), & routing it through `show` would be a
-V2 near-collision. `show <commit>:<path>` = a blob's cost at a ref
-(`git show`'s object syntax). ∴ each verb means exactly what its git
-namesake means, no almost.
-V33: **`--` path filter & `A..B` are GIT-UNIVERSAL, ⊥ per-verb reinvented.**
-`-- <path>` narrows show/diff/log to a pathspec (git's rev-vs-path
-separator); itok is lenient when a bare arg is plainly ⊥ a rev
-(`itok show <sha> SPEC.md`). `A..B` selects endpoints (`diff`, ≡ `A B`) |
-a range (`log`), per git. All 3 verbs stand on ONE primitive — `gitref`:
-the token cost of a file AT a commit (`git cat-file` blob → dummy|bpe).
-diff compares 2 refs, show does one commit's per-file deltas, log walks a
-sequence; build it once, share it (⊥ 3 copies).
-V34: **runs fully in a NETWORKLESS SANDBOX.** Core/default build ! need
-ZERO network & ZERO extra auth. Tiers stack fastest-local → slowest-remote
-(V4): `dummy`·`--bpe` = local core (sandbox-safe, always built); `--ollama`
-= opt-in remote rung, feature-gated (V23) & doc'd as a SLOWER tier of
-operation. A no-net sandbox runs the local tiers & every gate (`check`,
-`--budget`) unchanged ∵ gates pin `--bpe` (V5) & never touch net. This is
-the north-star axis: content-locality > precision (V36).
-V35: **no paid API, no extra auth — cloud `count_tokens` REJECTED.** A
-provider exact-count (e.g. anthropic `/v1/messages/count_tokens`) needs an
-API KEY (extra auth) + a paid-tier credential + EGRESSES file content to a
-third party (DLP/compliance) ∴ ⊥ core, ⊥ any default. The exact rung is
-`--ollama` instead (local model's own tokenizer, keyless, free, on-LAN —
-V22); `o200k` (`--bpe`) is the honest LOCAL proxy for cloud models
-meanwhile. Considered & rejected, escape hatch recorded (like V24/V25): a
-cloud rung, if ever wanted, is a separate opt-in feature that ! never be
-default & ! shout its content egress.
-V36: **guardrail wants a CONSERVATIVE estimate, ⊥ a true count.** The
-gate's job = catch context OVERLOAD, ⊥ report exact tokens ∴ a margin'd
-local estimate (`--bpe` + headroom under the window) is CORRECT, & chasing
-cloud-exactness was the wrong axis (V35). Exactness ≠ goal; non-overload =
-goal. `--ollama` exact is a CONVENIENCE for model-fit reporting
-(doctor/fit), ⊥ a requirement of the gate. Model-fit selection reads a
-STATIC `.context-models` window (T14, e.g. `qwen3-coder:30b` = 256k) — no
-net needed to know a model's ceiling.
-V37: **the GUARD travels ∴ tests are LAYOUT-AGNOSTIC.** A test ⊥ assume
-the monorepo path — `CARGO_MANIFEST_DIR.parent().parent()` as the repo
-root, `crates/itok/…` pathspecs — ∵ extracted, the crate IS the repo root
-& those overshoot the tree / name absent paths (B2). Derive the git root
-& the crate's prefix at RUNTIME (`git rev-parse --show-toplevel` /
-`--show-prefix`) so ONE test passes at `<repo>/crates/itok` AND standalone.
-V13's "extraction = a move" binds the TESTS too, ⊥ only src; the rehearsal
-(`subtree split` → clone → run `.uow` guards) is how it is proven (T11).
-LAYOUT is not the only ambient a test ⊥ assume: repo STATE too — the live
-`HEAD~1..HEAD` is ⊥ presumed SUBSTANTIAL (a near-zero-delta config commit
-as HEAD broke a `--budget` breach assertion, B3); drive a delta test from a
-CONTROLLED range (empty tree → HEAD adds the whole repo), ⊥ ambient history.
-V38: **a network backend is CASSETTE-REPLAYED in the gate, ⊥ live.**
-Record the real HTTP interactions ONCE into a standard `vcr-cassette` file
-(portable, VCR-interop), replay them offline THROUGH the real client
-(ureq) via a local stub (a `TcpListener` serving the recorded response) so
-the full path — client → parse → render — is deterministic & CI-safe with
-NO server. The LIVE endpoint check is a `#[ignore]` test, run by hand
-(`--ignored`), ⊥ in the gate. The cassette dep is DEV-only (serde/chrono/
-url, ⊥ tokio/async) ∴ V23/V13 hold: the shipped binary stays network-free
-& tiny. rvcr rejected — it is reqwest+tokio = an async runtime, V23's
-forbidden shape. ∴ every network feature ALSO runs a CI axis (`--features
-ollama` clippy+nextest in `.uow`) so the replayed path ⊥ rot.
-V39: **publishable = public gate green + honest SemVer + zero private
-reference.** crates.io needs 4: (1) the STANDARD gate reproduces on plain
-rustup CI (V31) — fmt · clippy · test · `--features ollama` · `llvm-cov
---fail-under-lines`, NO nix & NO host bin, git history fetched FULL
-(diff/show/log read `HEAD~n`); (2) SemVer tells maturity TRUE — the version
-is a RUNG on the ladder (V70), ⊥ default `0.0.0`; publication itself is
-`0.7.0`, ⊥ whatever number the crate happens to carry; (3)
-metadata complete (`repository`·`homepage`·`documentation`·`readme`·
-`keywords`·`categories`·`rust-version`) so crates.io/docs.rs render; (4)
-the shipped `.crate` names NO origin repo (V26) & `exclude`s non-consumer
-files (`.uow/`, baselines). Publish = `subtree split` (V13) of a crate
-carrying all four.
-V40: **docs render from ONE command registry — `itok docs` emits it, a
-guard FREEZES it.** itok hand-rolls args (no clap) ∴ verb/flag text
-scatters across help strings & rots alone (the README did). One registry
-(verb → synopsis · flags · exit) feeds EVERY view — `--help`, `itok docs`
-(markdown reference), later man — so a new verb is a ONE-place edit.
-READ-ONLY, to stdout (V6): `itok docs > README.md` is the USER's redirect,
-⊥ the tool writing. Generated = REFERENCE; the NARRATIVE (intro, ladder,
-mermaid) stays hand-written ABOVE it. A guard diffs `itok docs` vs the
-committed reference ∴ staleness FAILS the gate (coverage-freeze, V14) —
-docs cannot rot, ⊥ merely regenerable.
-V41: **second axis — RUNTIME, beside the static one.** V1-V40 answer
-about FILES, ex ante ("what will this cost?"). The runtime axis answers
-about a CONTEXT, ex post ("what actually got loaded, by what, at what
-cost?"). Same estimator engine (V4), new frontend. It earns its own
-verbs ∵ input tokens are billed EVERY turn while output tokens spend
-ONCE ∴ a file loaded at turn 3 is still charged at turn 40 & runtime
-waste COMPOUNDS. `itok` = input tokens (V3) ∴ this axis is the name's
-other half, ⊥ scope creep.
-V42: **observe before enforce** — the ORDERING law & the modularization
-law. Telemetry (read-only, post-hoc, zero interception) ships FIRST &
-usable ALONE; reduction ships next & usable ALONE (a pipe filter);
-enforcement ships LAST, tuned from measured numbers. ∵ a fuse threshold
-guessed w/o data has false-positives that cost MORE than the waste it
-prevents (a denied legit read = retries + rephrase = burned turns). Each
-rung ! stand on its own & be shippable alone; none may require the next.
-V43: **the transcript is the GROUND TRUTH & is READ-ONLY.** Session data
-comes from the harness's own on-disk transcript (Claude Code: JSONL under
-`~/.claude/projects/…`), ⊥ from interception. It already carries the real
-API `usage` ∴ ACTUAL, ⊥ estimate — the closed loop for free. itok NEVER
-writes/moves/mutates it. FOREIGN & unversioned schema ∴ parse
-defensively: unknown fields ignored, malformed record SKIPPED w/ a
-counted total, ⊥ crash, ⊥ a hard schema assert. ONE reader module,
-harness-PLUGGABLE (a new harness = a new reader, ⊥ a new tool). The file
-APPENDS LIVE while a session runs (measured: 1483→1496→1499 lines across
-3 consecutive reads) ∴ read a SNAPSHOT & tolerate a TORN TAIL — the last
-line MAY be half-written. Two reads a second apart otherwise disagree, &
-a report-only verb that contradicts ITSELF is broken (V5, one level up).
-V44: **the ledger is a LOWER BOUND & says so** — V3's honesty rule on
-the runtime axis. Load events cannot see system prompt, tool schemas,
-`CLAUDE.md`, or prior turns ∴ report `accounted` vs `total` & label the
-gap `unaccounted`; NEVER silently attribute the remainder. MEASURED: `usage` is on 100% of assistant
-records (495/495) ∴ the TOTAL is EXACT & only the ATTRIBUTION is partial
-— say which, & ⊥ hedge the total as though it were estimated. Every number names its method (V3): `ledger(actual)` ≠
-`ledger(bytes/4)`.
-V45: **content NEVER enters the ledger & never leaves the box.** Record
-path · content hash · count · ts · tool · session; ⊥ file bodies, ⊥
-message text, ⊥ env, ⊥ credentials. Transcripts hold the user's & their
-customers' content ∴ a telemetry file that copied it is a NEW leak
-surface buying nothing — counts answer every question this axis asks. No
-egress at all (V35): local files & stdout only; itok ships NO uploader,
-NO endpoint, NO opt-out-shaped default.
-V46: **runtime verbs keep top/du/strace grammar** (V1) — `trace` = 1
-line per load event, chronological (`-n` · `--since` · `--reverse`, the
-`git log`/strace shape); `top` = ranked occupancy (`-h` · `-s` ·
-`--top N`, the `du`/`top` shape). Both report-only, exit 0 (V5). `log`
-stays the PATH-HISTORY verb (V19) & session events are ⊥ routed through
-it — `git log` means commits, so overloading it is the V2 near-collision.
-NO `blame` verb: per-path attribution is `top -- <path>` ∵ `git blame` is
-per-LINE authorship & the almost-match costs more than the flag (V1/V2).
-V47: **cache accounting is READ, ⊥ inferred.** `cache_creation` /
-`cache_read` come from `usage` ∴ prefix re-billing is OBSERVED, ⊥
-modelled. Report it as seen & name it; ⊥ a heuristic "you probably busted
-the cache" (that would be a confident guess, V3). Absent fields ⇒ no
-cache column, ⊥ a zero (a zero reads as a measurement).
-V48: **calibration is REPORTED, ⊥ folded — & the sample is never
-LAUNDERED.** The correction is reported beside its `n`, ⊥ silently folded
-into the estimators — the ladder's rungs stay honest & unmodified (V4).
-Applying it is opt-in & LABELLED as derived: `~186k itok (bytes/4 ×1.12
-cal:n=340)`. A factor whose sample is ⊥ stated is a confident lie (V3).
-CORRECTED, method only: this invariant originally derived the factor from
-turns where exactly ONE load explained the `usage` delta, DISCARDING the
-rest. That paid most of the sample to dodge per-item attribution — & a
-2-parameter fit needs NO attribution at all ∴ uses every turn & yields the
-fixed overhead as a second output (V102, MEASURED in T87). "Clean samples"
-was the wrong MECHANISM, ⊥ the wrong goal; the rules above are what
-survived.
-V49: **`cap` = token-unit filter, visibly ⊥ `head`.** stdin→stdout, pipe
-shape (V1). `head`/`tail` truncate SILENTLY by bytes/lines; `cap`
-truncates by TOKENS & ANNOUNCES the elision with a machine-parsable
-footer ∴ it takes a DIFFERENT NAME, ⊥ `head -t` — an almost-`head` is
-V2's expensive failure. Usable with no agent & no hook: `cmd | itok cap
-10k` is the whole product of its rung (V42).
-V50: **reduction ladder mirrors the precision ladder (V4)** — ordered
-LOSSLESS → LOSSIEST, every applied rung NAMED in the footer: `strip`
-(ansi · trailing ws) | `dedup` (repeat lines `×N`) | `elide` (base64 ·
-minified · lockfile bodies) | `outline` (code → signatures, bodies
-dropped) | `cap` (hard truncate). Applied IN ORDER, stopping the moment
-the budget is met ∴ the CHEAPEST SUFFICIENT rung wins & the reader is
-told exactly which ran. Lossless rungs are default-safe; lossy rungs are
-opt-in per policy. NEVER reorder lossy-first — silent structural loss is
-the failure this ladder exists to avoid.
-V51: **truncation is RESUMABLE & IDEMPOTENT.** The elision footer
-carries the resume selector (offset · line range · omitted count) so the
-next read CONTINUES, ⊥ restarts at 0. An un-resumable cap costs more than
-it saves (the reader re-fetches the whole file). Re-running the same cap
-on the same input yields the same cut (V5's determinism, on the filter).
-V52: **`guard` is an ADAPTER, ⊥ a daemon.** Shape: harness hook JSON on
-stdin → decision JSON on stdout, ONE process per call, no server, no
-background thread, no state beyond an append-only session file.
-Harness-specific mapping lives in ONE module (V43's pluggability); every
-other module is harness-agnostic. ∴ a new agent harness is a new adapter,
-⊥ a fork of the tool.
-V53: **the gate set is CLOSED & every gate is OPT-IN** — extends V5.
-Gates = `check` (committed registry) · `--budget` (inline one-shot) ·
-`guard` (runtime policy). Nothing else gates, ever. Enforcement never
-self-enables: no `.context-policy` & no installed hook ⇒ itok is exactly
-as report-only as it is today. `guard` obeys V5's determinism for V5's
-reason — its decision pins a fixed tier, ∵ a gate that varies per run is
-⊥ a gate — & takes the CONSERVATIVE estimate (V36), ⊥ the exact count.
-V54: **fuse is GRADUATED, w/ hysteresis & a MANDATORY escape hatch.** A
-binary deny costs more than the waste (retry loops burn turns) ∴ tiers by
-occupancy: `observe` (ledger only) → `warn` (stderr; the agent reads it &
-self-corrects) → `cap` (elide, resumable V51) → `deny` (& NAME the
-cheaper alternative: `itok fit`, a line range, `rg -m`). Plus a RATE fuse
-over a sliding window (N tokens in M calls = runaway `cat huge.log` /
-grep into `node_modules`). A trip is STICKY w/ hysteresis ∴ ⊥ flapping on
-the boundary. There is ALWAYS an override — a trapped agent is worse than
-a fat one.
-V55: **the fuse is judged by its OWN telemetry** — V42's other half.
-Every trip · cap · override is a ledger event ∴ override-rate &
-false-positive rate are MEASURABLE. A high override rate means BAD
-POLICY, ⊥ a bad agent, & is the signal to retune. Enforcement that cannot
-be measured cannot be tuned ∴ ⊥ shipped.
-V56: **pins are ABSOLUTE.** Policy MAY pin paths that are never capped,
-elided, or denied (`CLAUDE.md`, `SPEC.md`, the law files). A guard that
-elides the rules it guards under is self-defeating. A pin overrides every
-tier, including a tripped fuse.
-V57: **`.context-policy` is the runtime registry, opt-in like
-`.context-limits` (V10).** Per-glob & per-tool budgets · pins (V56) ·
-fuse tiers (V54). Absent ⇒ NO enforcement (V53). Reuses the one decimal
-unit grammar (V18) & the glob semantics of the existing registries — a
-third config file, ⊥ a third config LANGUAGE.
-V58: **in-flight MITM proxy DEFERRED (⊥ rejected).** An
-`ANTHROPIC_BASE_URL` shim would see EVERYTHING billed & could enforce
-hard — but it sits in the CREDENTIAL path & the STREAMING path: it
-forwards an API key, buffers SSE, & becomes a new failure mode on EVERY
-request. The transcript reader (V43) yields ~the same numbers post-hoc at
-ZERO risk, & the hook adapter (V52) yields enforcement at request
-granularity ∴ the risky rung buys little. Trigger to revisit: a measured
-need for a signal only in-flight interception can give. If ever built:
-own opt-in feature (V23), NEVER default, ⊥ read/store/log credentials
-(V45), & ! shout what it intercepts. Considered & deferred, escape hatch
-recorded (like V21/V24/V25).
-V59: **runtime data verbs report AGGREGATES, ⊥ verdicts** — V19's rule,
-carried over. `trace`/`top` may compute re-read waste (same blob loaded
-N× = N× billed), stale bytes (occupancy × turns-since-touched), dup &
-cache columns — those are ARITHMETIC. "This is unhealthy, do X" is
-JUDGMENT & belongs to `doctor` if & when it earns a session target (V17's
-thin-composer boundary still binds: doctor ⊥ grows tentacles).
-V60: **fan-out = N windows, ⊥ one.** Subagent / sidechain sessions each
-own a SEPARATE context ∴ the ledger keys by session & rolls up to the
-parent. A 12-agent fan-out is 12 windows & its true cost is the SUM —
-invisible in any single window, which is exactly why it needs reporting.
-V61: **money is a RENDERING, ⊥ a source.** `--cost` multiplies counts by
-a rate read from `.context-models` (an optional per-model column); itok
-bundles NO price list ∵ prices change & vary by contract ∴ a built-in
-would go stale & become a confident lie (V3). Missing rate ⇒ NO money
-column, ⊥ a guessed one (V11's unknown-model rule). Cache-read tokens
-bill at a different rate than fresh ones ∴ `--cost` ! use the cache
-split (V47) or omit the column entirely.
-V62: **flake at repo ROOT; the dev shell PROVIDES `itok`.** Root ∵ a
-flake's source root is its OWN dir ∴ a subdir flake (once `.uow/`) cannot
-see `Cargo.toml`/`src/` — no `packages.default`, no `nix build`/`nix run`;
-root is also every Rust project's shape (V1). PROVIDES ∵ itok dogfoods
-itself (V15): ON PATH, ⊥ `cargo run --`. A SHIM
-(`exec cargo run -q --manifest-path "$ITOK_MANIFEST" --bin itok -- "$@"`),
-⊥ a package in the closure — a package builds the crate to ENTER the shell ∴ one compile
-error locks you out of the shell you need to fix it, & a pinned package is
-STALE vs the tree. `ITOK_MANIFEST` resolves at entry from `$PWD` (V37);
-`ITOK_PROFILE=release`/`ITOK_FEATURES` are the hatches. Dev files
-`exclude`d from the `.crate` (V39). `packages.*` BUILT (T58): `default`
-(dummy+bpe) · `itok-minimal` (`--no-default-features` ∴ V23/V13's zero-dep
-claim is a BUILD, ⊥ a promise) · `itok-ollama`. Rests on a COMMITTED
-`Cargo.lock` ∵ flakes read git-TRACKED files only & the sandbox has no
-network. `doCheck = false` ∵ the suite shells to git for `HEAD~n` (V33's
-`gitref`) & a store source has NO `.git` — that absence IS the
-reproducibility (V37/B3). `version` READ from `Cargo.toml` ∴ ONE number.
-V64: **ONE gate definition, many callers — eliminate the second copy, ⊥
-freeze it.** `hk.pkl` holds the OPS (which command, which flags, which
-phase, which order, the coverage floor); the workflow holds ORCHESTRATION
-ONLY (runner, toolchain, cache, full history) ∵ that half has no local
-equivalent to disagree with. ∴ one definition is reached 3 ways —
-`pre-commit`, `pre-push`, `hk check` in CI — & the ops CANNOT drift,
-having only one copy. Contrast V40, which had to FREEZE a second
-rendering ∵ `--help` text must live in Rust; here both callers can read
-the same file, & elimination beats policing (a guard detects drift only
-AFTER someone writes it). B4 is the cost of the alternative: a stale `99`
-floor sitting in one declaration beside CI's corrected `98`, both looking
-authoritative.
-V65: **the gate of record stays RUSTUP-REPRODUCIBLE — hk RUNS the ops, ⊥
-hides them.** Every step is a plain cargo command a human can paste with
-nothing but rustup ∴ the hook manager is a CONVENIENCE, ⊥ a dependency of
-the crate (V13/V31). A contributor without hk loses scheduling, never the
-ability to reproduce a verdict. Bars, by construction: no step is a
-script only hk can call, no verdict depends on hk's own logic.
-V66: **the gate's schema is VENDORED, ⊥ fetched at eval** — V12's
-reasoning, on config instead of vocab. hk's documented form amends a
-`package://` URL fetched over the network at eval time; `pkl/Config.pkl`
-ships in-tree & `hk.pkl` amends the local path (upstream's own repo does
-the same). Offline-first is the default BUILD, ⊥ merely the default flag
-(V34). Re-vendored verbatim on an hk upgrade — the pin in the dev shell,
-the vendored schema & CI's `HK_VERSION` are ONE version, moved together.
-V67: **cargo steps SERIALIZE by `depends`; parallelism is for the rest.**
-Cargo takes a lock on the target directory ∴ two cargo jobs launched
-concurrently do ⊥ run concurrently — the second blocks on "Blocking
-waiting for file lock on build directory", which READS AS A HANG. The
-chain makes the serialization explicit & intended, ⊥ emergent, & leaves
-hk free to run any future non-cargo check in parallel. Separate
-`CARGO_TARGET_DIR` per step is the escape hatch & is ⊥ worth it (full
-recompiles, multiplied disk).
-V68: **hermeticity is PROVEN by running parallel, ⊥ argued from
-inspection.** `--test-threads=1` is a DIAGNOSTIC (it localizes a race), ⊥
-a fix (it hides one) ∴ a suite that needs it has a bug, & the bug is the
-deliverable. Reading a test for per-process temp dirs & ephemeral ports
-establishes NOTHING — B5 passed that reading & still raced. The gate runs
-the suite parallel; a flake found there is fixed at the source, never
-suppressed by serializing the axis.
-V69: **a registry no runner reads is a LIE, ⊥ a guard.** `.file-limits`
-traveled with the crate (V27) but NOTHING standalone enforced it ∴ its
-ceilings were hand-maintained & obeyed by no one — it read as law while
-gating nothing. Same failure as V28's dead declaration, one level down:
-the danger is ⊥ the missing check, it is the FALSE ASSURANCE that a
-committed registry provides. ∴ dropped here; file-size ceilings stay a
-MONOREPO guard, where a runner exists. Re-add standalone ONLY together w/
-a checker wired into the gate (V64) — the registry & its caller land in
-the same commit, ⊥ apart.
-V70: **version = MATURITY OF THE GUARANTEE, ⊥ feature count.** Each
-minor answers ONE question — *what can you rely on at this tag?*: `0.1`
-builds reproducibly anywhere (`nix build`) · `0.2` cannot regress locally
-(gate in git hooks) · `0.4` KNOWS what a context costs (M4) · `0.6` can
-ACT on it (M5-M7) · `0.7` PUBLIC, featureset frozen, CI unproven · `0.8`
-public gate trustworthy · `1.0` CONTRACT frozen. ODD minors
-(`0.3`/`0.5`/`0.9`) are RESERVED for fix releases ∴ a bugfix never
-borrows a milestone's number. The ladder ENFORCES V42 STRUCTURALLY:
-telemetry is `0.4`, enforcement `0.6` ∴ observe-before-enforce becomes a
-number you cannot skip, ⊥ a rule to remember. `0.7` freezes the PLANNED
-featureset; `1.0` freezes the CONTRACT (CLI + json, V9) — additions
-between them are ALLOWED ∵ they come from public feedback, the POINT of
-exposing at `0.7`. Pre-1.0 SemVer (minor MAY break) is HONEST ∵ each rung
-IS a behavior change. crates.io is IMMUTABLE (yank HIDES, ⊥ deletes) ∴
-the first public artifact is `0.7.0-rc.1` — cargo ⊥ selects a pre-release
-by default — so the pipeline is proven before a permanent number is
-spent.
-V71: **a passing gate says NOTHING; a failing one says what to DO.**
-SUCCESS = SILENCE (`HK_HIDE_WHEN_DONE`) ∵ output that ALWAYS appears is
-output nobody reads ∴ the one real failure hides in noise everyone
-learned to scroll past. FAILURE = LOUD & ACTIONABLE: the tool's own
-diagnostic + a one-line remediation pointer on steps whose fix is ⊥
-obvious from the failing command
-(`itok`/`ollama`/`no-default-features`/`package`/`coverage`) + a playbook
-(`AGENTS.md`), for agents & humans alike. FAIL-FAST is LOCAL, ⊥
-universal: locally the loop is cheap ∴ the FIRST failure is most useful &
-`depends` orders steps cheapest-first so it arrives fast; in CI a
-round-trip costs minutes ∴ `--no-fail-fast`, a COMPLETE list. BYPASS ⊥ a
-fix: `--no-verify` · `HK=0` · lowering a threshold · `#[allow]` all SHIP
-THE DEFECT with the alarm off. If the CHECK is wrong, that is a SPEC
-change — deliberate, in its own commit, ⊥ silent at the failure site.
-V72: **a gate step MAY need a binary; the VERDICT may ⊥ need one.** The
-`hk util` family is native to the runner ∴ free everywhere. A second tier
-(`typos`·`actionlint`·`taplo`·`shellcheck`) needs a real binary, & that
-is allowed — V65 binds the OPS a verdict rests on (cargo, rustup-only),
-⊥ every auxiliary lint. Rule: the tool is PINNED in the dev shell &
-installed at a PINNED version in CI, ⊥ floating ∴ the two runners agree
-(V64). `actionlint` earns its place specially: the workflow is the ONE
-file NO local run exercises (V64 keeps orchestration there) ∴ without it,
-a mistake in the workflow is found only by pushing.
-V73: **an exemption NAMES what is deliberate; it is ⊥ a suppression.**
-`.typos.toml` exempts `esimate` ∵ it is the INPUT to the typo-suggestion
-tests (V6) — the mistake ! be spelled correctly in both the unit test &
-the README example — & exempts `pkl/` + `tests/fixtures/` ∵ one is
-vendored VERBATIM (V66) & the other is a RECORDING (V38): "fixing" either
-silently forks it. Every exemption carries its REASON in the config file,
-⊥ in a commit message nobody reads at the failure site. A suppressed
-finding w/o a named reason is indistinguishable from a bug (V71's
-no-bypass rule, applied to config).
-V74: **a hook DEGRADES when its runner is absent; it ⊥ BLOCKS.** A gate
-exists to stop bad commits, ⊥ to stop git. When the runner is missing —
-outside the dev shell, a fresh clone, a container — the hook prints ONE
-line to stderr & exits 0: LOUD about being skipped, ∵ a SILENTLY skipped
-gate is indistinguishable from a passing one (V71). Hard-failing instead
-makes the repo unusable for anyone who ⊥ installed the toolchain, which
-is the wrong failure mode for a CONVENIENCE — the gate of record is CI +
-`hk check` (V65), ⊥ the hook. ∴ the hook command is written BY HAND, ⊥ by
-`hk install`, whose command assumes its own binary is on PATH (B6).
-V75: **CI runs the SAME SHELL, ⊥ a parallel install path** — amends V31.
-That invariant's bare-rustup CI predated the crate carrying its own ROOT
-flake (V62); now nix IS this crate's toolchain, ⊥ a host dependency ∴
-`nix develop --command hk check` hands CI the EXACT tools pinned in
-`flake.lock`. One toolchain + one gate definition (V64) ⇒ ZERO version
-skew between a runner & a laptop, & no per-tool install action that can
-drift from what the dev shell has. hk stays LOCAL-ONLY as a DIRECT
-dependency: CI reaches it THROUGH the shell, ⊥ by installing it — same
-for every linter (V72), which is why the workflow installs none of them.
-V31's real content SURVIVES: no HOST guard bin travels w/ the crate, & the
-ops stay plain cargo commands (V65) ∴ a contributor w/o nix reproduces
-every verdict by hand. ONLY "no nix in CI" is superseded. What CI cannot
-yet validate (matrix · MSRV · caching · SHA-pinned actions · publish) is
-LISTED in the workflow, ⊥ silently absent — a gap you can read is ⊥ the
-same failure as a gap you cannot (V44's honesty rule, on infrastructure).
-V76: **the transcript records what was BILLED, ⊥ what exists on disk.**
-A tool result is TRUNCATED before it enters context & the overflow is
-spilled to a side file: MEASURED, `persistedOutputSize` 5,749,032 bytes
-vs `stdout` 30,000 chars — the same event, 190x apart. The CONTEXT COST
-is the truncated content ∴ NEVER substitute an on-disk size for a load
-size; that direction overcounts by orders of magnitude & would make the
-ledger confidently wrong (V3). Corollary: tool-result shapes are
-TOOL-SPECIFIC & sometimes a bare STRING, ⊥ an object — there is no
-uniform load record to key on (V43's defensive parse is load-bearing,
-⊥ decoration).
-V77: **a session read is CONTENT-ADDRESSED & truncated at the last
-COMPLETE LINE.** The file appends live ∴ hashing the WHOLE file gives a
-different key every second; hashing the complete-line PREFIX gives the
-SAME key until a whole new record lands. A torn tail therefore ⊥ change
-the key, & two reads a second apart AGREE — which is the requirement
-(V43), ⊥ a nicety: a report-only verb that contradicts itself is broken
-(V5). Determinism comes from the TRUNCATION, ⊥ from storing anything.
-The on-disk CACHE is REJECTED, ⊥ merely deferred: MEASURED, a 2.7MB
-transcript parses in 8ms (file read 0.6ms) ∴ a cache would buy 8ms &
-cost itok its FIRST user-level state — a home directory to choose
-(XDG is Linux's convention, ⊥ macOS's `~/Library/Caches` | Windows's
-`%LOCALAPPDATA%`), an invalidation scheme, a pruning policy, & AMBIENT
-STATE in a tool that is today a PURE FUNCTION of its inputs (every
-config it reads is project-local). Stale ambient state is V5's hazard
-one level up. V19's per-blob-hash rule stands for BLOBS (a git history
-walk re-estimates the same blob many times); a session is read ONCE per
-invocation, so the rule does ⊥ transfer. Trigger to revisit: a verb that
-must re-parse MANY sessions inside an interactive loop, w/ a MEASURED
-slowness — 100 sessions is 0.8s today, which is ⊥ slow. Considered &
-rejected, escape hatch recorded.
-V78: **the LOAD CLASSES are tool results AND attachments.** Hook output,
-reminders & injected context are loads too: MEASURED, 266 `hook_success`
-attachments ≈ 45k itok in one session — invisible today & fully
-attributable w/o storing any content (V45). Counting only tool results
-would under-report the accounted share & inflate `unaccounted` (V44)
-while the data sat right there.
-V79: **a fixture PINS its own shape, & the guard stays armed WHERE the
-data lives.** A fixture that quietly stops representing its case does ⊥
-fail — it WEAKENS whatever depends on it, invisibly ∴ each property is
-asserted (torn tail stays torn · garbage line stays mid-file · spilled
-size stays >> billed). The transcript guard (V45) & the fixtures
-INTERLOCK on an INTRINSIC signal — a UUID-shaped id, which every real
-capture carries & no hand-written fixture has — ⊥ on LOCATION: exempting
-`tests/fixtures/` would disarm the guard exactly where a real transcript
-is most likely to be pasted "to make a test easier". Proven by planting
-one there & watching it fail.
-V80: **try to REFUTE before you trust — self-review is ⊥ review.** The
-context that produced a finding shares its blind spot ∴ cannot audit it;
-that is STRUCTURAL, ⊥ a matter of care. Every §V invariant & every §B
-diagnosis earns an attempt to KILL it — ideally by a fresh context that
-has ⊥ seen the author's reasoning first (reading it ANCHORS the reviewer,
-so agreement afterwards is worth less than independent agreement).
-EVIDENCE, this repo: every correction so far arrived via a FAILURE — B5
-(hermeticity claimed from READING the fixtures, disproved by running
-parallel), B6 (a hook installed then blocking every commit), a fixture
-test that PASSED while asserting nothing — ⊥ one came from someone
-looking in advance. That is reactive, ⊥ open. Openness ⊥ indecision:
-once the disconfirming evidence is sought & weighed, DECIDE; reopening a
-settled question w/o NEW evidence is churn, ⊥ rigour.
-V81: **an unresolved disagreement is a HIDDEN DEFECT.** Two assumptions
-then drive one system until they fail at a boundary — B4's shape exactly
-(two declarations, two floors, both authoritative). ∴ surface a
-disagreement WHEN IT APPEARS, naming the competing positions, their
-evidence, & the decision they affect; SILENCE ⊥ alignment. Verify
-alignment by BEHAVIOR — re-run the check, inspect the artifact — ⊥ by
-verbal assent, which hides different readings of the same words. Where
-agreement is impossible, RECORD the governing decision & the REMAINING
-RISK (V21/V24/V58's "considered & rejected, escape hatch recorded" is
-this pattern already). `SPEC.md` IS the sync artifact: a resolution lands
-in §V so future-me & a fresh agent inherit the SAME assumptions.
-V82: **believability is per-DOMAIN & earned by OUTCOME, ⊥ asserted.**
-Weight a claim by its source's track record IN THAT AREA; an unproven
-source gets a second verification gate. Applied concretely &
-uncomfortably: in THIS repo, my assertions-from-inspection have a
-MEASURED record of being wrong — B5, B6, & a test that passed for the
-wrong reason ∴ "I read it and it looks correct" carries LOW believability
-here & earns a verification pass BY DEFAULT (V68 generalized beyond
-tests). Symmetrically, a claim backed by a RUN — exit code, diff,
-counted output — needs no such gate. Update the weight on evidence, in
-both directions.
-V83: **best idea wins; make the COMPARISON auditable.** itok already does
-half — V21/V24/V25/V35/V58 record what was considered, REJECTED, why, &
-the TRIGGER that would reopen it ∴ a reader can audit the decision rather
-than merely obey it. The other half: where several designs compete, score
-them against EXPLICIT criteria & graft the strongest parts of the losers,
-⊥ discard them wholesale. Merit is established by SURVIVING SCRUTINY
-(V80), ⊥ by gathering agreement — & an idea's source is ⊥ evidence for
-it.
-V84: **evolve or decay — & spec growth is a RECURRING cost.** Propagate a
-proven improvement to every consumer (⊥ leave it local); keep spec &
-toolchain current; MEASURE the rate of adaptation ∵ a system that still
-works but no longer learns is ALREADY decaying. Failing case, named
-rather than hidden: T49's compaction debt has slid 4x while `SPEC.md`
-DOUBLED (29k→60k bytes). MEASURED consequence: the spec is re-billed on
-EVERY turn of EVERY session (~5% of a 112M-token session) ∴ every added
-byte is a permanent tax on all future work, & compaction is a COST
-control, ⊥ tidiness. This invariant indicts its own commit: V80-V87 grew
-the file again ∴ T49 is now DUE, ⊥ deferred.
-V85: **drive to a TERMINAL state; a marked blocker IS terminal.** Green
-gate, or an EXPLICIT blocker carrying evidence + the required next action
-+ who can unblock it. SILENCE is abandonment; a clearly-marked blocker is
-an honest end state (the workflow's PENDING list, V75, is this shape).
-The MACHINE BOUNDARY is owned — toolchain, CI, config, deps are PARTS of
-the system producing the result, ⊥ excuses for a bad one (V71). A handoff
-closes only w/ an acknowledged owner & a VERIFIABLE completion condition;
-"done" ⊥ mean "I stopped".
-V86: **the 5-step loop IS the SDD loop, ⊥ a parallel ritual.** goals =
-§G + a §T done-when · problems = observed reality vs goal · diagnose =
-ROOT CAUSE before fix (§B) · design = §V + plan · do = build & VERIFY
-against the goal. Do ⊥ skip steps; the common skip is problem→fix w/o
-diagnosis, which patches a symptom & leaves the disease — B4 recurred
-precisely because a FIX was copied while the CAUSE (two sources of one
-number) went unnamed.
-V87: **weigh 2nd- & 3rd-order consequences, ⊥ only the 1st.** The
-immediately pleasant choice is often wrong once downstream effects are
-counted. Recorded cases: V58 (an in-flight proxy 1st-order SEES
-EVERYTHING; 2nd-order it sits in the CREDENTIAL & STREAMING path on every
-request) · V54 (a binary deny 1st-order stops a bad load; 2nd-order it
-burns retry turns & the agent routes around it) · V45 (a telemetry file
-that copied content is 1st-order convenient; 2nd-order it is a NEW LEAK
-SURFACE buying nothing) · V84 (a spec addition is 1st-order clarity;
-2nd-order a per-turn tax forever). The generalization: ask what a choice
-COSTS ON EVERY LATER TURN, ⊥ only what it buys now.
-V88: **an unparsable registry row FAILS; it is NEVER skipped.** V11's
-rule (unknown model ⇒ FAIL, name an encoding) binds EVERY registry, ⊥
-only `.context-models`: a row the tool cannot read is a row the AUTHOR
-believes is enforced ∴ skipping it silently converts a gate into
-decoration & is strictly WORSE than having no row (V69). Applies to
-`.context-limits` · `.context-models` · `.context-policy` · `.context-hosts`.
-The diagnostic ! name the FILE, the LINE & what was expected. Corollary
-for the reader: `checked:N` is part of the contract (V9) ∵ it is the only
-way a caller can notice that fewer paths were gated than registered —
-B7 was found by that number, ⊥ by the exit code.
-V89: **itok is SAFE TO RUN CONCURRENTLY — many processes, & threads
-within one.** VERIFIED: the shipped binary WRITES NOTHING (fs writes are
-`#[cfg(test)]`, into per-PID temp dirs), mutates no env & no cwd, has no
-`static mut`, forbids `unsafe` crate-wide, & its ONE shared item is a
-`OnceLock` — `Sync` by construction ∴ safety is FREE: a pure function of
-its inputs cannot race. A PROPERTY TO PROTECT, ⊥ an accident — `guard`
-(V52) is one process per hook call & hooks fire concurrently. Any future
-write ! be (a) ATOMIC whole-file (temp named by PID, then `rename()`:
-POSIX-atomic within a filesystem ∴ a reader sees OLD or NEW, never
-partial) | (b) APPEND-ONLY w/ small records, where the reader already
-tolerates a torn tail (V43, generalized to our own file). LOCK FILES ⊥
-used ∵ a lock held by a KILLED process wedges every instance, & in a git
-hook a wedge beats a benign race. CONTENT-ADDRESSED keys make a write race
-BENIGN (same key ⇒ same bytes ⇒ last writer wins IDENTICALLY) ∴ a reason
-to prefer them. DELETION races TOLERATED: ENOENT ⇒ recompute. Every temp
-path ! carry the PID (why the suite is parallel-safe, B5). EXERCISED, ⊥
-claimed: the `--ollama` fleet runs ONE THREAD PER HOST (T89), itok's FIRST
-in-process concurrency — each thread owns its result & shares NO mutable
-state ∴ still pure. & parallel I/O ! ⊥ change the ANSWER: merge in FLEET
-ORDER, ⊥ completion order, else two runs disagree about a model on two
-hosts w/ different windows (V5).
-V90: **a cache is justified only by CROSS-INVOCATION repetition over an
-IMMUTABLE key.** Repetition WITHIN one run is MEMOIZATION — no storage,
-invalidation, or concurrency question ∴ try that first. A MUTABLE key
-(path+mtime) is where caches rot; an immutable one (git blob SHA, content
-hash) cannot go stale. Both conditions, or no cache (V77/B8: 8ms of
-benefit against a new class of ambient state). WHERE, if justified:
-`.git/<tool>/` for git-derived data — in the repo but ⊥ the WORKING TREE
-∴ never in `git status`, dies with the clone (precedent: git-lfs's
-`.git/lfs`); `~/.itok/` for content-addressed data shared ACROSS clones
-(the dev-tool dot-dir convention — cargo·rustup·npm·ollama — ⊥ XDG, which
-is LINUX's & ⊥ macOS's `~/Library/Caches` | Windows's `%LOCALAPPDATA%`).
-NEVER a working-tree `.itok/`: itok runs on ARBITRARY repos (V10) ∴ an
-untracked dir in a clone you do ⊥ own surfaces in someone else's `git
-status`. NEVER both without two DISTINCT lifetimes — two invalidation
-stories & a precedence rule is where "which is stale?" bugs live.
-V91: **`headroom` = `df` for a context; the RATE is per TURN, ⊥ per
-second.** V8 already binds `estimate` to `du`; `df` is `du`'s sibling & the
-gap was real — "how much room is LEFT" had no verb. Columns are `df`'s
-own (window · used · avail · use%) ∴ the layout needs no teaching (V1).
-loadavg's THREE-WINDOW shape is kept ∵ short vs long reads the TREND at a
-glance (MEASURED: 958/921/838 itok/turn = rising; 623/915/82 = a burst
-that had passed) — but the CLOCK is TURNS, ⊥ wall-seconds: context grows
-per TURN & nothing happens between them ∴ a wall rate would report "load
-dropping" through an idle hour with the window as full as ever. V2: keep
-the convention's SEMANTICS, ⊥ its literal unit.
-NAMING, considered & rejected: `load` — already means a load EVENT here
-(`LoadEvent`, top's `loads` column) ∴ collides INSIDE the tool, worse than
-outside (V2); `uptime` — a DURATION, we report a rate; `turns` — names the
-UNIT ⊥ the question, & a plural reads as a LISTING (`trace`'s job);
-`free` — the best prior (`free -h`) but `fit` exists ∴ `itok f` would go
-AMBIGUOUS, breaking a working prefix (V6). `headroom` names the QUESTION &
-has a free prefix (`h`).
-V92: **no window ⇒ NO denominator, ⊥ a guessed one.** `avail`/`use%`/
-`turns left` all divide by a capacity that comes from `--window` |
-`--model` | `.context-models` (V18). Absent ⇒ report `used` alone & SAY
-the capacity is unknown — V11's rule (unknown model ⇒ FAIL, name an
-encoding) applied to a denominator: assuming 200k | 1M would make every
-derived column a FICTION while looking measured (V3/V47).
-V93: **`turns left` is an EXTRAPOLATION & says so.** It is `df`'s
-"how long until full at the current write rate" — arithmetic on a STATED
-assumption, ⊥ a verdict, so it stays inside V59's boundary. It ! name the
-assumption ("at the recent rate") & carry the tilde. A zero-window turn
-is EXCLUDED from the rate, ⊥ treated as a measurement: MEASURED, one
-turn in a real session reported window 0, which a naive delta rendered as
-a -387,741 "compaction" that never happened (V47, from a third
-direction). Note the distribution is HEAVY-TAILED (median 285 vs mean
-~900 itok/turn) ∴ a high rate often means ONE big read landed recently,
-⊥ that everything is heavy — the triple's SPREAD is the signal, ⊥ any
-single number.
-V94: **cache reads are cheap PER TOKEN & the aggregate is QUADRATIC.**
-MEASURED (1048 turns, this repo's own session): 379.6M billed input =
-99.5% cache READ · 0.001% fresh, & the window grew 32,780 → 720,349
-(22x). Total cost = the SUM OF WINDOWS ∴ it is the INTEGRAL of a growing
-line, ⊥ a constant × turns: mean window 362k against a final 720k.
-∴ a reduction's value is `size × turns REMAINING`, ⊥ its one-time load
-cost — dropping 100k at turn 200 of 1048 avoids 84.8M cache-read tokens,
-& a 200k CAP would have avoided 185.5M = 49% of the entire bill.
-EARLIEST reductions dominate. CORRECTED: the first version of this
-invariant said the ladder "mostly saves CHEAP tokens" & concluded
-enforcement was worth less than it looks — true per token, WRONG in
-aggregate, & backwards about V50/V54, which this strengthens. itok
-bundles NO price list (V61) ∴ it reports the split & the SIZE×TURNS
-leverage; the reader applies their own rates.
+V1: **convention over novelty.** Default to the form `git`/`du`/`rg` already use, even when a novel one is "better". Convention lives in the model's pretrained prior & in muscle memory ∴ costs 0 to invoke. Novelty is taxed on 4 recurring axes — teaching (paid every session), retry (wrong-guess round-trips), surprisal (low-probability form ⇒ the model hedges), parsing (novel output re-inferred). Ship novelty only when value-added > cost-to-teach.
+V2: **near-collision is the expensive failure** ∴ match a convention's SEMANTICS exactly | be visibly different — never almost. A `diff` that looks like `git diff` but acts differently invokes the prior then violates it ⇒ costs more than honest novelty.
+V3: **name = estimation; the number self-describes.** Output ALWAYS names its unit & method: `~166k itok (bytes/4)`. `itok` = INPUT tokens (what a file costs fed INTO a model, ⊥ output/generation) ∴ an agent needs no external knowledge — the number says what it is (V15); `i`/`o` is the most burned-in split in computing (V1). The `~` marks a CRUDE estimate — dummy tier ONLY; `--bpe`/`--ollama` drop it (`166k itok (o200k)`, `166k itok (exact)`) ∵ they are a real tokenizer's true count. Tilde presence = the estimate-vs-truth signal at a glance. (`--exact` was the old flag name for the true rung; it is now `--ollama`, V35.) json (T3) carries the same intent structurally (`unit`, `estimated`), ⊥ w/ a tilde in a numeric field (V9).
+V4: **precision ladder, ordered FASTEST-LOCAL → SLOWEST-REMOTE.** `dummy` (bytes/4 + word proxy, zero-dep, instant) | `--bpe` (tiktoken, offline, deterministic, the honest proxy) | `--ollama` (a local model's OWN tokenizer, LAN localhost, keyless, exact for that model — V22). Each rung labelled; `dummy` & `--bpe` are honestly "estimation", `--ollama` transcends it. The local rungs (`dummy`, `--bpe`) are the CORE & the only tiers a networkless sandbox needs (V34); `--ollama` is the opt-in remote rung. NO cloud/paid-API rung — a provider `count_tokens` behind an API key is rejected (V35).
+V5: **only `check` gates.** It pins `--bpe` ∴ deterministic & cacheable by content hash. `estimate` & `diff` are report-only, exit 0. A gate that varies per run is ⊥ a gate.
+V6: **prefix-inference, read-only verbs only.** Unambiguous prefix ⇒ resolve silently (`itok e`, `itok di`, `itok ch`). Ambiguous ⇒ error listing candidates, never silent-pick. Non-prefix typo ⇒ SUGGEST (edit-distance), ⊥ run. Canonical names are the full words; prefixes are convenience, never promised. Any future MUTATING verb requires its full name — no inference into a write. SAME rule binds a name resolved from a DISCOVERED SET: `--model` over an `--ollama` fleet resolves exact > ollama's own `name`=`name:latest` > unique prefix; ambiguous ⇒ error LISTING candidates, absent ⇒ error listing what IS served (V71). Step 2 keeps ollama's grammar EXACTLY where it applies ∵ an almost-match is V2's expensive failure. One prefix grammar, ⊥ a per-domain reinvention (V1). ⊥ `.context-models`: that is a REVIEWED registry & V11 wants an exact row. Write-safety above is untouched ∵ `doctor` is read-only.
+V7: **`diff` mirrors `git diff` arg-forms verbatim** — working-tree, `--staged`, `<A> <B>`, `<ref>`, `-- <path>`, `--exit-code`. Zero new mental model (V1).
+V8: **`estimate` mirrors `du`** — `-s`/`-h`/`--top` — & operates on git-tracked files by default (like `rg` respects `.gitignore`); explicit paths reach untracked files directly. `du`'s `-d` (recursion depth) & `-a`/ `--all` are ⊥ shipped: `estimate` costs a FLAT fileset (git-tracked list | argv), ⊥ a recursive walk, so depth has nothing to recurse & untracked is a named path away. Add either only when a real need appears.
+V9: **porcelain/plumbing split.** Human table MAY evolve; `--format json` (one object per file) is a STABLE contract. Agents parse json; the pretty table stays cosmetic.
+V10: **`.context-limits` is opt-in**, ⊥ fail-by-default. Unlike a repo-guard registry, `itok` runs on arbitrary repos ∴ an unregistered path is simply unchecked. `check` gates only what the user registered.
+V11: **`.context-models`: unknown model ⇒ FAIL, name an encoding.** No silent fallback to a default BPE — a silent wrong-tokenizer is the V2 failure. A new model is a reviewed row.
+V12: **BPE vocab VENDORED**, with license provenance, ⊥ fetched at runtime. Offline-first + opensource both demand the data ship in-tree.
+V13: **zero host-internal deps** ∴ extraction = `git subtree split -P crates/itok`, ⊥ surgery. Own `Cargo.toml`, own license, own `SPEC.md`, own vocab. Nothing imported from the monorepo.
+V14: **self-checked & dogfooded.** `cavekit-spec` validates THIS `SPEC.md`; while `itok` lives in the host it runs as a host guard unit (`itok check` in pre-commit, invoked by resolved path). It wears both hats — product & guardrail — like the other extractable crates.
+V15: **`itok` dogfoods its own metric** — it measures token cost ∴ it must be the cheapest tool to learn (V1). A token tool that needed teaching would refute its own thesis.
+V16: **budget IS the switch** — `--budget N` on `estimate`/`diff` ⇒ exit nonzero when a file (or a change's delta) exceeds N. A threshold intends a gate ∴ no separate `--guard` boolean. Name = `budget`: ⊥ `--guard` (novel jargon, V1), ⊥ `--max-tokens` (near-collides w/ the API `max_tokens` = GENERATION cap, opposite meaning ∴ V2's expensive failure). Complements `check`: `--budget` is the inline one-shot (no registry, the CI one-liner), `check` is committed policy (`.context-limits`). Both gate; both pin `--bpe` when accuracy matters. `--budget` on `diff` needs no registry ∴ "no commit adds > N tokens" is a review gate anyone can drop into CI.
+V17: **`doctor` = advisory pre-flight** — "is this context healthy to hand a model?" Answers *should I?* where `estimate` answers *how much?* & `check` answers *passes policy?*. Report-only, suggests fixes; ⊥ a gate. Name = `doctor` ∵ convention (`brew`/`flutter`/`npm doctor`) is in the prior (V1); ⊥ `sane` (novel, collides w/ the SANE scanner API, reads wrong as a verb). Composes itok-NATIVE signals ONLY: fit-to-window, budget balance (one file dominating), noise ratio (generated/binary/lock share), estimate confidence (dummy-vs-bpe spread — the one signal only itok has, ∵ it owns the estimators). BOUNDARY: dup-detection & vocab/TTR are separate tools — `doctor` stays a thin composer, ⊥ grows tentacles.
+V18: **window override** — `--window N` gives context capacity raw; `--model X` resolves it from `.context-models` (extended to model → encoding + window). Explicit `--window` wins over `--model`. Unit = DECIMAL tokens (`1M` = 1_000_000, `200k` = 200_000), one parser shared w/ `--budget` (one unit grammar, less to hold). Name `--window` ⊥ `--size` ∵ "size" primes BYTES (its meaning in `du`/`ls`) but a window is TOKENS ⇒ V2 near-collision. `--size` MAY be a silent alias for muscle memory, ⊥ the documented name.
+V19: **`log` = cost across history** — the 5th question (*how did it evolve?*), the creep curve `diff`'s 2 points ! show. Mirrors `git log <path>` verbatim (V1): 1 line/commit that touched the path — sha·date·subject + absolute tokens + delta (like `--stat`'s +/-); `-n N` · `<A>..<B>` · `--reverse` · `--since`. Report-only, exit 0 — raw data like `git log`; judgment (flag N rises) stays OUT (scope). Defaults to `dummy` ∵ whole history = N blobs & `git cat-file -s` gives blob bytes directly (near-free); `--bpe` opt-in for accurate absolutes at N tokenizations. Per-blob-hash cache ∴ a blob is never re-estimated.
+V20: **`fit` = greedy pack, ⊥ knapsack** — select the subset of candidates that fills a `--window` budget. Knapsack (NP-hard) only bites when items approach capacity; context files are KB against a 1M-token window ∴ each is a tiny fraction & greedy-by-order ≈ optimal (fractional ≈ integral when item ≪ capacity). Order candidates (argv/manifest order default; `--by size` to fit-most), take while running total ≤ window, emit survivors. Reuses `--window` parser (V18), estimate tiers (V4, dummy default), tracked-default (V8). Output = a pipeable PATH LIST (NUL/newline, `git ls-files`/`rg -l` shape) ∴ `itok fit --window 200k src/ | xargs cat` assembles a context bundle under budget — useful w/o any programmatic assembler. Report-only, exit 0. Name = `fit` (the question *what fits?*) ⊥ `pack` (implies the bin-packing optimization we ⊥ do). It SELECTS ⊥ reports ∴ its own category beside the 5 report verbs.
+V21: **optimal fit DEFERRED (⊥ rejected)** — true 0/1 knapsack (max priority under budget for near-capacity large items) & per-file priority tables. Greedy (V20) covers the KB-files-vs-1M-window case; the solver earns its complexity only when large near-capacity items make greedy visibly wrong. Trigger: a real fileset where greedy drops a better-fitting combination.
+V22: **`--ollama [HOST]` = self-hosted exact + live windows** — THE slowest-remote rung (V4), keyless & free: `localhost:11434` plain HTTP, no TLS/API key/payment. Ladder = dummy|bpe|`--ollama`; NO cloud rung (V35). Gives 2: (1) EXACT counts via the model's OWN tokenizer (`prompt_eval_count` from a `num_predict:0` generate) ∴ a local llama/qwen is measured true, ⊥ by an o200k proxy that is wrong for it; (2) live model→window from `/api/tags`+`/api/show` (`context_length`). `doctor --ollama` w/o `--model` enumerates ALL local models & reports fit-% against each — the answer no static table gives. Honors `OLLAMA_HOST` (V1); bare `--ollama` = `OLLAMA_HOST`|`localhost:11434`, `--ollama HOST` overrides. Applies to `estimate` & `doctor` ONLY — the verbs where an exact count earns its network cost. `diff` (a gate) & `fit` (a packer) stay on margin'd `--bpe`: a gate wants a CONSERVATIVE estimate, ⊥ a true count (V36) — exact there DEFERRED, ⊥ rejected (trigger: a real need for exact deltas/packing). NEVER `check` (V5) | `log` (history×network). Precedence: live endpoint > `.context-models` > error; the table is the offline fallback & the only source for cloud windows. Non-deterministic + network ∴ all remote-tier rules (V4/V23). Content LEAVES the process to the endpoint — LAN self-hosted is the private path vs cloud, a conscious tradeoff.
+V23: **network tier feature-gated** — `--ollama` lives behind a cargo feature (`ollama`) w/ a tiny blocking client (e.g. `ureq`, ⊥ an async runtime; `localhost` HTTP ∴ no TLS stack). ∴ the core ships ZERO network deps, stays small for extraction (V13), & runs in a networkless sandbox (V34). Offline-first is the default BUILD, ⊥ merely the default flag. NO cloud client ships at all (V35).
+V24: **`--ollama` takes explicit HOSTS, ⊥ a CIDR — no in-tool scanning.** A subnet probe is a PORT SCAN: hostile/noisy/IDS-flagging on any network you ⊥ fully own, sometimes a policy/legal problem — a headline liability for an opensource token tool that buys nothing. Scope-alien too (service discovery ≠ token measurement) & slow+non-deterministic (breaks snappiness). V1: the convention for "find services" is advertise (mDNS) | explicit list, ⊥ scan. So `--ollama` accepts a host, a comma-list, `-` (stdin), or `.context-hosts`; a fleet is the UNION of models & windows across named hosts (`doctor --ollama box1,box2` = which model anywhere holds this). Discovery, if truly wanted, is COMPOSED — `nmap -p11434 …
+| … | itok doctor --ollama - .` — a dedicated scanner pipes hosts in; itok never ships a scanner. Considered & rejected, escape hatch recorded.
+V25: **port lives in the host (`host[:port]`), ⊥ a `--ollama-port` flag.** `OLLAMA_HOST=1.2.3.4:6666` is Ollama's own form ∴ `host:port` is already in the prior (V1) & universal (ssh/redis/pg/git-remote). A separate `--ollama-port` can't express per-host ports in a fleet list (`box1:11434,box2:6666`) & works in none of stdin/`.context-hosts`. Default port `11434`; a `scheme://` prefix carries TLS for a proxied server — same slot, no new flag. Considered & rejected.
+V26: **provenance is a DEV-TIME note, kept OUT of the shipped spec.** A reference to the origin repo's invariants is see-also / derived-from, NEVER load-bearing — each itok invariant stands on its own reasoning. ∴ the SHIPPED, public `SPEC.md` names NO origin-repo invariant number: a cross-repo pointer targets a PRIVATE repo the reader can't see & leaks its numbering, a bare `Vxxx` collides w/ itok's own namespace & reads broken. The reasoning a pointer once cited is folded INLINE & self-contained. The scrub lives IN the monorepo (this file is kept public-clean in place) ∴ extraction stays a pure MOVE (V13), ⊥ surgery. Lineage lives in git history & commit trail, ⊥ the shipped text.
+V27: **itok self-guards — its guard config TRAVELS.** The fractal: every extractable unit is a mini-repo. crates/itok/ mirrors a repo root — own `SPEC.md`, `lexicon.txt`, `coverage-baseline.json`, `Cargo.toml`, `rustfmt.toml`, `clippy.toml`, `.gitignore`, + the toolchain & gate it runs on (root `flake.nix`/`flake.lock`/`.envrc` + `.github/workflows/ci.yml`, V62). ∴ `subtree split` carries the GUARDS w/ the code; itok guards itself standalone, ⊥ orphaned. Config that CHANGES a verdict (`rustfmt.toml`'s `max_width`, `clippy.toml`'s thresholds) ! travel beside `Cargo.toml`'s `[lints]`, else the standard gate (V31) silently weakens on extraction — the extracted `cargo fmt --check` reformats to defaults & fails (B1). Reconciles V13 (self-contained) & V14 (dogfooded): in-repo the host RUNS the guards, but the config they read is itok's own.
+V28: **the unit DECLARATION is MONOREPO-ONLY; the standalone repo is an ORDINARY repo.** A host-specific declaration (`.uow/unit.yml` — ops × globs × phases × deps) describes work for a HOST RUNNER, & no such runner exists in the extracted repo ∴ shipping it there is a DEAD FILE that reads as law: a contributor sees a gate declaration, edits it, & nothing runs it (worse, it can DRIFT from the live gate & carry a stale threshold — exactly B4's shape, a `99` floor surviving beside CI's corrected 98). ∴ the public repo carries only what plain tools read: root `flake.nix`/ `flake.lock`/`.envrc` (V62) & `.github/workflows/ci.yml` (V31). The baselines (`lexicon.txt`, `coverage-baseline.json`, `SPEC.md`, `Cargo.toml`) sit at the crate ROOT — where tools expect them & where they land as root after extraction. Root = what-to-guard-against; the how-to-guard is the WORKFLOW here & the unit declaration THERE. Same ops either way (V31) — one verdict, two runners.
+V29: **the phase split is the HOST RUNNER's, ⊥ the repo's** — fmt · clippy · nextest(lib) on pre-commit; nextest(e2e) · `llvm-cov --fail-under-lines` on pre-push; heavier axes on ci. That ordering is an optimization for an interactive hook (fail fast, cheapest first) ∴ it lives with the runner that HAS hooks (the monorepo). CI has no such gradient — it runs everything on every push — so the standalone gate is FLAT & complete, ⊥ phased. Cargo-native ONLY (V31) either way ∴ the same ops give the same verdict under both; `cargo run` never (a resolved-path bin, ⊥ a nested cargo). The custom guards (hygiene, lexicon, cavekit-spec, ascii) are ⊥ in either — they run in the monorepo via root config (V31). A standalone contributor who wants the gradient uses a git hook | a task runner — a repo-level convention, ⊥ a specced artifact.
+V30: **in-repo, itok's config is honored by NEAREST-config cascade** (a host feature): a file under crates/itok/ is measured against crates/itok/ baselines, ⊥ root's (the editorconfig/gitignore cascade, V1). ∴ itok growth is reviewed vs itok ceilings & root config retires its `crates/itok/**` entries. Bootstrap (single root config) → cascade is the dir-walking native tier the host adds; until then root governs by exact-path (the current `crates/itok/SPEC.md` entry).
+V31: **the traveling gate is STANDARD-ONLY; custom guards are monorepo-only.** The fancy guards are HOST crates (`repo-guard`, `cavekit-spec`) — they do ⊥ travel ∴ the gate uses cargo-native tools alone (fmt, clippy, nextest, llvm-cov). Coverage is a `--fail-under-lines` FLOOR, ⊥ the per-file `coverage-freeze` ratchet (a host bin); `coverage-baseline.json` travels as reference, ⊥ enforced standalone. The floor is the UNIT's OWN coverage (itok ≈ 98%), ⊥ the monorepo WORKSPACE total (siblings inflate it to 99%, B4): a floor copied from the aggregate FAILS the single crate. Two-tier by design — the monorepo is itok's full-guard home; the public repo runs the standard gate. A graft lands public, flows back, & hits the full guards in the monorepo (external contribution, internal tending). Extracting the toolkit is DEFERRED; trigger = the public repo wanting the fancy guards independently. AMENDED by V75: the runner is now the pinned dev shell, ⊥ bare rustup — the OPS stayed cargo-native, only the DELIVERY changed.
+V32: **`diff`/`show`/`log` = git's triad, matched to git's CLI.** Three questions at three granularities, git's own split (V1): `diff` = any two points (working · `--staged` · `<A> <B>` · `<A>..<B>`); `show` = ONE commit, deep + per-file (default HEAD, like `git show`); `log` = many commits, one delta-line each. `show <A>..<B>` is ⊥ a thing — a range is `diff` (endpoints) | `log` (walk), & routing it through `show` would be a V2 near-collision. `show <commit>:<path>` = a blob's cost at a ref (`git show`'s object syntax). ∴ each verb means exactly what its git namesake means, no almost.
+V33: **`--` path filter & `A..B` are GIT-UNIVERSAL, ⊥ per-verb reinvented.** `-- <path>` narrows show/diff/log to a pathspec (git's rev-vs-path separator); itok is lenient when a bare arg is plainly ⊥ a rev (`itok show <sha> SPEC.md`). `A..B` selects endpoints (`diff`, ≡ `A B`) | a range (`log`), per git. All 3 verbs stand on ONE primitive — `gitref`: the token cost of a file AT a commit (`git cat-file` blob → dummy|bpe). diff compares 2 refs, show does one commit's per-file deltas, log walks a sequence; build it once, share it (⊥ 3 copies).
+V34: **runs fully in a NETWORKLESS SANDBOX.** Core/default build ! need ZERO network & ZERO extra auth. Tiers stack fastest-local → slowest-remote (V4): `dummy`·`--bpe` = local core (sandbox-safe, always built); `--ollama` = opt-in remote rung, feature-gated (V23) & doc'd as a SLOWER tier of operation. A no-net sandbox runs the local tiers & every gate (`check`, `--budget`) unchanged ∵ gates pin `--bpe` (V5) & never touch net. This is the north-star axis: content-locality > precision (V36).
+V35: **no paid API, no extra auth — cloud `count_tokens` REJECTED.** A provider exact-count (e.g. anthropic `/v1/messages/count_tokens`) needs an API KEY (extra auth) + a paid-tier credential + EGRESSES file content to a third party (DLP/compliance) ∴ ⊥ core, ⊥ any default. The exact rung is `--ollama` instead (local model's own tokenizer, keyless, free, on-LAN — V22); `o200k` (`--bpe`) is the honest LOCAL proxy for cloud models meanwhile. Considered & rejected, escape hatch recorded (like V24/V25): a cloud rung, if ever wanted, is a separate opt-in feature that ! never be default & ! shout its content egress.
+V36: **guardrail wants a CONSERVATIVE estimate, ⊥ a true count.** The gate's job = catch context OVERLOAD, ⊥ report exact tokens ∴ a margin'd local estimate (`--bpe` + headroom under the window) is CORRECT, & chasing cloud-exactness was the wrong axis (V35). Exactness ≠ goal; non-overload = goal. `--ollama` exact is a CONVENIENCE for model-fit reporting (doctor/fit), ⊥ a requirement of the gate. Model-fit selection reads a STATIC `.context-models` window (T14, e.g. `qwen3-coder:30b` = 256k) — no net needed to know a model's ceiling.
+V37: **the GUARD travels ∴ tests are LAYOUT-AGNOSTIC.** A test ⊥ assume the monorepo path — `CARGO_MANIFEST_DIR.parent().parent()` as the repo root, `crates/itok/…` pathspecs — ∵ extracted, the crate IS the repo root & those overshoot the tree / name absent paths (B2). Derive the git root & the crate's prefix at RUNTIME (`git rev-parse --show-toplevel` / `--show-prefix`) so ONE test passes at `<repo>/crates/itok` AND standalone. V13's "extraction = a move" binds the TESTS too, ⊥ only src; the rehearsal (`subtree split` → clone → run `.uow` guards) is how it is proven (T11). LAYOUT is not the only ambient a test ⊥ assume: repo STATE too — the live `HEAD~1..HEAD` is ⊥ presumed SUBSTANTIAL (a near-zero-delta config commit as HEAD broke a `--budget` breach assertion, B3); drive a delta test from a CONTROLLED range (empty tree → HEAD adds the whole repo), ⊥ ambient history.
+V38: **a network backend is CASSETTE-REPLAYED in the gate, ⊥ live.** Record the real HTTP interactions ONCE into a standard `vcr-cassette` file (portable, VCR-interop), replay them offline THROUGH the real client (ureq) via a local stub (a `TcpListener` serving the recorded response) so the full path — client → parse → render — is deterministic & CI-safe with NO server. The LIVE endpoint check is a `#[ignore]` test, run by hand (`--ignored`), ⊥ in the gate. The cassette dep is DEV-only (serde/chrono/ url, ⊥ tokio/async) ∴ V23/V13 hold: the shipped binary stays network-free & tiny. rvcr rejected — it is reqwest+tokio = an async runtime, V23's forbidden shape. ∴ every network feature ALSO runs a CI axis (`--features ollama` clippy+nextest in `.uow`) so the replayed path ⊥ rot.
+V39: **publishable = public gate green + honest SemVer + zero private reference.** crates.io needs 4: (1) the STANDARD gate reproduces on plain rustup CI (V31) — fmt · clippy · test · `--features ollama` · `llvm-cov --fail-under-lines`, NO nix & NO host bin, git history fetched FULL (diff/show/log read `HEAD~n`); (2) SemVer tells maturity TRUE — the version is a RUNG on the ladder (V70), ⊥ default `0.0.0`; publication itself is `0.7.0`, ⊥ whatever number the crate happens to carry; (3) metadata complete (`repository`·`homepage`·`documentation`·`readme`· `keywords`·`categories`·`rust-version`) so crates.io/docs.rs render; (4) the shipped `.crate` names NO origin repo (V26) & `exclude`s non-consumer files (`.uow/`, baselines). Publish = `subtree split` (V13) of a crate carrying all four.
+V40: **docs render from ONE command registry — `itok docs` emits it, a guard FREEZES it.** itok hand-rolls args (no clap) ∴ verb/flag text scatters across help strings & rots alone (the README did). One registry (verb → synopsis · flags · exit) feeds EVERY view — `--help`, `itok docs` (markdown reference), later man — so a new verb is a ONE-place edit. READ-ONLY, to stdout (V6): `itok docs > README.md` is the USER's redirect, ⊥ the tool writing. Generated = REFERENCE; the NARRATIVE (intro, ladder, mermaid) stays hand-written ABOVE it. A guard diffs `itok docs` vs the committed reference ∴ staleness FAILS the gate (coverage-freeze, V14) — docs cannot rot, ⊥ merely regenerable.
+V41: **second axis — RUNTIME, beside the static one.** V1-V40 answer about FILES, ex ante ("what will this cost?"). The runtime axis answers about a CONTEXT, ex post ("what actually got loaded, by what, at what cost?"). Same estimator engine (V4), new frontend. It earns its own verbs ∵ input tokens are billed EVERY turn while output tokens spend ONCE ∴ a file loaded at turn 3 is still charged at turn 40 & runtime waste COMPOUNDS. `itok` = input tokens (V3) ∴ this axis is the name's other half, ⊥ scope creep.
+V42: **observe before enforce** — the ORDERING law & the modularization law. Telemetry (read-only, post-hoc, zero interception) ships FIRST & usable ALONE; reduction ships next & usable ALONE (a pipe filter); enforcement ships LAST, tuned from measured numbers. ∵ a fuse threshold guessed w/o data has false-positives that cost MORE than the waste it prevents (a denied legit read = retries + rephrase = burned turns). Each rung ! stand on its own & be shippable alone; none may require the next.
+V43: **the transcript is the GROUND TRUTH & is READ-ONLY.** Session data comes from the harness's own on-disk transcript (Claude Code: JSONL under `~/.claude/projects/…`), ⊥ from interception. It already carries the real API `usage` ∴ ACTUAL, ⊥ estimate — the closed loop for free. itok NEVER writes/moves/mutates it. FOREIGN & unversioned schema ∴ parse defensively: unknown fields ignored, malformed record SKIPPED w/ a counted total, ⊥ crash, ⊥ a hard schema assert. ONE reader module, harness-PLUGGABLE (a new harness = a new reader, ⊥ a new tool). The file APPENDS LIVE while a session runs (measured: 1483→1496→1499 lines across 3 consecutive reads) ∴ read a SNAPSHOT & tolerate a TORN TAIL — the last line MAY be half-written. Two reads a second apart otherwise disagree, & a report-only verb that contradicts ITSELF is broken (V5, one level up).
+V44: **the ledger is a LOWER BOUND & says so** — V3's honesty rule on the runtime axis. Load events cannot see system prompt, tool schemas, `CLAUDE.md`, or prior turns ∴ report `accounted` vs `total` & label the gap `unaccounted`; NEVER silently attribute the remainder. MEASURED: `usage` is on 100% of assistant records (495/495) ∴ the TOTAL is EXACT & only the ATTRIBUTION is partial — say which, & ⊥ hedge the total as though it were estimated. Every number names its method (V3): `ledger(actual)` ≠ `ledger(bytes/4)`.
+V45: **content NEVER enters the ledger & never leaves the box.** Record path · content hash · count · ts · tool · session; ⊥ file bodies, ⊥ message text, ⊥ env, ⊥ credentials. Transcripts hold the user's & their customers' content ∴ a telemetry file that copied it is a NEW leak surface buying nothing — counts answer every question this axis asks. No egress at all (V35): local files & stdout only; itok ships NO uploader, NO endpoint, NO opt-out-shaped default.
+V46: **runtime verbs keep top/du/strace grammar** (V1) — `trace` = 1 line per load event, chronological (`-n` · `--since` · `--reverse`, the `git log`/strace shape); `top` = ranked occupancy (`-h` · `-s` · `--top N`, the `du`/`top` shape). Both report-only, exit 0 (V5). `log` stays the PATH-HISTORY verb (V19) & session events are ⊥ routed through it — `git log` means commits, so overloading it is the V2 near-collision. NO `blame` verb: per-path attribution is `top -- <path>` ∵ `git blame` is per-LINE authorship & the almost-match costs more than the flag (V1/V2).
+V47: **cache accounting is READ, ⊥ inferred.** `cache_creation` / `cache_read` come from `usage` ∴ prefix re-billing is OBSERVED, ⊥ modelled. Report it as seen & name it; ⊥ a heuristic "you probably busted the cache" (that would be a confident guess, V3). Absent fields ⇒ no cache column, ⊥ a zero (a zero reads as a measurement).
+V48: **calibration is REPORTED, ⊥ folded — & the sample is never LAUNDERED.** The correction is reported beside its `n`, ⊥ silently folded into the estimators — the ladder's rungs stay honest & unmodified (V4). Applying it is opt-in & LABELLED as derived: `~186k itok (bytes/4 ×1.12 cal:n=340)`. A factor whose sample is ⊥ stated is a confident lie (V3). CORRECTED, method only: this invariant originally derived the factor from turns where exactly ONE load explained the `usage` delta, DISCARDING the rest. That paid most of the sample to dodge per-item attribution — & a 2-parameter fit needs NO attribution at all ∴ uses every turn & yields the fixed overhead as a second output (V102, MEASURED in T87). "Clean samples" was the wrong MECHANISM, ⊥ the wrong goal; the rules above are what survived.
+V49: **`cap` = token-unit filter, visibly ⊥ `head`.** stdin→stdout, pipe shape (V1). `head`/`tail` truncate SILENTLY by bytes/lines; `cap` truncates by TOKENS & ANNOUNCES the elision with a machine-parsable footer ∴ it takes a DIFFERENT NAME, ⊥ `head -t` — an almost-`head` is V2's expensive failure. Usable with no agent & no hook: `cmd | itok cap 10k` is the whole product of its rung (V42).
+V50: **reduction ladder mirrors the precision ladder (V4)** — ordered LOSSLESS → LOSSIEST, every applied rung NAMED in the footer: `strip` (ansi · trailing ws) | `dedup` (repeat lines `×N`) | `elide` (base64 · minified · lockfile bodies) | `outline` (code → signatures, bodies dropped) | `cap` (hard truncate). Applied IN ORDER, stopping the moment the budget is met ∴ the CHEAPEST SUFFICIENT rung wins & the reader is told exactly which ran. Lossless rungs are default-safe; lossy rungs are opt-in per policy. NEVER reorder lossy-first — silent structural loss is the failure this ladder exists to avoid.
+V51: **truncation is RESUMABLE & IDEMPOTENT.** The elision footer carries the resume selector (offset · line range · omitted count) so the next read CONTINUES, ⊥ restarts at 0. An un-resumable cap costs more than it saves (the reader re-fetches the whole file). Re-running the same cap on the same input yields the same cut (V5's determinism, on the filter).
+V52: **`guard` is an ADAPTER, ⊥ a daemon.** Shape: harness hook JSON on stdin → decision JSON on stdout, ONE process per call, no server, no background thread, no state beyond an append-only session file. Harness-specific mapping lives in ONE module (V43's pluggability); every other module is harness-agnostic. ∴ a new agent harness is a new adapter, ⊥ a fork of the tool.
+V53: **the gate set is CLOSED & every gate is OPT-IN** — extends V5. Gates = `check` (committed registry) · `--budget` (inline one-shot) · `guard` (runtime policy). Nothing else gates, ever. Enforcement never self-enables: no `.context-policy` & no installed hook ⇒ itok is exactly as report-only as it is today. `guard` obeys V5's determinism for V5's reason — its decision pins a fixed tier, ∵ a gate that varies per run is ⊥ a gate — & takes the CONSERVATIVE estimate (V36), ⊥ the exact count.
+V54: **fuse is GRADUATED, w/ hysteresis & a MANDATORY escape hatch.** A binary deny costs more than the waste (retry loops burn turns) ∴ tiers by occupancy: `observe` (ledger only) → `warn` (stderr; the agent reads it & self-corrects) → `cap` (elide, resumable V51) → `deny` (& NAME the cheaper alternative: `itok fit`, a line range, `rg -m`). Plus a RATE fuse over a sliding window (N tokens in M calls = runaway `cat huge.log` / grep into `node_modules`). A trip is STICKY w/ hysteresis ∴ ⊥ flapping on the boundary. There is ALWAYS an override — a trapped agent is worse than a fat one.
+V55: **the fuse is judged by its OWN telemetry** — V42's other half. Every trip · cap · override is a ledger event ∴ override-rate & false-positive rate are MEASURABLE. A high override rate means BAD POLICY, ⊥ a bad agent, & is the signal to retune. Enforcement that cannot be measured cannot be tuned ∴ ⊥ shipped.
+V56: **pins are ABSOLUTE.** Policy MAY pin paths that are never capped, elided, or denied (`CLAUDE.md`, `SPEC.md`, the law files). A guard that elides the rules it guards under is self-defeating. A pin overrides every tier, including a tripped fuse.
+V57: **`.context-policy` is the runtime registry, opt-in like `.context-limits` (V10).** Per-glob & per-tool budgets · pins (V56) · fuse tiers (V54). Absent ⇒ NO enforcement (V53). Reuses the one decimal unit grammar (V18) & the glob semantics of the existing registries — a third config file, ⊥ a third config LANGUAGE.
+V58: **in-flight MITM proxy DEFERRED (⊥ rejected).** An `ANTHROPIC_BASE_URL` shim would see EVERYTHING billed & could enforce hard — but it sits in the CREDENTIAL path & the STREAMING path: it forwards an API key, buffers SSE, & becomes a new failure mode on EVERY request. The transcript reader (V43) yields ~the same numbers post-hoc at ZERO risk, & the hook adapter (V52) yields enforcement at request granularity ∴ the risky rung buys little. Trigger to revisit: a measured need for a signal only in-flight interception can give. If ever built: own opt-in feature (V23), NEVER default, ⊥ read/store/log credentials (V45), & ! shout what it intercepts. Considered & deferred, escape hatch recorded (like V21/V24/V25).
+V59: **runtime data verbs report AGGREGATES, ⊥ verdicts** — V19's rule, carried over. `trace`/`top` may compute re-read waste (same blob loaded N× = N× billed), stale bytes (occupancy × turns-since-touched), dup & cache columns — those are ARITHMETIC. "This is unhealthy, do X" is JUDGMENT & belongs to `doctor` if & when it earns a session target (V17's thin-composer boundary still binds: doctor ⊥ grows tentacles).
+V60: **fan-out = N windows, ⊥ one.** Subagent / sidechain sessions each own a SEPARATE context ∴ the ledger keys by session & rolls up to the parent. A 12-agent fan-out is 12 windows & its true cost is the SUM — invisible in any single window, which is exactly why it needs reporting.
+V61: **money is a RENDERING, ⊥ a source.** `--cost` multiplies counts by a rate read from `.context-models` (an optional per-model column); itok bundles NO price list ∵ prices change & vary by contract ∴ a built-in would go stale & become a confident lie (V3). Missing rate ⇒ NO money column, ⊥ a guessed one (V11's unknown-model rule). Cache-read tokens bill at a different rate than fresh ones ∴ `--cost` ! use the cache split (V47) or omit the column entirely.
+V62: **flake at repo ROOT; the dev shell PROVIDES `itok`.** Root ∵ a flake's source root is its OWN dir ∴ a subdir flake (once `.uow/`) cannot see `Cargo.toml`/`src/` — no `packages.default`, no `nix build`/`nix run`; root is also every Rust project's shape (V1). PROVIDES ∵ itok dogfoods itself (V15): ON PATH, ⊥ `cargo run --`. A SHIM (`exec cargo run -q --manifest-path "$ITOK_MANIFEST" --bin itok -- "$@"`), ⊥ a package in the closure — a package builds the crate to ENTER the shell ∴ one compile error locks you out of the shell you need to fix it, & a pinned package is STALE vs the tree. `ITOK_MANIFEST` resolves at entry from `$PWD` (V37); `ITOK_PROFILE=release`/`ITOK_FEATURES` are the hatches. Dev files `exclude`d from the `.crate` (V39). `packages.*` BUILT (T58): `default` (dummy+bpe) · `itok-minimal` (`--no-default-features` ∴ V23/V13's zero-dep claim is a BUILD, ⊥ a promise) · `itok-ollama`. Rests on a COMMITTED `Cargo.lock` ∵ flakes read git-TRACKED files only & the sandbox has no network. `doCheck = false` ∵ the suite shells to git for `HEAD~n` (V33's `gitref`) & a store source has NO `.git` — that absence IS the reproducibility (V37/B3). `version` READ from `Cargo.toml` ∴ ONE number.
+V64: **ONE gate definition, many callers — eliminate the second copy, ⊥ freeze it.** `hk.pkl` holds the OPS (which command, which flags, which phase, which order, the coverage floor); the workflow holds ORCHESTRATION ONLY (runner, toolchain, cache, full history) ∵ that half has no local equivalent to disagree with. ∴ one definition is reached 3 ways — `pre-commit`, `pre-push`, `hk check` in CI — & the ops CANNOT drift, having only one copy. Contrast V40, which had to FREEZE a second rendering ∵ `--help` text must live in Rust; here both callers can read the same file, & elimination beats policing (a guard detects drift only AFTER someone writes it). B4 is the cost of the alternative: a stale `99` floor sitting in one declaration beside CI's corrected `98`, both looking authoritative.
+V65: **the gate of record stays RUSTUP-REPRODUCIBLE — hk RUNS the ops, ⊥ hides them.** Every step is a plain cargo command a human can paste with nothing but rustup ∴ the hook manager is a CONVENIENCE, ⊥ a dependency of the crate (V13/V31). A contributor without hk loses scheduling, never the ability to reproduce a verdict. Bars, by construction: no step is a script only hk can call, no verdict depends on hk's own logic.
+V66: **the gate's schema is VENDORED, ⊥ fetched at eval** — V12's reasoning, on config instead of vocab. hk's documented form amends a `package://` URL fetched over the network at eval time; `pkl/Config.pkl` ships in-tree & `hk.pkl` amends the local path (upstream's own repo does the same). Offline-first is the default BUILD, ⊥ merely the default flag (V34). Re-vendored verbatim on an hk upgrade — the pin in the dev shell, the vendored schema & CI's `HK_VERSION` are ONE version, moved together.
+V67: **cargo steps SERIALIZE by `depends`; parallelism is for the rest.** Cargo takes a lock on the target directory ∴ two cargo jobs launched concurrently do ⊥ run concurrently — the second blocks on "Blocking waiting for file lock on build directory", which READS AS A HANG. The chain makes the serialization explicit & intended, ⊥ emergent, & leaves hk free to run any future non-cargo check in parallel. Separate `CARGO_TARGET_DIR` per step is the escape hatch & is ⊥ worth it (full recompiles, multiplied disk).
+V68: **hermeticity is PROVEN by running parallel, ⊥ argued from inspection.** `--test-threads=1` is a DIAGNOSTIC (it localizes a race), ⊥ a fix (it hides one) ∴ a suite that needs it has a bug, & the bug is the deliverable. Reading a test for per-process temp dirs & ephemeral ports establishes NOTHING — B5 passed that reading & still raced. The gate runs the suite parallel; a flake found there is fixed at the source, never suppressed by serializing the axis.
+V69: **a registry no runner reads is a LIE, ⊥ a guard.** `.file-limits` traveled with the crate (V27) but NOTHING standalone enforced it ∴ its ceilings were hand-maintained & obeyed by no one — it read as law while gating nothing. Same failure as V28's dead declaration, one level down: the danger is ⊥ the missing check, it is the FALSE ASSURANCE that a committed registry provides. ∴ dropped here; file-size ceilings stay a MONOREPO guard, where a runner exists. Re-add standalone ONLY together w/ a checker wired into the gate (V64) — the registry & its caller land in the same commit, ⊥ apart.
+V70: **version = MATURITY OF THE GUARANTEE, ⊥ feature count.** Each minor answers ONE question — *what can you rely on at this tag?*: `0.1` builds reproducibly anywhere (`nix build`) · `0.2` cannot regress locally (gate in git hooks) · `0.4` KNOWS what a context costs (M4) · `0.6` can ACT on it (M5-M7) · `0.7` PUBLIC, featureset frozen, CI unproven · `0.8` public gate trustworthy · `1.0` CONTRACT frozen. ODD minors (`0.3`/`0.5`/`0.9`) are RESERVED for fix releases ∴ a bugfix never borrows a milestone's number. The ladder ENFORCES V42 STRUCTURALLY: telemetry is `0.4`, enforcement `0.6` ∴ observe-before-enforce becomes a number you cannot skip, ⊥ a rule to remember. `0.7` freezes the PLANNED featureset; `1.0` freezes the CONTRACT (CLI + json, V9) — additions between them are ALLOWED ∵ they come from public feedback, the POINT of exposing at `0.7`. Pre-1.0 SemVer (minor MAY break) is HONEST ∵ each rung IS a behavior change. crates.io is IMMUTABLE (yank HIDES, ⊥ deletes) ∴ the first public artifact is `0.7.0-rc.1` — cargo ⊥ selects a pre-release by default — so the pipeline is proven before a permanent number is spent.
+V71: **a passing gate says NOTHING; a failing one says what to DO.** SUCCESS = SILENCE (`HK_HIDE_WHEN_DONE`) ∵ output that ALWAYS appears is output nobody reads ∴ the one real failure hides in noise everyone learned to scroll past. FAILURE = LOUD & ACTIONABLE: the tool's own diagnostic + a one-line remediation pointer on steps whose fix is ⊥ obvious from the failing command (`itok`/`ollama`/`no-default-features`/`package`/`coverage`) + a playbook (`AGENTS.md`), for agents & humans alike. FAIL-FAST is LOCAL, ⊥ universal: locally the loop is cheap ∴ the FIRST failure is most useful & `depends` orders steps cheapest-first so it arrives fast; in CI a round-trip costs minutes ∴ `--no-fail-fast`, a COMPLETE list. BYPASS ⊥ a fix: `--no-verify` · `HK=0` · lowering a threshold · `#[allow]` all SHIP THE DEFECT with the alarm off. If the CHECK is wrong, that is a SPEC change — deliberate, in its own commit, ⊥ silent at the failure site.
+V72: **a gate step MAY need a binary; the VERDICT may ⊥ need one.** The `hk util` family is native to the runner ∴ free everywhere. A second tier (`typos`·`actionlint`·`taplo`·`shellcheck`) needs a real binary, & that is allowed — V65 binds the OPS a verdict rests on (cargo, rustup-only), ⊥ every auxiliary lint. Rule: the tool is PINNED in the dev shell & installed at a PINNED version in CI, ⊥ floating ∴ the two runners agree (V64). `actionlint` earns its place specially: the workflow is the ONE file NO local run exercises (V64 keeps orchestration there) ∴ without it, a mistake in the workflow is found only by pushing.
+V73: **an exemption NAMES what is deliberate; it is ⊥ a suppression.** `.typos.toml` exempts `esimate` ∵ it is the INPUT to the typo-suggestion tests (V6) — the mistake ! be spelled correctly in both the unit test & the README example — & exempts `pkl/` + `tests/fixtures/` ∵ one is vendored VERBATIM (V66) & the other is a RECORDING (V38): "fixing" either silently forks it. Every exemption carries its REASON in the config file, ⊥ in a commit message nobody reads at the failure site. A suppressed finding w/o a named reason is indistinguishable from a bug (V71's no-bypass rule, applied to config).
+V74: **a hook DEGRADES when its runner is absent; it ⊥ BLOCKS.** A gate exists to stop bad commits, ⊥ to stop git. When the runner is missing — outside the dev shell, a fresh clone, a container — the hook prints ONE line to stderr & exits 0: LOUD about being skipped, ∵ a SILENTLY skipped gate is indistinguishable from a passing one (V71). Hard-failing instead makes the repo unusable for anyone who ⊥ installed the toolchain, which is the wrong failure mode for a CONVENIENCE — the gate of record is CI + `hk check` (V65), ⊥ the hook. ∴ the hook command is written BY HAND, ⊥ by `hk install`, whose command assumes its own binary is on PATH (B6).
+V75: **CI runs the SAME SHELL, ⊥ a parallel install path** — amends V31. That invariant's bare-rustup CI predated the crate carrying its own ROOT flake (V62); now nix IS this crate's toolchain, ⊥ a host dependency ∴ `nix develop --command hk check` hands CI the EXACT tools pinned in `flake.lock`. One toolchain + one gate definition (V64) ⇒ ZERO version skew between a runner & a laptop, & no per-tool install action that can drift from what the dev shell has. hk stays LOCAL-ONLY as a DIRECT dependency: CI reaches it THROUGH the shell, ⊥ by installing it — same for every linter (V72), which is why the workflow installs none of them. V31's real content SURVIVES: no HOST guard bin travels w/ the crate, & the ops stay plain cargo commands (V65) ∴ a contributor w/o nix reproduces every verdict by hand. ONLY "no nix in CI" is superseded. What CI cannot yet validate (matrix · MSRV · caching · SHA-pinned actions · publish) is LISTED in the workflow, ⊥ silently absent — a gap you can read is ⊥ the same failure as a gap you cannot (V44's honesty rule, on infrastructure).
+V76: **the transcript records what was BILLED, ⊥ what exists on disk.** A tool result is TRUNCATED before it enters context & the overflow is spilled to a side file: MEASURED, `persistedOutputSize` 5,749,032 bytes vs `stdout` 30,000 chars — the same event, 190x apart. The CONTEXT COST is the truncated content ∴ NEVER substitute an on-disk size for a load size; that direction overcounts by orders of magnitude & would make the ledger confidently wrong (V3). Corollary: tool-result shapes are TOOL-SPECIFIC & sometimes a bare STRING, ⊥ an object — there is no uniform load record to key on (V43's defensive parse is load-bearing, ⊥ decoration).
+V77: **a session read is CONTENT-ADDRESSED & truncated at the last COMPLETE LINE.** The file appends live ∴ hashing the WHOLE file gives a different key every second; hashing the complete-line PREFIX gives the SAME key until a whole new record lands. A torn tail therefore ⊥ change the key, & two reads a second apart AGREE — which is the requirement (V43), ⊥ a nicety: a report-only verb that contradicts itself is broken (V5). Determinism comes from the TRUNCATION, ⊥ from storing anything. The on-disk CACHE is REJECTED, ⊥ merely deferred: MEASURED, a 2.7MB transcript parses in 8ms (file read 0.6ms) ∴ a cache would buy 8ms & cost itok its FIRST user-level state — a home directory to choose (XDG is Linux's convention, ⊥ macOS's `~/Library/Caches` | Windows's `%LOCALAPPDATA%`), an invalidation scheme, a pruning policy, & AMBIENT STATE in a tool that is today a PURE FUNCTION of its inputs (every config it reads is project-local). Stale ambient state is V5's hazard one level up. V19's per-blob-hash rule stands for BLOBS (a git history walk re-estimates the same blob many times); a session is read ONCE per invocation, so the rule does ⊥ transfer. Trigger to revisit: a verb that must re-parse MANY sessions inside an interactive loop, w/ a MEASURED slowness — 100 sessions is 0.8s today, which is ⊥ slow. Considered & rejected, escape hatch recorded.
+V78: **the LOAD CLASSES are tool results AND attachments.** Hook output, reminders & injected context are loads too: MEASURED, 266 `hook_success` attachments ≈ 45k itok in one session — invisible today & fully attributable w/o storing any content (V45). Counting only tool results would under-report the accounted share & inflate `unaccounted` (V44) while the data sat right there.
+V79: **a fixture PINS its own shape, & the guard stays armed WHERE the data lives.** A fixture that quietly stops representing its case does ⊥ fail — it WEAKENS whatever depends on it, invisibly ∴ each property is asserted (torn tail stays torn · garbage line stays mid-file · spilled size stays >> billed). The transcript guard (V45) & the fixtures INTERLOCK on an INTRINSIC signal — a UUID-shaped id, which every real capture carries & no hand-written fixture has — ⊥ on LOCATION: exempting `tests/fixtures/` would disarm the guard exactly where a real transcript is most likely to be pasted "to make a test easier". Proven by planting one there & watching it fail.
+V80: **try to REFUTE before you trust — self-review is ⊥ review.** The context that produced a finding shares its blind spot ∴ cannot audit it; that is STRUCTURAL, ⊥ a matter of care. Every §V invariant & every §B diagnosis earns an attempt to KILL it — ideally by a fresh context that has ⊥ seen the author's reasoning first (reading it ANCHORS the reviewer, so agreement afterwards is worth less than independent agreement). EVIDENCE, this repo: every correction so far arrived via a FAILURE — B5 (hermeticity claimed from READING the fixtures, disproved by running parallel), B6 (a hook installed then blocking every commit), a fixture test that PASSED while asserting nothing — ⊥ one came from someone looking in advance. That is reactive, ⊥ open. Openness ⊥ indecision: once the disconfirming evidence is sought & weighed, DECIDE; reopening a settled question w/o NEW evidence is churn, ⊥ rigour.
+V81: **an unresolved disagreement is a HIDDEN DEFECT.** Two assumptions then drive one system until they fail at a boundary — B4's shape exactly (two declarations, two floors, both authoritative). ∴ surface a disagreement WHEN IT APPEARS, naming the competing positions, their evidence, & the decision they affect; SILENCE ⊥ alignment. Verify alignment by BEHAVIOR — re-run the check, inspect the artifact — ⊥ by verbal assent, which hides different readings of the same words. Where agreement is impossible, RECORD the governing decision & the REMAINING RISK (V21/V24/V58's "considered & rejected, escape hatch recorded" is this pattern already). `SPEC.md` IS the sync artifact: a resolution lands in §V so future-me & a fresh agent inherit the SAME assumptions.
+V82: **believability is per-DOMAIN & earned by OUTCOME, ⊥ asserted.** Weight a claim by its source's track record IN THAT AREA; an unproven source gets a second verification gate. Applied concretely & uncomfortably: in THIS repo, my assertions-from-inspection have a MEASURED record of being wrong — B5, B6, & a test that passed for the wrong reason ∴ "I read it and it looks correct" carries LOW believability here & earns a verification pass BY DEFAULT (V68 generalized beyond tests). Symmetrically, a claim backed by a RUN — exit code, diff, counted output — needs no such gate. Update the weight on evidence, in both directions.
+V83: **best idea wins; make the COMPARISON auditable.** itok already does half — V21/V24/V25/V35/V58 record what was considered, REJECTED, why, & the TRIGGER that would reopen it ∴ a reader can audit the decision rather than merely obey it. The other half: where several designs compete, score them against EXPLICIT criteria & graft the strongest parts of the losers, ⊥ discard them wholesale. Merit is established by SURVIVING SCRUTINY (V80), ⊥ by gathering agreement — & an idea's source is ⊥ evidence for it.
+V84: **evolve or decay — & spec growth is a RECURRING cost.** Propagate a proven improvement to every consumer (⊥ leave it local); keep spec & toolchain current; MEASURE the rate of adaptation ∵ a system that still works but no longer learns is ALREADY decaying. Failing case, named rather than hidden: T49's compaction debt has slid 4x while `SPEC.md` DOUBLED (29k→60k bytes). MEASURED consequence: the spec is re-billed on EVERY turn of EVERY session (~5% of a 112M-token session) ∴ every added byte is a permanent tax on all future work, & compaction is a COST control, ⊥ tidiness. This invariant indicts its own commit: V80-V87 grew the file again ∴ T49 is now DUE, ⊥ deferred.
+V85: **drive to a TERMINAL state; a marked blocker IS terminal.** Green gate, or an EXPLICIT blocker carrying evidence + the required next action + who can unblock it. SILENCE is abandonment; a clearly-marked blocker is an honest end state (the workflow's PENDING list, V75, is this shape). The MACHINE BOUNDARY is owned — toolchain, CI, config, deps are PARTS of the system producing the result, ⊥ excuses for a bad one (V71). A handoff closes only w/ an acknowledged owner & a VERIFIABLE completion condition; "done" ⊥ mean "I stopped".
+V86: **the 5-step loop IS the SDD loop, ⊥ a parallel ritual.** goals = §G + a §T done-when · problems = observed reality vs goal · diagnose = ROOT CAUSE before fix (§B) · design = §V + plan · do = build & VERIFY against the goal. Do ⊥ skip steps; the common skip is problem→fix w/o diagnosis, which patches a symptom & leaves the disease — B4 recurred precisely because a FIX was copied while the CAUSE (two sources of one number) went unnamed.
+V87: **weigh 2nd- & 3rd-order consequences, ⊥ only the 1st.** The immediately pleasant choice is often wrong once downstream effects are counted. Recorded cases: V58 (an in-flight proxy 1st-order SEES EVERYTHING; 2nd-order it sits in the CREDENTIAL & STREAMING path on every request) · V54 (a binary deny 1st-order stops a bad load; 2nd-order it burns retry turns & the agent routes around it) · V45 (a telemetry file that copied content is 1st-order convenient; 2nd-order it is a NEW LEAK SURFACE buying nothing) · V84 (a spec addition is 1st-order clarity; 2nd-order a per-turn tax forever). The generalization: ask what a choice COSTS ON EVERY LATER TURN, ⊥ only what it buys now.
+V88: **an unparsable registry row FAILS; it is NEVER skipped.** V11's rule (unknown model ⇒ FAIL, name an encoding) binds EVERY registry, ⊥ only `.context-models`: a row the tool cannot read is a row the AUTHOR believes is enforced ∴ skipping it silently converts a gate into decoration & is strictly WORSE than having no row (V69). Applies to `.context-limits` · `.context-models` · `.context-policy` · `.context-hosts`. The diagnostic ! name the FILE, the LINE & what was expected. Corollary for the reader: `checked:N` is part of the contract (V9) ∵ it is the only way a caller can notice that fewer paths were gated than registered — B7 was found by that number, ⊥ by the exit code.
+V89: **itok is SAFE TO RUN CONCURRENTLY — many processes, & threads within one.** VERIFIED: the shipped binary WRITES NOTHING (fs writes are `#[cfg(test)]`, into per-PID temp dirs), mutates no env & no cwd, has no `static mut`, forbids `unsafe` crate-wide, & its ONE shared item is a `OnceLock` — `Sync` by construction ∴ safety is FREE: a pure function of its inputs cannot race. A PROPERTY TO PROTECT, ⊥ an accident — `guard` (V52) is one process per hook call & hooks fire concurrently. Any future write ! be (a) ATOMIC whole-file (temp named by PID, then `rename()`: POSIX-atomic within a filesystem ∴ a reader sees OLD or NEW, never partial) | (b) APPEND-ONLY w/ small records, where the reader already tolerates a torn tail (V43, generalized to our own file). LOCK FILES ⊥ used ∵ a lock held by a KILLED process wedges every instance, & in a git hook a wedge beats a benign race. CONTENT-ADDRESSED keys make a write race BENIGN (same key ⇒ same bytes ⇒ last writer wins IDENTICALLY) ∴ a reason to prefer them. DELETION races TOLERATED: ENOENT ⇒ recompute. Every temp path ! carry the PID (why the suite is parallel-safe, B5). EXERCISED, ⊥ claimed: the `--ollama` fleet runs ONE THREAD PER HOST (T89), itok's FIRST in-process concurrency — each thread owns its result & shares NO mutable state ∴ still pure. & parallel I/O ! ⊥ change the ANSWER: merge in FLEET ORDER, ⊥ completion order, else two runs disagree about a model on two hosts w/ different windows (V5).
+V90: **a cache is justified only by CROSS-INVOCATION repetition over an IMMUTABLE key.** Repetition WITHIN one run is MEMOIZATION — no storage, invalidation, or concurrency question ∴ try that first. A MUTABLE key (path+mtime) is where caches rot; an immutable one (git blob SHA, content hash) cannot go stale. Both conditions, or no cache (V77/B8: 8ms of benefit against a new class of ambient state). WHERE, if justified: `.git/<tool>/` for git-derived data — in the repo but ⊥ the WORKING TREE ∴ never in `git status`, dies with the clone (precedent: git-lfs's `.git/lfs`); `~/.itok/` for content-addressed data shared ACROSS clones (the dev-tool dot-dir convention — cargo·rustup·npm·ollama — ⊥ XDG, which is LINUX's & ⊥ macOS's `~/Library/Caches` | Windows's `%LOCALAPPDATA%`). NEVER a working-tree `.itok/`: itok runs on ARBITRARY repos (V10) ∴ an untracked dir in a clone you do ⊥ own surfaces in someone else's `git status`. NEVER both without two DISTINCT lifetimes — two invalidation stories & a precedence rule is where "which is stale?" bugs live.
+V91: **`headroom` = `df` for a context; the RATE is per TURN, ⊥ per second.** V8 already binds `estimate` to `du`; `df` is `du`'s sibling & the gap was real — "how much room is LEFT" had no verb. Columns are `df`'s own (window · used · avail · use%) ∴ the layout needs no teaching (V1). loadavg's THREE-WINDOW shape is kept ∵ short vs long reads the TREND at a glance (MEASURED: 958/921/838 itok/turn = rising; 623/915/82 = a burst that had passed) — but the CLOCK is TURNS, ⊥ wall-seconds: context grows per TURN & nothing happens between them ∴ a wall rate would report "load dropping" through an idle hour with the window as full as ever. V2: keep the convention's SEMANTICS, ⊥ its literal unit. NAMING, considered & rejected: `load` — already means a load EVENT here (`LoadEvent`, top's `loads` column) ∴ collides INSIDE the tool, worse than outside (V2); `uptime` — a DURATION, we report a rate; `turns` — names the UNIT ⊥ the question, & a plural reads as a LISTING (`trace`'s job); `free` — the best prior (`free -h`) but `fit` exists ∴ `itok f` would go AMBIGUOUS, breaking a working prefix (V6). `headroom` names the QUESTION & has a free prefix (`h`).
+V92: **no window ⇒ NO denominator, ⊥ a guessed one.** `avail`/`use%`/ `turns left` all divide by a capacity that comes from `--window` | `--model` | `.context-models` (V18). Absent ⇒ report `used` alone & SAY the capacity is unknown — V11's rule (unknown model ⇒ FAIL, name an encoding) applied to a denominator: assuming 200k | 1M would make every derived column a FICTION while looking measured (V3/V47).
+V93: **`turns left` is an EXTRAPOLATION & says so.** It is `df`'s "how long until full at the current write rate" — arithmetic on a STATED assumption, ⊥ a verdict, so it stays inside V59's boundary. It ! name the assumption ("at the recent rate") & carry the tilde. A zero-window turn is EXCLUDED from the rate, ⊥ treated as a measurement: MEASURED, one turn in a real session reported window 0, which a naive delta rendered as a -387,741 "compaction" that never happened (V47, from a third direction). Note the distribution is HEAVY-TAILED (median 285 vs mean ~900 itok/turn) ∴ a high rate often means ONE big read landed recently, ⊥ that everything is heavy — the triple's SPREAD is the signal, ⊥ any single number.
+V94: **cache reads are cheap PER TOKEN & the aggregate is QUADRATIC.** MEASURED (1048 turns, this repo's own session): 379.6M billed input = 99.5% cache READ · 0.001% fresh, & the window grew 32,780 → 720,349 (22x). Total cost = the SUM OF WINDOWS ∴ it is the INTEGRAL of a growing line, ⊥ a constant × turns: mean window 362k against a final 720k. ∴ a reduction's value is `size × turns REMAINING`, ⊥ its one-time load cost — dropping 100k at turn 200 of 1048 avoids 84.8M cache-read tokens, & a 200k CAP would have avoided 185.5M = 49% of the entire bill. EARLIEST reductions dominate. CORRECTED: the first version of this invariant said the ladder "mostly saves CHEAP tokens" & concluded enforcement was worth less than it looks — true per token, WRONG in aggregate, & backwards about V50/V54, which this strengthens. itok bundles NO price list (V61) ∴ it reports the split & the SIZE×TURNS leverage; the reader applies their own rates.
 
-V95: **n=2 is an ANECDOTE; the fuse gets NO new target from it.** Two
-turns wrote 250,657 each (26% of all cache writes) & the obvious reading
-— "agents bust the prefix cache constantly, so retarget the fuse" — was
-DRAFTED & then REFUTED by looking: both sit 19s apart w/ byte-identical
-write AND read, immediately after `Login expired · Please run /login`. A
-RE-AUTH left the cache cold; the prefix was re-written from scratch,
-twice. ⊥ agent behavior · ⊥ context mutation · ⊥ cache pressure · ⊥ the
-concurrent sessions in OTHER trees (different prefixes ∴ nothing of ours
-to evict; & eviction of a GROWING context could ⊥ produce identical
-sizes). ∴ there is currently NO evidence that normal agent behavior
-causes expensive cache busts here, & V50/V54 keep their shape until
-there is. The cold-cache event is worth REPORTING (~250x a normal turn's
-write, one line to explain) & is an OBSERVATION, ⊥ a threshold (V42).
-This invariant exists ∵ the wrong version was one question away from
-being specced: V80's refute-first & V82's low-believability-for-
-inspection both earned their place the day they were written.
-V96: **session identity comes from the HARNESS when it offers one.**
-`newest_transcript` picks by mtime ∴ w/ two sessions in ONE project it
-can silently read the WRONG one — a report about someone else's context,
-labelled as yours. MEASURED-adjacent: this machine ran 3 concurrent
-sessions, saved only by their being in different projects. Prefer an
-explicit id from the environment; fall back to newest-by-mtime ONLY when
-none is offered, & SAY which was used (V3) — "the newest transcript" & "your
-session" are different claims.
-V97: **retention is cheap only at ENTRY or at SESSION END; the middle is
-a TRAP.** Prompt caching makes the prefix append-only in practice:
-deleting | mutating something EARLY invalidates everything after it &
-forces a full re-write — MEASURED at ~250k, ~250x a normal turn's write
-(V95). ∴ "evict the stale stuff", the intuitively obvious lever, COSTS
-MORE THAN IT SAVES, & the two viable levers are (a) cap BEFORE it enters
-(V50's ladder, which is why the ladder caps at LOAD ⊥ prunes later) &
-(b) END the session (which is why a spec that makes a fresh session
-productive is a COST control, ⊥ only a memory — V84). Harness-owned
-options (compaction · sub-agent fan-out, V60) are the same two shapes:
-compaction is a lossy session-end, fan-out is entry-control by giving
-the expensive work a context that DIES. itok MEASURES all of them &
-owns only (a).
-V98: **`size × turns` is now MEASURED, ⊥ assumed — the stale metric is
-unblocked.** T32 refused to compute it ∵ the multiplication "assumes
-every one of those turns re-sent the item, which the transcript does ⊥
-record per item". That assumption is now OBSERVED: `cache_read` ≈ the
-whole window on every warm turn, & the window only GROWS ∴ an item
-entering at turn N in a T-turn session really does carry ~`size × (T-N)`
-of cache-read billing. Report it, & state the CAVEAT it rests on: this
-holds for UNCOMPACTED sessions, which is all that has been observed. If
-a compaction is ever seen, items DO leave & the product becomes an upper
-bound — say so then, ⊥ silently keep multiplying (V3).
+V95: **n=2 is an ANECDOTE; the fuse gets NO new target from it.** Two turns wrote 250,657 each (26% of all cache writes) & the obvious reading — "agents bust the prefix cache constantly, so retarget the fuse" — was DRAFTED & then REFUTED by looking: both sit 19s apart w/ byte-identical write AND read, immediately after `Login expired · Please run /login`. A RE-AUTH left the cache cold; the prefix was re-written from scratch, twice. ⊥ agent behavior · ⊥ context mutation · ⊥ cache pressure · ⊥ the concurrent sessions in OTHER trees (different prefixes ∴ nothing of ours to evict; & eviction of a GROWING context could ⊥ produce identical sizes). ∴ there is currently NO evidence that normal agent behavior causes expensive cache busts here, & V50/V54 keep their shape until there is. The cold-cache event is worth REPORTING (~250x a normal turn's write, one line to explain) & is an OBSERVATION, ⊥ a threshold (V42). This invariant exists ∵ the wrong version was one question away from being specced: V80's refute-first & V82's low-believability-for- inspection both earned their place the day they were written.
+V96: **session identity comes from the HARNESS when it offers one.** `newest_transcript` picks by mtime ∴ w/ two sessions in ONE project it can silently read the WRONG one — a report about someone else's context, labelled as yours. MEASURED-adjacent: this machine ran 3 concurrent sessions, saved only by their being in different projects. Prefer an explicit id from the environment; fall back to newest-by-mtime ONLY when none is offered, & SAY which was used (V3) — "the newest transcript" & "your session" are different claims.
+V97: **retention is cheap only at ENTRY or at SESSION END; the middle is a TRAP.** Prompt caching makes the prefix append-only in practice: deleting | mutating something EARLY invalidates everything after it & forces a full re-write — MEASURED at ~250k, ~250x a normal turn's write (V95). ∴ "evict the stale stuff", the intuitively obvious lever, COSTS MORE THAN IT SAVES, & the two viable levers are (a) cap BEFORE it enters (V50's ladder, which is why the ladder caps at LOAD ⊥ prunes later) & (b) END the session (which is why a spec that makes a fresh session productive is a COST control, ⊥ only a memory — V84). Harness-owned options (compaction · sub-agent fan-out, V60) are the same two shapes: compaction is a lossy session-end, fan-out is entry-control by giving the expensive work a context that DIES. itok MEASURES all of them & owns only (a).
+V98: **`size × turns` is now MEASURED, ⊥ assumed — the stale metric is unblocked.** T32 refused to compute it ∵ the multiplication "assumes every one of those turns re-sent the item, which the transcript does ⊥ record per item". That assumption is now OBSERVED: `cache_read` ≈ the whole window on every warm turn, & the window only GROWS ∴ an item entering at turn N in a T-turn session really does carry ~`size × (T-N)` of cache-read billing. Report it, & state the CAVEAT it rests on: this holds for UNCOMPACTED sessions, which is all that has been observed. If a compaction is ever seen, items DO leave & the product becomes an upper bound — say so then, ⊥ silently keep multiplying (V3).
 
-V99: **progression advice names V97's TWO levers & names the TRAP as a
-trap.** A visible `use%` (V91) invites "evict the stale stuff", & V97
-measured that backwards: the prefix is append-only in practice ∴ an early
-deletion re-writes everything after it (~250k, V95). ∴ the suggestion is
-REJECTED as advice, ⊥ merely omitted — omission leaves the reader to
-invent it, & the reader's intuition is wrong here. PERMITTED set = V97's
-two shapes ONLY: cap at ENTRY (V50) · END the session | fan out (V60).
-`doctor` gains a SESSION TARGET, ⊥ tentacles (V17): every figure comes
-from `headroom` (T72) | `top` (T75), ⊥ a new estimator. A level that
-triggers ADVICE is ⊥ a fuse (V42) ∵ ignorable advice costs ~0 when wrong
-while a deny burns turns (V54) ∴ it needs no tuning data & does ⊥ wait on
-M6 — but it ! appear only when a level is CROSSED, ⊥ on every run (V71).
-V100: **`carried` has TWO directions; they are LABELLED apart.** T75's
-column is BACKWARD — billing already paid, over OBSERVED turns (V98).
-`projected` is `size × turns REMAINING`, & its count comes from
-`headroom`'s `~turns left` (V93) ∴ an extrapolation ON an extrapolation:
-tilde + the named assumption ("at the recent rate"), like every derived
-number (V3). TWO names, ⊥ one column w/ a sign — a measured past
-near-colliding w/ a guessed future is V2's expensive failure & the tilde
-is the at-a-glance separator. No window ⇒ no `turns left` ⇒ NO
-`projected` (V92). Both directions inherit V98's uncompacted caveat: a
-compaction makes them UPPER BOUNDS, & the day one is seen they say so.
+V99: **progression advice names V97's TWO levers & names the TRAP as a trap.** A visible `use%` (V91) invites "evict the stale stuff", & V97 measured that backwards: the prefix is append-only in practice ∴ an early deletion re-writes everything after it (~250k, V95). ∴ the suggestion is REJECTED as advice, ⊥ merely omitted — omission leaves the reader to invent it, & the reader's intuition is wrong here. PERMITTED set = V97's two shapes ONLY: cap at ENTRY (V50) · END the session | fan out (V60). `doctor` gains a SESSION TARGET, ⊥ tentacles (V17): every figure comes from `headroom` (T72) | `top` (T75), ⊥ a new estimator. A level that triggers ADVICE is ⊥ a fuse (V42) ∵ ignorable advice costs ~0 when wrong while a deny burns turns (V54) ∴ it needs no tuning data & does ⊥ wait on M6 — but it ! appear only when a level is CROSSED, ⊥ on every run (V71).
+V100: **`carried` has TWO directions; they are LABELLED apart.** T75's column is BACKWARD — billing already paid, over OBSERVED turns (V98). `projected` is `size × turns REMAINING`, & its count comes from `headroom`'s `~turns left` (V93) ∴ an extrapolation ON an extrapolation: tilde + the named assumption ("at the recent rate"), like every derived number (V3). TWO names, ⊥ one column w/ a sign — a measured past near-colliding w/ a guessed future is V2's expensive failure & the tilde is the at-a-glance separator. No window ⇒ no `turns left` ⇒ NO `projected` (V92). Both directions inherit V98's uncompacted caveat: a compaction makes them UPPER BOUNDS, & the day one is seen they say so.
 
-V101: **an optional-value flag carries its value with `=`; the space form
-is a HEURISTIC that MAY decline.** `--ollama box1` cannot be told from a
-file named `box1` ∴ the ambiguity is STRUCTURAL, ⊥ a parser weakness, &
-resolving it by asking the FILESYSTEM would make parsing depend on what
-happens to exist (V5's determinism, one level up). `--flag=value` is
-unambiguous by construction & is the GNU prior (V1) ∴ it is the CONTRACT;
-the looks-like-a-host heuristic (comma-list · `host:port` · `-`) stays as
-CONVENIENCE. A declined token ! NEVER fall through to the DEFAULT
-silently (B10) — that turned a named endpoint into a confident `(exact)`
-count from whatever answered locally. Corollary, V3 on the remote tier:
-an exact count's meaning depends on WHICH tokenizer produced it ∴ the
-method label ! name the ENDPOINT — `(exact via 192.168.0.181:11434)`, ⊥ a
-bare `(exact)`.
+V101: **an optional-value flag carries its value with `=`; the space form is a HEURISTIC that MAY decline.** `--ollama box1` cannot be told from a file named `box1` ∴ the ambiguity is STRUCTURAL, ⊥ a parser weakness, & resolving it by asking the FILESYSTEM would make parsing depend on what happens to exist (V5's determinism, one level up). `--flag=value` is unambiguous by construction & is the GNU prior (V1) ∴ it is the CONTRACT; the looks-like-a-host heuristic (comma-list · `host:port` · `-`) stays as CONVENIENCE. A declined token ! NEVER fall through to the DEFAULT silently (B10) — that turned a named endpoint into a confident `(exact)` count from whatever answered locally. Corollary, V3 on the remote tier: an exact count's meaning depends on WHICH tokenizer produced it ∴ the method label ! name the ENDPOINT — `(exact via 192.168.0.181:11434)`, ⊥ a bare `(exact)`.
 
-V102: **total context is DERIVABLE offline, as a 2-PARAMETER fit w/ a
-stated BAND.** MEASURED (n=363 turns, fit on the first half, VALIDATED on
-the unseen second): window = a FIXED 32,074 itok (system prompt + tool
-schemas — invisible to the transcript, yet read almost directly at turn 1:
-31,989 window vs 614 of content) + 1.571 × `bytes/4` of transcript
-content; held-out error mean 5.0% · max 7.4%. ∴ `unaccounted` (V44)
-DECOMPOSES into a measured CONSTANT + our own UNDERCOUNT, ⊥ a mystery.
-Needs NO per-item attribution ∴ strictly better than V48's clean-sample
-factor, which DISCARDS turns to get one. The transcript beats `--ollama`
-as the calibrator for a Claude session ∵ `usage` is that model's OWN exact
-count; ollama stays the calibrator for a LOCAL target. RULES: report the
-BAND & `n`, ⊥ a point (5% of 340k = ±17k); REFUSE a fit verdict INSIDE the
-band (V92's no-denominator rule, applied to precision); derive PER SESSION
-& per harness ∵ the slope absorbs message framing + the STRIPPED
-`thinking` text (0 bytes stored, an 808-byte signature kept) ∴ it is ⊥ a
-tokenizer ratio; a compaction breaks the monotonic premise (V98).
+V102: **total context is DERIVABLE offline, as a 2-PARAMETER fit w/ a stated BAND.** MEASURED (n=363 turns, fit on the first half, VALIDATED on the unseen second): window = a FIXED 32,074 itok (system prompt + tool schemas — invisible to the transcript, yet read almost directly at turn 1: 31,989 window vs 614 of content) + 1.571 × `bytes/4` of transcript content; held-out error mean 5.0% · max 7.4%. ∴ `unaccounted` (V44) DECOMPOSES into a measured CONSTANT + our own UNDERCOUNT, ⊥ a mystery. Needs NO per-item attribution ∴ strictly better than V48's clean-sample factor, which DISCARDS turns to get one. The transcript beats `--ollama` as the calibrator for a Claude session ∵ `usage` is that model's OWN exact count; ollama stays the calibrator for a LOCAL target. RULES: report the BAND & `n`, ⊥ a point (5% of 340k = ±17k); REFUSE a fit verdict INSIDE the band (V92's no-denominator rule, applied to precision); derive PER SESSION & per harness ∵ the slope absorbs message framing + the STRIPPED `thinking` text (0 bytes stored, an 808-byte signature kept) ∴ it is ⊥ a tokenizer ratio; a compaction breaks the monotonic premise (V98).
 
 V103: **agentic markdown is ONE LINE PER STATEMENT; hard wrap is ⊥, & a line is capped at 1650 chars.** MEASURED: 101 of 101 invariants span >1 line ∴ `grep V47` returns a FRAGMENT & a phrase crossing a wrap returns NOTHING (a real V1 phrase = 0 hits, split across two lines). grep & every string-anchored edit are LINE-oriented ∴ a wrap defeats both SILENTLY: T85's edit did nothing ∵ `cargo fmt` had rewrapped its anchor, & the suite stayed green. CORRECTNESS, ⊥ a cost trade -- but cost agrees: unwrapping = -842 itok (~0.97 per hard-wrap newline, re-billed EVERY turn, V94) against +38% per one-word diff hunk (265→365 itok) ∵ the line is the DIFF unit & a paragraph re-sends TWICE; break-even ~7 edits/session, & a `/spec` run does 1-3. EXTENDS the table sections' shape to the prose ones, ⊥ invents a rule: 105 of 105 §T/§B rows already obey it. The CAP is the OPPOSITE failure (base64 · minified · a pasted transcript), set ~12% above the post-transform MAXIMUM measured when it landed (1469, V89) -- a distribution, ⊥ a line to police, ∵ naming one line makes the basis rot on the next edit (B4) ∴ it forces a REVIEW, ⊥ a shrink; 1500 was the first number, taken from the longest PRE-unwrap row (B12 = 1124) ∴ 2% margin -- V10's named anti-pattern, measured against the wrong file state. ⊥ binds code (`rustfmt` max_width 80 owns `.rs`, where a line IS the unit of meaning) | human-facing prose (README wraps on GitHub). This file is hard-wrapped AS WRITTEN ∴ the rule is true only when T91 lands, & rule + checker are ONE commit (V69) -- a guard landing on a file that violates it is RED AT BIRTH.
 
@@ -1147,7 +256,7 @@ T87|x|`total` estimator per V102: fit fixed-overhead + scale from transcript del
 T88|.|`partition`: pack a fileset into N bins under `--window`, coupling graph read from STDIN (⊥ derived here — V24's compose-don't-scan), cut-set REPORTED loudly (V81); synthetic fixtures w/ KNOWN size+coupling ∵ real code gives no ground truth. Reopens V20's DECLINED `pack` scope (⊥ V21's knapsack trigger — a different problem): itok itself needs ~3 bins at a realistic 48k budget, & fan-out is one of only 2 cheap levers|V20,V60,V97
 T89|x|`--ollama` fleet probed in PARALLEL: one `std::thread` per host (⊥ an async runtime, V23; the host list is explicit ∴ no pool, V24), results merged in FLEET ORDER so list-order precedence & determinism are unchanged (V5). MEASURED: one dead host cost +3.05s serially (4.07s vs 1.02s on this fleet). Cost accepted: a model on 2 hosts is now probed twice ∵ per-host INDEPENDENCE is what makes them parallelizable. Per-model `/api/show` stays serial -- separable, measure first|V89,V5,V23,V24
 T90|x|`cavekit-spec` as a dev-time FORMAT check, and CLEAR every violation it reports (0 today, 92 before B12 -- the count is the point). It lives in the host workspace & itok ⊥ gain a path dep on it (V13: extraction is a move) ∴ the host grows a thin bin & itok an `#[ignore]` test that runs it WHEN PRESENT, printing one line when absent (V74: degrade, ⊥ block). Rust only -- repo tooling adds no second syntax. The ported rules in `tests/spec_integrity.rs` stay the TRAVELING guard; this is a SECOND OPINION, ⊥ a replacement (B12). RUN FIRST in any batch: a format violation makes every later diff suspect|V13,V31,V74,V79
-T91|.|one line per statement: unwrap §G/§C/§V prose (§T/§B rows already obey) & port BOTH rules into `tests/spec_integrity.rs` -- no continuation line + max 1650 chars -- in the SAME commit as the rewrite (V69: a checker landing on a file that violates it is red at birth), each proven by planting a violation (V79). `verify_against_head` (T70) proves no fact vanished & `cavekit-spec` proves format; `itok check` should DROP ~700 itok ∴ the ceiling slack this spends is bought back by the same change|V103,V69,V79
+T91|x|one line per statement: unwrap §G/§C/§V prose (§T/§B rows already obey) & port BOTH rules into `tests/spec_integrity.rs` -- no continuation line + max 1650 chars -- in the SAME commit as the rewrite (V69: a checker landing on a file that violates it is red at birth), each proven by planting a violation (V79). `verify_against_head` (T70) proves no fact vanished & `cavekit-spec` proves format; `itok check` should DROP ~700 itok ∴ the ceiling slack this spends is bought back by the same change|V103,V69,V79
 
 ## §B BUGS
 
