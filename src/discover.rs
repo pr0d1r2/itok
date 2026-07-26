@@ -29,7 +29,7 @@ pub(crate) fn run(opts: &Opts, root: &Path) -> Output {
         Err(e) => return arg_err(&e),
     };
     match &opts.model {
-        Some(m) => fleet_model(&fleet, m, tokens),
+        Some(m) => fleet_models(&fleet, m, tokens),
         None => fleet_all(&fleet, tokens),
     }
 }
@@ -41,6 +41,92 @@ pub(crate) fn run(opts: &Opts, root: &Path) -> Output {
 /// resolve at all, and what lets both error paths NAME the alternatives
 /// -- the old message reported `no fleet host serves 'gpt-oss'` while
 /// saying nothing about the models sitting right there (V71).
+/// `--model a,b` narrows to those models (T85).
+///
+/// ALL-OR-NOTHING: one unresolvable element fails the whole call, naming
+/// it. Reporting the elements that did resolve while staying silent about
+/// one that did not is the partial-answer-reading-as-whole failure this
+/// verb was just fixed for (B11b/V44) -- so the rule is applied before
+/// shipping it, not after.
+///
+/// Comma is already the fleet grammar for HOSTS (V24), so models reuse it:
+/// one list grammar to learn, not two (V1/V18's reasoning).
+fn fleet_models(fleet: &[String], want: &str, tokens: u64) -> Output {
+    let names: Vec<&str> = want.split(',').map(str::trim).collect();
+    match names.as_slice() {
+        [one] => fleet_model(fleet, one, tokens),
+        _ => fleet_list(fleet, &names, tokens),
+    }
+}
+
+/// Several named models, rendered like the fleet view: a shared `context:`
+/// header over one fit row each, because the header carries the denominator
+/// they are all compared against.
+fn fleet_list(fleet: &[String], names: &[&str], tokens: u64) -> Output {
+    let seen = fleet_windows(fleet);
+    if seen.windows.is_empty() {
+        return net_err("no models on the ollama fleet");
+    }
+    let fl = Fleet::of(&seen, fleet.len());
+    match fl.rows_for(names, tokens) {
+        Ok(rows) => Output::ok(listing(tokens, &rows, &seen, fleet.len())),
+        Err(e) => arg_err(&e),
+    }
+}
+
+/// The fleet view's body: a shared `context:` header over one row each,
+/// because the header carries the denominator they are all compared against.
+fn listing(tokens: u64, rows: &str, seen: &Seen, named: usize) -> String {
+    format!("context: {tokens} itok\n{rows}") + &coverage(seen.answered, named)
+}
+
+/// What the fleet said, plus how many hosts were named -- everything a
+/// per-element lookup needs, in one place so the argument count stays
+/// inside the cap and the pieces cannot drift apart.
+struct Fleet<'a> {
+    seen: &'a Seen,
+    served: Vec<&'a str>,
+    named: usize,
+}
+
+impl<'a> Fleet<'a> {
+    /// Borrow a probe result as a lookup context.
+    fn of(seen: &'a Seen, named: usize) -> Self {
+        Self {
+            seen,
+            served: seen.windows.keys().map(String::as_str).collect(),
+            named,
+        }
+    }
+
+    /// Every element's row, or the FIRST reason one could not be resolved.
+    /// All-or-nothing: a partial list would read as a whole one (V44).
+    fn rows_for(&self, names: &[&str], tokens: u64) -> Result<String, String> {
+        names
+            .iter()
+            .map(|w| self.row_for(w, tokens))
+            .collect::<Result<Vec<_>, _>>()
+            .map(|rows| rows.concat())
+    }
+
+    /// One element's fit row, or the reason it could not be resolved.
+    fn row_for(&self, want: &str, tokens: u64) -> Result<String, String> {
+        match pick::resolve(&self.served, want) {
+            Resolved::One(m) => {
+                let w = self.seen.windows.get(m).copied().flatten();
+                Ok(row(m, tokens, w) + "\n")
+            }
+            Resolved::Ambiguous(c) => Err(pick::ambiguous_msg(want, &c)),
+            Resolved::Missing => Err(pick::missing_msg(
+                want,
+                &self.served,
+                self.seen.answered,
+                self.named,
+            )),
+        }
+    }
+}
+
 fn fleet_model(fleet: &[String], want: &str, tokens: u64) -> Output {
     let seen = fleet_windows(fleet);
     if seen.windows.is_empty() {
@@ -288,6 +374,63 @@ mod tests {
             Some(vec![("m".to_owned(), Some(9))]),
         ]);
         assert_eq!(seen.windows.get("m"), Some(&None));
+    }
+
+    /// T85: a comma-list names several models. One element that cannot be
+    /// resolved fails the WHOLE call -- reporting the ones that worked while
+    /// staying quiet about one that did not is B11b's shape, and the rule is
+    /// applied here before shipping rather than after (V44).
+    #[test]
+    fn a_list_is_all_or_nothing() {
+        let seen = seen_two();
+        let fl = Fleet::of(&seen, 1);
+        assert!(fl.row_for("gpt-oss", 1_000).is_ok(), "a resolvable element");
+        let err = fl.row_for("llama", 1_000).err().unwrap_or_default();
+        assert!(err.contains("no fleet host serves 'llama'"), "{err}");
+        assert!(err.contains("1/1 host(s)"), "coverage is stated: {err}");
+        // And the LIST fails as a whole, not partially.
+        let both = fl.rows_for(&["gpt-oss", "llama"], 1_000);
+        assert!(both.is_err(), "one bad element fails the call");
+    }
+
+    /// A two-model fleet, answered by one host of one. Owned by the test
+    /// module so both list tests share one shape.
+    fn seen_two() -> Seen {
+        Seen {
+            answered: 1,
+            windows: [
+                ("gpt-oss:20b".to_owned(), Some(131_072u64)),
+                ("codestral:latest".to_owned(), Some(393_216u64)),
+            ]
+            .into(),
+        }
+    }
+
+    /// The listing carries the shared denominator, and says so when the
+    /// union behind it is partial (B11b/V44).
+    #[test]
+    fn the_listing_headers_the_shared_context_and_flags_a_partial_union() {
+        let seen = seen_two();
+        let whole = listing(1_000, "  row\n", &seen, 1);
+        assert!(whole.starts_with("context: 1000 itok\n"));
+        assert!(whole.contains("  row"));
+        assert!(!whole.contains("PARTIAL"), "1 of 1 answered");
+        let partial = listing(1_000, "  row\n", &seen, 3);
+        assert!(partial.contains("1/3 host(s) answered"), "{partial}");
+    }
+
+    /// Each element resolves by V6 in its own right -- prefixes included,
+    /// so a list is not a second, stricter grammar.
+    #[test]
+    fn every_element_resolves_by_the_same_rule() {
+        let seen = seen_two();
+        let fl = Fleet::of(&seen, 1);
+        for want in ["gpt-oss", "gpt-oss:20b", "codestral"] {
+            assert!(
+                fl.row_for(want, 1).is_ok(),
+                "{want} must resolve as it does alone"
+            );
+        }
     }
 
     #[test]

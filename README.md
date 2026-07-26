@@ -131,10 +131,10 @@ Token cost of files, git-tracked by default. `--bpe` swaps bytes/4 for a real to
 ### `doctor`
 
 ```text
-doctor [--model X] [--window N] [--ollama[=HOSTS]] [--format human|json] [-C dir] [paths...]
+doctor [--model X[,Y...]] [--window N] [--ollama[=HOSTS]] [--format human|json] [-C dir] [paths...]
 ```
 
-Advisory health check: fit-to-window, budget balance, noise ratio, estimate confidence. Reports and suggests; never gates. `--model X` resolves an encoding via `.context-models`; `--ollama[=HOSTS]` discovers live model windows across a fleet; a bare host needs the `=` form.
+Advisory health check: fit-to-window, budget balance, noise ratio, estimate confidence. Reports and suggests; never gates. `--model X` resolves an encoding via `.context-models`, and `--model a,b` narrows an `--ollama` fleet to those models (one unresolvable name fails the call); `--ollama[=HOSTS]` discovers live model windows across a fleet; a bare host needs the `=` form.
 
 ### `diff`
 

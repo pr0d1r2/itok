@@ -323,6 +323,39 @@ mod ollama_cassette {
             .stdout(predicate::str::contains("qwen3-coder:30b"));
     }
 
+    /// T85: a comma-list renders the fleet view -- a shared `context:` header
+    /// over one row per element. The cassette serves one model, so both
+    /// elements resolve to it, which is the shape that proves the LIST path
+    /// ran rather than the single-model one.
+    #[test]
+    fn doctor_ollama_accepts_a_model_list() {
+        let host = replay();
+        itok()
+            .args(["doctor", "--ollama", "--model", "qwen3,qwen3-coder"])
+            .env("OLLAMA_HOST", &host)
+            .current_dir(DIR)
+            .assert()
+            .success()
+            .stdout(
+                predicate::str::contains("context:")
+                    .and(predicate::str::contains("qwen3-coder:30b")),
+            );
+    }
+
+    /// T85's teeth: one unresolvable element fails the WHOLE call. A partial
+    /// list reading as a complete one is B11b's failure (V44).
+    #[test]
+    fn a_model_list_is_all_or_nothing() {
+        let host = replay();
+        itok()
+            .args(["doctor", "--ollama", "--model", "qwen3,no-such-model"])
+            .env("OLLAMA_HOST", &host)
+            .current_dir(DIR)
+            .assert()
+            .code(2)
+            .stderr(predicate::str::contains("no-such-model"));
+    }
+
     /// V71: an unserved name is a USAGE error that NAMES what is served.
     /// The fleet answered, so exit 7 (network) would be a lie -- and a CI
     /// retry loop would spin on what is really a typo.
