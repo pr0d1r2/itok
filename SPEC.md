@@ -56,9 +56,10 @@ who knows those tools needs no teaching.
   `--bpe` · `--format json`. Per-commit cost + delta; report-only.
 - `itok fit --window N [paths]` — `--by size` · `--bpe` · `--format json`.
   Greedy subset that fits the budget; emits a pipeable path list.
-- `--ollama [HOSTS]` (estimate/doctor) — exact counts via the
+- `--ollama[=HOSTS]` (estimate/doctor) — exact counts via the
   server's tokenizer + live model→window. Each host `[scheme://]host[:port]`
-  (default `11434`); a comma-list, `-` (stdin), or `.context-hosts`;
+  (default `11434`); a comma-list, `-` (stdin), or `.context-hosts`; a BARE
+  host needs the `=` form (V101);
   honors `OLLAMA_HOST`. Fleet = union of models. Network, the SLOWEST-REMOTE
   rung (V4); never on `check`/`log`. No CIDR (V24), no `--ollama-port` (V25).
 - `itok trace [<session>]` — `-n N` · `--since D` · `--reverse` ·
@@ -998,6 +999,20 @@ is the at-a-glance separator. No window ⇒ no `turns left` ⇒ NO
 `projected` (V92). Both directions inherit V98's uncompacted caveat: a
 compaction makes them UPPER BOUNDS, & the day one is seen they say so.
 
+V101: **an optional-value flag carries its value with `=`; the space form
+is a HEURISTIC that MAY decline.** `--ollama box1` cannot be told from a
+file named `box1` ∴ the ambiguity is STRUCTURAL, ⊥ a parser weakness, &
+resolving it by asking the FILESYSTEM would make parsing depend on what
+happens to exist (V5's determinism, one level up). `--flag=value` is
+unambiguous by construction & is the GNU prior (V1) ∴ it is the CONTRACT;
+the looks-like-a-host heuristic (comma-list · `host:port` · `-`) stays as
+CONVENIENCE. A declined token ! NEVER fall through to the DEFAULT
+silently (B10) — that turned a named endpoint into a confident `(exact)`
+count from whatever answered locally. Corollary, V3 on the remote tier:
+an exact count's meaning depends on WHICH tokenizer produced it ∴ the
+method label ! name the ENDPOINT — `(exact via 192.168.0.181:11434)`, ⊥ a
+bare `(exact)`.
+
 ## §T TASKS
 
 | id | scope | done-when |
@@ -1086,6 +1101,8 @@ T73|x|report cold-cache events: a turn whose cache WRITE dwarfs its read is a pr
 T75|x|`top`: add the `size × turns-remaining` column (V98) & state the uncompacted caveat; it is the number that makes early reduction's leverage visible|V98,V94,V59
 T76|.|`doctor --session [<id>]`: retarget doctor at a CONTEXT — progression (use% · rate triple · `~turns left`, from T72) + per-item `projected` (T75's carried, forward); paths w/ `--session` = usage error, ⊥ a silent ignore. AFTER T72: no progression number without `headroom`|V99,V100,V17
 T77|.|the advice block: V97's two levers ONLY, mid-session eviction NAMED as a trap, no third suggestion; fires only when a level is CROSSED; a test asserts the forbidden advice is absent|V99,V97,V71
+T78|.|`--ollama=HOSTS`, & the `=` form generally for optional-value flags ∴ the documented bare `host` becomes reachable; heuristic kept as convenience; tests pin a BARE host & a bare IP|V101,V24,V25
+T79|.|remote-tier method label names the ENDPOINT (`exact via HOST`) ∴ a count from an unintended tokenizer is VISIBLE; needs `Method.label` to carry an owned endpoint, ⊥ a `&'static str`|V101,V3,V22
 T74|.|session identity: prefer an explicit harness-provided session id over newest-by-mtime; when falling back, SAY so. Two sessions in one project currently resolve to whichever was touched last|V96,V3
 T69|.|`.context-limits`/`.context-models`/`.context-policy`: an unparsable row FAILS w/ file+line+expected, ⊥ silent skip (B7); fractional units (`20.5k`) either parse or are rejected LOUDLY|V88,V11
 T49|x|SPEC compaction FIRST PASS + the machine to finish it: 25 done-`§T` rows trimmed to what+cites (method lives in the commit, V26), V62/V22/V70/V71/V31 destaled & tightened, `tests/spec_integrity.rs` guard, `.context-limits` turned into a RATCHET. MEASURED gross -2,781 chars; NET -2.1% only ∵ the pass itself added V88+B7+T69. 5 of 86 invariants touched ∴ the BULK is T70|V84,V15,V26
@@ -1102,6 +1119,7 @@ B2|2026-07-24|extraction: git-command tests use `CARGO_MANIFEST_DIR.parent().par
 B3|2026-07-24|`diff --budget` test asserted a breach on live `HEAD~1..HEAD`, presuming a substantial last commit; a near-zero-delta ceiling bump as HEAD gave no breach ⇒ exit 0 ≠ 1, blocking every commit until HEAD grew|V37
 B8|2026-07-26|SPEC defect, mine: V77 specced an on-disk snapshot cache w/o EVER measuring the cost it was meant to avoid. Measured after the fact: 2.7MB parses in 8ms ∴ the cache bought 8ms & would have cost itok its first user-level state + a cross-platform cache-dir question + invalidation + pruning. Generalized MY workflow annoyance (re-copying a snapshot to scratchpad) into the tool's runtime w/o checking the cost transferred. KISS is an invariant-level rule now, ⊥ a preference|V77,V87
 B9|2026-07-26|SPEC defect, mine: the §T milestone table carried a `tasks` column — a SECOND copy of the row→milestone mapping — & it drifted to 25 ORPHANS of 79 rows (T50-T53·T57·T58·T62-T68·T69-T77), stale since T50. It read as the authoritative map of scope while covering neither the gate work nor 4 shipped runtime rows. B4's CAUSE exactly, third instance (two floors, then two doc renderings, now two mappings) ∴ policed, ⊥ eliminated, is what recurs. FIXED BY DELETION: `done-when` was always the real gate & the mapping nobody maintained was decoration (V69). No guard added ∵ there is no longer a copy to police (V64), & no new invariant ∵ V64+V69 already say it|V64,V69,V84
+B10|2026-07-26|`--ollama <bare-host>` SILENTLY IGNORED: the optional-value heuristic (`src/args.rs`) consumes the next token as hosts only when it holds `,` | `:` | is `-` ∴ `--ollama 192.168.0.181` left the tier BARE (⇒ localhost) & swallowed the IP as a PATH. §I documents `[scheme://]host[:port]` w/ default `11434` & V24 says "accepts a host" ∴ the DOCUMENTED bare form was the one unreachable form. SILENT: no error, & had localhost run a DIFFERENT model the answer would be a confident `(exact)` count from the wrong tokenizer (V3). Tests pinned `box1,box2` & `SPEC.md` only — a bare host was never tried, & it is genuinely ambiguous w/ a path, which is why the heuristic exists & why the gap was invisible. Found by a USER pointing a real LAN host at it, ⊥ by the suite (V80)|V101
 B7|2026-07-26|`.context-limits` silently SKIPS a row whose limit it cannot parse: `SPEC.md 20.5k` ⇒ `checked:1` of 2 registered paths, exit 0, NO diagnostic ∴ the ratchet set by T49 gated NOTHING & read as if it did. V11 already forbids exactly this for `.context-models` (unknown model ⇒ FAIL, ⊥ silent fallback); the rule was never carried to the sibling registry. Found by TESTING the new ceiling instead of trusting it (V80)|V88
 B6|2026-07-25|dev-shell auto-install wrote `hk install`'s command, which assumes `hk` on PATH. Outside the shell: `hk: command not found` ⇒ hook exit nonzero ⇒ EVERY git commit in the repo blocked, ⊥ merely ungated. Caught within one minute, by the very next commit failing|V74
 B5|2026-07-25|cassette replay stub read the request with ONE `read()`; TCP segments the only POST (`/api/generate`) so the body can arrive second ⇒ reply-then-close raced the client's write ⇒ `itok: ollama read ...: Invalid argument (os error 22)`. Flaky 2/3 runs parallel, 3/3 green serial ∴ the deleted unit declaration's `--test-threads=1` had been MASKING it, & the claim that the suite was hermetic (argued from reading temp-dir/port handling) was wrong. Surfaced the first time the new gate ran the ollama axis|V68
