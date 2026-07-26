@@ -35,6 +35,8 @@ mod showcmd;
 #[cfg(test)]
 mod testutil;
 #[cfg(feature = "session")]
+mod topcmd;
+#[cfg(feature = "session")]
 mod tracecmd;
 mod units;
 mod verb;

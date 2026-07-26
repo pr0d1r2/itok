@@ -918,7 +918,7 @@ T30a|x|stable read: truncate at the last COMPLETE line + a content key over that
 T30b|x|synthetic fixtures under `tests/fixtures/session/`|V43,V45,V76,V79
 T30c|x|attachment load class: hook output / reminders / injected context counted beside tool results|V78,V44
 T31|x|`trace` verb: 1 line/load event, chronological, `-n`·`--since`·`--reverse`·json|V46,V9,V59
-T32|.|`top` verb: ranked occupancy, `-h`·`-s`·`--top N`, dup + stale columns, `-- <path>` per-path attribution (⊥ a `blame` verb)|V46,V59
+T32|x|`top` verb: ranked occupancy, `-h`·`-s`·`--top N`, dup + stale columns, `-- <path>` per-path attribution (⊥ a `blame` verb)|V46,V59
 T33|.|accounted-vs-unaccounted split; method label on every runtime number (`ledger(actual)` ≠ `ledger(bytes/4)`)|V44,V3
 T34|.|cache columns read from `usage` (`cache_creation`/`cache_read`); fields absent ⇒ NO column, ⊥ a zero|V47
 T35|.|fan-out rollup: ledger keyed by session, sidechain/subagent sessions rolled to parent, SUM reported|V60

@@ -91,6 +91,23 @@ fn handle(res: Resolution, verb: &str, rest: &[String]) -> Output {
 
 /// Route a resolved verb to its command. Exhaustive over `Verb` -- a new
 /// verb is a compile error here until it is wired.
+/// The runtime-axis verbs, together because they share a feature gate
+/// (V23's shape: a tier that needs a dep is opt-in).
+#[cfg(feature = "session")]
+fn runtime(v: Verb, rest: &[String]) -> Output {
+    match v {
+        Verb::Top => crate::topcmd::top(rest),
+        _ => crate::tracecmd::trace(rest),
+    }
+}
+
+#[cfg(not(feature = "session"))]
+fn runtime(_v: Verb, _rest: &[String]) -> Output {
+    Output::usage_err(
+        "itok: the runtime verbs need the `session` feature".to_owned(),
+    )
+}
+
 fn dispatch(v: Verb, rest: &[String]) -> Output {
     match v {
         Verb::Estimate => crate::estcmd::estimate(rest),
@@ -100,12 +117,7 @@ fn dispatch(v: Verb, rest: &[String]) -> Output {
         Verb::Log => crate::logcmd::log(rest),
         Verb::Check => crate::checkcmd::check(rest),
         Verb::Fit => crate::fitcmd::fit(rest),
-        #[cfg(feature = "session")]
-        Verb::Trace => crate::tracecmd::trace(rest),
-        #[cfg(not(feature = "session"))]
-        Verb::Trace => Output::usage_err(
-            "itok: trace needs the `session` feature".to_owned(),
-        ),
+        Verb::Trace | Verb::Top => runtime(v, rest),
     }
 }
 

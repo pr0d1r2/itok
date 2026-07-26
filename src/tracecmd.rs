@@ -37,7 +37,8 @@ pub(crate) fn trace(rest: &[String]) -> Output {
 }
 
 fn run(raw: &Raw) -> Output {
-    let Some(path) = source_path(raw) else {
+    let Some(path) = source_path(raw.session.as_deref(), raw.chdir.as_deref())
+    else {
         // No transcript is not an error: this project may simply have no
         // recorded session. Report-only means exit 0 (V5).
         return Output::ok(String::new());
@@ -55,11 +56,14 @@ fn run(raw: &Raw) -> Output {
 
 /// An explicit path wins; otherwise the newest transcript for the working
 /// directory, the way `git log` defaults to the current repo (V1).
-fn source_path(raw: &Raw) -> Option<PathBuf> {
-    if let Some(s) = &raw.session {
+pub(crate) fn source_path(
+    session: Option<&str>,
+    chdir: Option<&str>,
+) -> Option<PathBuf> {
+    if let Some(s) = session {
         return Some(PathBuf::from(s));
     }
-    let cwd = raw.chdir.as_ref().map_or_else(
+    let cwd = chdir.map_or_else(
         || std::env::current_dir().ok(),
         |d| Some(PathBuf::from(d)),
     )?;
@@ -186,7 +190,7 @@ fn apply<'a>(
         "--since" => raw.since = Some(value(it, "--since")?),
         "-C" => raw.chdir = Some(value(it, "-C")?),
         "--format" => raw.format = format_of(&value(it, "--format")?)?,
-        "--bpe" | "--ollama" => return Err(no_real_tier(a)),
+        "--bpe" | "--ollama" => return Err(no_real_tier(a, "trace")),
         other if other.starts_with('-') => {
             return Err(format!("unknown flag {other}"))
         }
@@ -198,16 +202,16 @@ fn apply<'a>(
 /// Rejected, not ignored: no content is retained, so there is nothing
 /// for a real tokenizer to count (V3/V45). Accepting the flag and
 /// quietly producing an estimate would be the confident lie V3 forbids.
-fn no_real_tier(flag: &str) -> String {
+pub(crate) fn no_real_tier(flag: &str, verb: &str) -> String {
     format!(
-        "{flag} is not available on trace: no content is stored, \
+        "{flag} is not available on {verb}: no content is stored, \
          so per-event sizes are always an estimate"
     )
 }
 
 /// The two documented output shapes; anything else is a usage error, the
 /// same wording every other verb uses (V9).
-fn format_of(s: &str) -> Result<Format, String> {
+pub(crate) fn format_of(s: &str) -> Result<Format, String> {
     match s {
         "json" => Ok(Format::Json),
         "human" => Ok(Format::Human),
@@ -215,7 +219,7 @@ fn format_of(s: &str) -> Result<Format, String> {
     }
 }
 
-fn value<'a>(
+pub(crate) fn value<'a>(
     it: &mut impl Iterator<Item = &'a String>,
     flag: &str,
 ) -> Result<String, String> {

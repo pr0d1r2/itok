@@ -21,6 +21,7 @@ pub(crate) enum Verb {
     Check,
     Fit,
     Trace,
+    Top,
 }
 
 /// Read-only verbs, the only ones prefix-inference resolves. `fit` selects
@@ -34,6 +35,7 @@ pub(crate) const VERBS: &[(&str, Verb)] = &[
     ("check", Verb::Check),
     ("fit", Verb::Fit),
     ("trace", Verb::Trace),
+    ("top", Verb::Top),
 ];
 
 /// The outcome of resolving a verb token.
@@ -95,6 +97,29 @@ fn one_deletion_apart(a: &[char], b: &[char]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `top` and `trace` both start with `t`, so the bare prefix must
+    /// ERROR with candidates rather than silently picking one (V6). A new
+    /// verb can make an old prefix ambiguous, which is exactly the case
+    /// worth pinning.
+    #[test]
+    fn t_is_ambiguous_between_top_and_trace() {
+        let got = match resolve("t") {
+            Resolution::Ambiguous(mut c) => {
+                c.sort_unstable();
+                c
+            }
+            other => vec![format!("{other:?}").leak() as &str],
+        };
+        assert_eq!(got, vec!["top", "trace"]);
+    }
+
+    /// Longer prefixes still resolve, so the ambiguity costs nothing.
+    #[test]
+    fn longer_prefixes_still_resolve() {
+        assert_eq!(resolve("to"), Resolution::Verb(Verb::Top));
+        assert_eq!(resolve("tr"), Resolution::Verb(Verb::Trace));
+    }
 
     #[test]
     fn exact_name_resolves() {

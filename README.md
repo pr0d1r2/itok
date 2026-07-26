@@ -184,6 +184,14 @@ trace [<session>] [-n N] [--since D] [--reverse] [--format human|json]
 
 Runtime load events for a session, one line each, chronologically -- what entered the context, when, and how big. Defaults to the newest transcript for the working directory. Report-only. Per-event sizes are estimates (`bytes/4`): no content is stored, so there is nothing to tokenize.
 
+### `top`
+
+```text
+top [<session>] [-- <path>] [-h] [-s] [--top N] [--format human|json]
+```
+
+Ranked context occupancy for a session, `du`-shaped: how much each thing cost, how many times it was loaded, and how many turns have passed since. `-- <path>` narrows to one path's loads. Report-only; sizes are estimates (`bytes/4`).
+
 ### `docs`
 
 ```text
