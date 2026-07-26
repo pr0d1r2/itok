@@ -123,18 +123,18 @@ Every verb, its synopsis and what it does. Regenerate with `itok docs`.
 ### `estimate`
 
 ```text
-estimate [-s] [-h] [--top N] [--budget N] [--bpe] [--ollama [HOSTS]] [--format human|json] [-C dir] [paths...]
+estimate [-s] [-h] [--top N] [--budget N] [--bpe] [--ollama[=HOSTS]] [--format human|json] [-C dir] [paths...]
 ```
 
-Token cost of files, git-tracked by default. `--bpe` swaps bytes/4 for a real tokenizer (o200k); `--ollama` gets an exact count from a local model's own tokenizer. `--budget N` turns it into a gate.
+Token cost of files, git-tracked by default. `--bpe` swaps bytes/4 for a real tokenizer (o200k); `--ollama` gets an exact count from a local model's own tokenizer; a bare host needs the `=` form (`--ollama=192.168.0.181`). `--budget N` turns it into a gate.
 
 ### `doctor`
 
 ```text
-doctor [--model X] [--window N] [--ollama [HOSTS]] [--format human|json] [-C dir] [paths...]
+doctor [--model X] [--window N] [--ollama[=HOSTS]] [--format human|json] [-C dir] [paths...]
 ```
 
-Advisory health check: fit-to-window, budget balance, noise ratio, estimate confidence. Reports and suggests; never gates. `--model X` resolves an encoding via `.context-models`; `--ollama` discovers live model windows across a fleet.
+Advisory health check: fit-to-window, budget balance, noise ratio, estimate confidence. Reports and suggests; never gates. `--model X` resolves an encoding via `.context-models`; `--ollama[=HOSTS]` discovers live model windows across a fleet; a bare host needs the `=` form.
 
 ### `diff`
 

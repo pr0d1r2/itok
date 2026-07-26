@@ -85,15 +85,54 @@ fn apply(
     // handled here since it is neither a plain bool nor a required-value
     // flag. Without the feature it falls through to the unknown-flag arm.
     #[cfg(feature = "ollama")]
-    if a == "--ollama" {
+    if let Some(hosts) = ollama_arg(a) {
         o.tier = Tier::Ollama;
-        take_ollama_hosts(o, rest, i);
-        return Ok(());
+        return set_ollama_hosts(o, hosts, rest, i);
     }
     if boolean(o, a) {
         Ok(())
     } else {
         valued(o, a, rest, i)
+    }
+}
+
+/// Where `--ollama`'s hosts come from: the `=` value verbatim, or the
+/// heuristic over the next token.
+///
+/// `--ollama=` with nothing after it ERRORS rather than resolving to the
+/// default. The user named a value and gave an empty one; falling back to
+/// localhost there would be B10's silence in a new place (V101).
+#[cfg(feature = "ollama")]
+fn set_ollama_hosts(
+    o: &mut Opts,
+    hosts: Option<&str>,
+    rest: &[String],
+    i: &mut usize,
+) -> Result<(), String> {
+    match hosts {
+        Some("") => return Err("--ollama= needs a host".to_owned()),
+        // Unambiguous, so taken verbatim -- no heuristic, and a bare host
+        // reaches the tier (V101).
+        Some(h) => o.ollama_hosts = Some(h.to_owned()),
+        None => take_ollama_hosts(o, rest, i),
+    }
+    Ok(())
+}
+
+/// Is this token `--ollama`? `Some(None)` for the bare flag, `Some(Some(h))`
+/// for the `=` form, `None` when it is some other token.
+///
+/// The `=` form exists because an OPTIONAL value cannot be disambiguated
+/// by looking: `--ollama box1` is the same token sequence whether `box1`
+/// is a host or a file (V101). `=` binds the value to the flag by
+/// construction, which is why GNU uses it for exactly this case (V1) --
+/// and it is the only way to reach the documented bare `host` form, the
+/// one the heuristic below must decline (B10).
+#[cfg(feature = "ollama")]
+fn ollama_arg(a: &str) -> Option<Option<&str>> {
+    match a {
+        "--ollama" => Some(None),
+        _ => a.strip_prefix("--ollama=").map(Some),
     }
 }
 
@@ -234,6 +273,47 @@ mod tests {
     fn ollama_flag_sets_the_tier() {
         let o = parse(&v(&["--ollama"])).ok().unwrap_or_default();
         assert_eq!(o.tier, Tier::Ollama);
+    }
+
+    /// B10, the regression: `--ollama <bare-host>` is the form the
+    /// interface section documents (`[scheme://]host[:port]`, default port 11434) and the
+    /// one the space heuristic must decline, because `box1` the host and
+    /// `box1` the file are the same token. `=` binds it (V101).
+    ///
+    /// The bug was SILENT -- the bare IP was swallowed as a path and the
+    /// tier fell back to localhost -- so this asserts both halves: the
+    /// hosts arrive AND nothing leaked into the fileset.
+    #[cfg(feature = "ollama")]
+    #[test]
+    fn an_equals_form_carries_a_bare_host() {
+        for host in ["192.168.0.181", "box1", "http://192.168.0.181"] {
+            let o = parse(&v(&[&format!("--ollama={host}"), "SPEC.md"]))
+                .ok()
+                .unwrap_or_default();
+            assert_eq!(o.tier, Tier::Ollama, "{host}");
+            assert_eq!(o.ollama_hosts.as_deref(), Some(host), "{host}");
+            assert_eq!(o.paths, vec!["SPEC.md"], "host leaked into paths");
+        }
+    }
+
+    /// The `=` form is taken VERBATIM: no heuristic runs, so a value that
+    /// the space form would have declined still reaches the tier.
+    #[cfg(feature = "ollama")]
+    #[test]
+    fn the_equals_form_skips_the_heuristic_entirely() {
+        let spaced =
+            parse(&v(&["--ollama", "SPEC.md"])).ok().unwrap_or_default();
+        assert_eq!(spaced.ollama_hosts, None, "declined: could be a path");
+        let bound = parse(&v(&["--ollama=SPEC.md"])).ok().unwrap_or_default();
+        assert_eq!(bound.ollama_hosts.as_deref(), Some("SPEC.md"));
+    }
+
+    /// An empty value ERRORS rather than resolving to localhost: the user
+    /// named a value, and falling back silently is B10 in a new place.
+    #[cfg(feature = "ollama")]
+    #[test]
+    fn an_empty_equals_value_is_an_error_not_a_default() {
+        assert!(parse(&v(&["--ollama="])).is_err());
     }
 
     #[cfg(feature = "ollama")]
