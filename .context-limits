@@ -1,5 +1,9 @@
 # Per-path token ceilings, gated by `itok check` (pinned tier, V5). Only
 # registered paths are checked; everything else is unchecked (V10). This
 # is itok checking itself -- the dogfood.
-SPEC.md    60k
+# A RATCHET (V84): the ceiling tracks the file DOWN, so a compaction gain
+# cannot silently erode. 60k was a ceiling nothing ever approached, which
+# gated nothing -- V69's lesson, one level up. Set ~5% above today's
+# measured 19,542; lower it again after the next compaction pass.
+SPEC.md    20500
 README.md  4k

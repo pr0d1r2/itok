@@ -208,28 +208,25 @@ earns its complexity only when large near-capacity items make greedy
 visibly wrong. Trigger: a real fileset where greedy drops a
 better-fitting combination.
 V22: **`--ollama [HOST]` = self-hosted exact + live windows** — THE
-slowest-remote rung of the ladder (V4), keyless & free: `localhost:11434`
-plain HTTP (no TLS, no API key, no payment). The ladder is dummy | bpe |
-`--ollama`; there is no cloud/paid rung (V35). Gives 2 things: (1) EXACT
-counts via the
-model's own tokenizer (`prompt_eval_count` from a `num_predict:0`
-generate) ∴ a local llama/qwen is measured true, ⊥ by the o200k proxy
-that is wrong for it; (2) live model→window from `/api/tags` + `/api/show`
-(`context_length`). `doctor --ollama` w/o `--model` enumerates ALL local
-models & reports fit-% against each — the answer no static table gives.
-Honors `OLLAMA_HOST` (V1: Ollama's own convention); `--ollama` bare =
-`OLLAMA_HOST`|`localhost:11434`, `--ollama HOST` overrides. Applies to
-`estimate` & `doctor` -- the verbs where an EXACT count earns its network
-cost ("how much exactly?" / "does it fit this model's LIVE window?").
-`diff` (a gate) & `fit` (a packer) stay on the margin'd `--bpe` proxy: a
-gate wants a CONSERVATIVE estimate, ⊥ a true count (V36), so exact adds no
-value there -- exact on diff/fit DEFERRED, ⊥ rejected (trigger: a real
-need for exact deltas / exact packing). NEVER `check` (V5 determinism) |
-`log` (history×network). Precedence: live endpoint > `.context-models` > error;
-the table stays the offline fallback & the only source for cloud windows.
-Non-deterministic + network ∴ all remote-tier rules (V4/V23). Content leaves
-the process to the endpoint — LAN self-hosted is the PRIVATE path vs
-cloud, a conscious tradeoff.
+slowest-remote rung (V4), keyless & free: `localhost:11434` plain HTTP,
+no TLS/API key/payment. Ladder = dummy|bpe|`--ollama`; NO cloud rung
+(V35). Gives 2: (1) EXACT counts via the model's OWN tokenizer
+(`prompt_eval_count` from a `num_predict:0` generate) ∴ a local
+llama/qwen is measured true, ⊥ by an o200k proxy that is wrong for it;
+(2) live model→window from `/api/tags`+`/api/show` (`context_length`).
+`doctor --ollama` w/o `--model` enumerates ALL local models & reports
+fit-% against each — the answer no static table gives. Honors
+`OLLAMA_HOST` (V1); bare `--ollama` = `OLLAMA_HOST`|`localhost:11434`,
+`--ollama HOST` overrides. Applies to `estimate` & `doctor` ONLY — the
+verbs where an exact count earns its network cost. `diff` (a gate) &
+`fit` (a packer) stay on margin'd `--bpe`: a gate wants a CONSERVATIVE
+estimate, ⊥ a true count (V36) — exact there DEFERRED, ⊥ rejected
+(trigger: a real need for exact deltas/packing). NEVER `check` (V5) |
+`log` (history×network). Precedence: live endpoint > `.context-models` >
+error; the table is the offline fallback & the only source for cloud
+windows. Non-deterministic + network ∴ all remote-tier rules (V4/V23).
+Content LEAVES the process to the endpoint — LAN self-hosted is the
+private path vs cloud, a conscious tradeoff.
 V23: **network tier feature-gated** — `--ollama` lives behind a cargo
 feature (`ollama`) w/ a tiny blocking client (e.g. `ureq`, ⊥ an async
 runtime; `localhost` HTTP ∴ no TLS stack). ∴ the core ships ZERO network
@@ -312,20 +309,19 @@ dir-walking native tier the host adds; until then root governs by
 exact-path (the current `crates/itok/SPEC.md` entry).
 V31: **the traveling gate is STANDARD-ONLY; custom guards are
 monorepo-only.** The fancy guards are HOST crates (`repo-guard`,
-`cavekit-spec`) — they do ⊥ travel with `crates/itok`, so `unit.yml` &
-CI use cargo-native tools alone (fmt, clippy, nextest, llvm-cov). Coverage
-is a `--fail-under-lines` FLOOR, ⊥ the per-file `coverage-freeze` ratchet
-(a host bin); `coverage-baseline.json` travels as reference, ⊥ enforced
-in the extracted repo. The floor is the UNIT's OWN standalone coverage
-(itok ≈ 98%), ⊥ the monorepo WORKSPACE total (sibling crates inflate that
-to 99%, B4): a floor copied from the aggregate fails the single crate.
-Two-tier by design: the monorepo is itok's
-full-guard home (root config, all guards, where it is developed); the
-public repo runs the standard gate. A graft lands public, flows back, &
-hits the full guards in the monorepo — external contribution, internal
-tending (the "tend in the loop by graft" loop). Bringing the toolkit
-(extracting `repo-guard`/`cavekit-spec`) is deferred; trigger = the public
-repo wanting the fancy guards independently.
+`cavekit-spec`) — they do ⊥ travel ∴ the gate uses cargo-native tools
+alone (fmt, clippy, nextest, llvm-cov). Coverage is a
+`--fail-under-lines` FLOOR, ⊥ the per-file `coverage-freeze` ratchet (a
+host bin); `coverage-baseline.json` travels as reference, ⊥ enforced
+standalone. The floor is the UNIT's OWN coverage (itok ≈ 98%), ⊥ the
+monorepo WORKSPACE total (siblings inflate it to 99%, B4): a floor copied
+from the aggregate FAILS the single crate. Two-tier by design — the
+monorepo is itok's full-guard home; the public repo runs the standard
+gate. A graft lands public, flows back, & hits the full guards in the
+monorepo (external contribution, internal tending). Extracting the
+toolkit is DEFERRED; trigger = the public repo wanting the fancy guards
+independently. AMENDED by V75: the runner is now the pinned dev shell, ⊥
+bare rustup — the OPS stayed cargo-native, only the DELIVERY changed.
 V32: **`diff`/`show`/`log` = git's triad, matched to git's CLI.** Three
 questions at three granularities, git's own split (V1): `diff` = any two
 points (working · `--staged` · `<A> <B>` · `<A>..<B>`); `show` = ONE
@@ -557,35 +553,28 @@ would go stale & become a confident lie (V3). Missing rate ⇒ NO money
 column, ⊥ a guessed one (V11's unknown-model rule). Cache-read tokens
 bill at a different rate than fresh ones ∴ `--cost` ! use the cache
 split (V47) or omit the column entirely.
-V62: **the flake sits at the REPO ROOT & the dev shell PROVIDES `itok`.**
-Root, ⊥ a subdirectory, for one hard reason: a flake's source root is the
-directory it lives in ∴ a flake under `.uow/` can ! see `Cargo.toml` |
-`src/` & can therefore never build the crate — no `packages.default`, no
-`nix build`, no `nix run`. Root also makes it the shape every Rust
-project already uses (V1) & the shape `nix flake` commands assume.
-PROVIDES: itok dogfoods itself (V15) ∴ its own shell ! hand you the
-toolchain and then make you type `cargo run --` — the tool is on PATH.
-The shell's `itok` is a SHIM (`exec cargo run -q --manifest-path
-"$ITOK_MANIFEST" --bin itok -- "$@"`), ⊥ a package in the shell closure:
-a package would build the crate to ENTER the shell ∴ one compile error
-locks you out of the shell you need to fix it, & a pinned package is
-STALE against the working tree — the opposite of what a dev shell is for.
-`cargo run` no-ops on a fresh build ∴ the shim costs ~nothing & is always
-current. `ITOK_MANIFEST` is resolved AT ENTRY from `$PWD` (V37: derive,
-never hardcode a layout) so it works in-repo & extracted alike;
-`ITOK_PROFILE=release` / `ITOK_FEATURES` are the escape hatches. The dev
-files are `exclude`d from the published `.crate` (V39): consumer-
-meaningless. `packages.*` BUILT (T58): `default` (dummy+bpe),
-`itok-minimal` (`--no-default-features` — the zero-dep core, so V23/V13's
-claim is a BUILD, ⊥ a promise), `itok-ollama` (+ the LAN rung). Rests on
-a COMMITTED `Cargo.lock`: flakes read git-TRACKED files only, & a
-sandboxed build cannot resolve versions off the network, so
-`cargoLock.lockFile` is what vendors them offline. `doCheck = false` ∵ the
+V62: **flake at repo ROOT; the dev shell PROVIDES `itok`.** Root ∵ a
+flake's source root is its OWN directory ∴ a subdirectory flake (once
+`.uow/`) cannot see `Cargo.toml`/`src/` & can never build the crate — no
+`packages.default`, no `nix build`/`nix run`. Root is also every Rust
+project's shape & what `nix flake` commands assume (V1). PROVIDES ∵ itok
+dogfoods itself (V15): the tool is ON PATH, ⊥ `cargo run --`. A SHIM
+(`exec cargo run -q --manifest-path "$ITOK_MANIFEST" --bin itok -- "$@"`),
+⊥ a package in the shell closure: a package builds the crate to ENTER the
+shell ∴ one compile error locks you out of the shell you need to fix it,
+& a pinned package is STALE vs the working tree. `cargo run` no-ops when
+fresh ∴ ~free & always current. `ITOK_MANIFEST` resolves AT ENTRY from
+`$PWD` (V37: derive, ⊥ hardcode a layout);
+`ITOK_PROFILE=release`/`ITOK_FEATURES` are the escape hatches. Dev files
+`exclude`d from the `.crate` (V39). `packages.*` BUILT (T58): `default`
+(dummy+bpe) · `itok-minimal` (`--no-default-features` ∴ V23/V13's zero-dep
+claim is a BUILD, ⊥ a promise) · `itok-ollama`. Rests on a COMMITTED
+`Cargo.lock` — flakes read git-TRACKED files ONLY & the sandbox has no
+network ∴ `cargoLock.lockFile` vendors offline. `doCheck = false` ∵ the
 suite shells to git for `HEAD~n` (V33's `gitref`) & a store source has NO
-`.git` — that absence is exactly what makes the build reproducible ∴ the
-suite runs in the dev shell & CI, where history exists (V37/B3 seen from
-the other side). `version` is READ from `Cargo.toml` ∴ one number, ⊥ two
-that can disagree.
+`.git` — that absence IS the reproducibility ∴ the suite runs in the dev
+shell & CI, where history exists (V37/B3, from the other side). `version`
+READ from `Cargo.toml` ∴ ONE number.
 V64: **ONE gate definition, many callers — eliminate the second copy, ⊥
 freeze it.** `hk.pkl` holds the OPS (which command, which flags, which
 phase, which order, the coverage floor); the workflow holds ORCHESTRATION
@@ -635,40 +624,37 @@ committed registry provides. ∴ dropped here; file-size ceilings stay a
 MONOREPO guard, where a runner exists. Re-add standalone ONLY together w/
 a checker wired into the gate (V64) — the registry & its caller land in
 the same commit, ⊥ apart.
-V70: **version = MATURITY OF THE GUARANTEE, ⊥ feature count.** Each minor
-answers ONE question — *what can you rely on at this tag?*: `0.1` builds
-reproducibly on any box (`nix build`) · `0.2` cannot regress locally (the
-gate runs in git hooks) · `0.4` KNOWS what a context costs (M4 telemetry)
-· `0.6` can ACT on it (M5-M7) · `0.7` PUBLIC, featureset frozen, CI
-present but unproven · `0.8` public gate trustworthy (matrix, green
-streak, release automation) · `1.0` CONTRACT frozen. ODD minors
-(`0.3`/`0.5`/`0.9`) are RESERVED for fix/backprop releases ∴ a bugfix
-never borrows a milestone's number. The ladder ENFORCES V42
-structurally: telemetry is `0.4`, enforcement is `0.6` ∴
-observe-before-enforce stops being a rule to remember & becomes a number
-you cannot skip. `0.7` freezes the SPEC's PLANNED featureset; `1.0`
-freezes the CONTRACT (CLI surface + json, V9) — additions between them
-are ALLOWED ∵ they come from public feedback, which is the POINT of
-exposing at `0.7`. Pre-1.0 SemVer (minor MAY break) is HONEST here ∵ each
-rung IS a behavior change. crates.io is IMMUTABLE (yank HIDES, ⊥ deletes)
-∴ the first public artifact is `0.7.0-rc.1` — cargo ⊥ selects a
-pre-release by default — so the pipeline is proven before a permanent
-number is spent.
-V71: **a passing gate says NOTHING; a failing one says what to DO.** Unix
-philosophy, applied to the gate. SUCCESS = SILENCE (`HK_HIDE_WHEN_DONE`)
-∵ output that always appears is output nobody reads ∴ the one real
-failure hides in the noise everyone learned to scroll past. FAILURE =
-LOUD & ACTIONABLE: the tool's own diagnostic, + a one-line remediation
-pointer on the steps whose fix is ⊥ obvious from the command that failed
-(`itok`/`ollama`/`no-default-features`/`package`/`coverage`), + a
-playbook (`AGENTS.md`) written for agents & humans alike. FAIL-FAST is
-LOCAL, ⊥ universal: locally the loop is cheap ∴ the FIRST failure is the
-most useful thing to surface & `depends` orders steps cheapest-first so
-it arrives fast; in CI a round-trip costs minutes ∴ `--no-fail-fast` — a
-COMPLETE list beats an early one. BYPASS is ⊥ a fix: `--no-verify` ·
-`HK=0` · lowering a threshold · `#[allow]` all SHIP THE DEFECT with the
-alarm switched off. If the CHECK itself is wrong, that is a SPEC change —
-made deliberately, in its own commit, ⊥ silently at the failure site.
+V70: **version = MATURITY OF THE GUARANTEE, ⊥ feature count.** Each
+minor answers ONE question — *what can you rely on at this tag?*: `0.1`
+builds reproducibly anywhere (`nix build`) · `0.2` cannot regress locally
+(gate in git hooks) · `0.4` KNOWS what a context costs (M4) · `0.6` can
+ACT on it (M5-M7) · `0.7` PUBLIC, featureset frozen, CI unproven · `0.8`
+public gate trustworthy · `1.0` CONTRACT frozen. ODD minors
+(`0.3`/`0.5`/`0.9`) are RESERVED for fix releases ∴ a bugfix never
+borrows a milestone's number. The ladder ENFORCES V42 STRUCTURALLY:
+telemetry is `0.4`, enforcement `0.6` ∴ observe-before-enforce becomes a
+number you cannot skip, ⊥ a rule to remember. `0.7` freezes the PLANNED
+featureset; `1.0` freezes the CONTRACT (CLI + json, V9) — additions
+between them are ALLOWED ∵ they come from public feedback, the POINT of
+exposing at `0.7`. Pre-1.0 SemVer (minor MAY break) is HONEST ∵ each rung
+IS a behavior change. crates.io is IMMUTABLE (yank HIDES, ⊥ deletes) ∴
+the first public artifact is `0.7.0-rc.1` — cargo ⊥ selects a pre-release
+by default — so the pipeline is proven before a permanent number is
+spent.
+V71: **a passing gate says NOTHING; a failing one says what to DO.**
+SUCCESS = SILENCE (`HK_HIDE_WHEN_DONE`) ∵ output that ALWAYS appears is
+output nobody reads ∴ the one real failure hides in noise everyone
+learned to scroll past. FAILURE = LOUD & ACTIONABLE: the tool's own
+diagnostic + a one-line remediation pointer on steps whose fix is ⊥
+obvious from the failing command
+(`itok`/`ollama`/`no-default-features`/`package`/`coverage`) + a playbook
+(`AGENTS.md`), for agents & humans alike. FAIL-FAST is LOCAL, ⊥
+universal: locally the loop is cheap ∴ the FIRST failure is most useful &
+`depends` orders steps cheapest-first so it arrives fast; in CI a
+round-trip costs minutes ∴ `--no-fail-fast`, a COMPLETE list. BYPASS ⊥ a
+fix: `--no-verify` · `HK=0` · lowering a threshold · `#[allow]` all SHIP
+THE DEFECT with the alarm off. If the CHECK is wrong, that is a SPEC
+change — deliberate, in its own commit, ⊥ silent at the failure site.
 V72: **a gate step MAY need a binary; the VERDICT may ⊥ need one.** The
 `hk util` family is native to the runner ∴ free everywhere. A second tier
 (`typos`·`actionlint`·`taplo`·`shellcheck`) needs a real binary, & that
@@ -824,6 +810,16 @@ that copied content is 1st-order convenient; 2nd-order it is a NEW LEAK
 SURFACE buying nothing) · V84 (a spec addition is 1st-order clarity;
 2nd-order a per-turn tax forever). The generalization: ask what a choice
 COSTS ON EVERY LATER TURN, ⊥ only what it buys now.
+V88: **an unparsable registry row FAILS; it is NEVER skipped.** V11's
+rule (unknown model ⇒ FAIL, name an encoding) binds EVERY registry, ⊥
+only `.context-models`: a row the tool cannot read is a row the AUTHOR
+believes is enforced ∴ skipping it silently converts a gate into
+decoration & is strictly WORSE than having no row (V69). Applies to
+`.context-limits` · `.context-models` · `.context-policy` · `.context-hosts`.
+The diagnostic ! name the FILE, the LINE & what was expected. Corollary
+for the reader: `checked:N` is part of the contract (V9) ∵ it is the only
+way a caller can notice that fewer paths were gated than registered —
+B7 was found by that number, ⊥ by the exit code.
 
 ## §T TASKS
 
@@ -852,26 +848,26 @@ T9|x|`check` verb: `.context-limits`, pinned bpe, exit codes|V5,V10
 T10|x|dogfood: `itok` as host guard unit, pre-commit `itok check`|V14
 T11|x|extraction dry-run: build & GUARD isolated, zero host deps, `subtree split` rehearsal|V13,V27,V37
 T12|x|`--budget N` inline gate on estimate & diff: exit-on-breach, report overage|V16,V5
-T13|x|`doctor` verb: advisory, native signals (fit/balance/noise/confidence)|V17,V18
+T13|x|`doctor` verb: advisory, native signals|V17,V18
 T14|x|`.context-models` carries per-model window; `--window` override, shared unit parser|V18,V11
-T15|x|`log` verb: per-commit token cost + delta across history, git grammar (`A..B`, `-- path`)|V19,V32,V33
+T15|x|`log` verb: per-commit token cost + delta across history, git grammar|V19,V32,V33
 T16|x|`fit` verb: greedy subset under `--window`, pipeable path-list output|V20
 T17|x|`--ollama` backend: exact via `prompt_eval_count`, live model/window discovery, feature-gated|V22,V23
-T18|x|`--ollama` `host[:port]`-list + `.context-hosts` + stdin; fleet union; ⊥ CIDR/port-flag|V24,V25
-T19|x|unit declaration (ops×globs×phases, resolved-path bins) — MONOREPO-ONLY; ⊥ shipped in the standalone repo, where `ci.yml` is the runner (superseded by T51)|V28,V29
-T20|x|pinned detachable toolchain: `flake.nix`+`flake.lock`+`.envrc` — relocated to the repo ROOT by T50|V28,V62
-T21|x|itok baselines at crates/itok/ root: `lexicon.txt`·`coverage-baseline.json` (`.file-limits` dropped by T57 — unenforceable standalone)|V27,V69
+T18|x|`--ollama` `host[:port]`-list + `.context-hosts` + stdin|V24,V25
+T19|x|unit declaration|V28,V29
+T20|x|pinned detachable toolchain: `flake.nix`+`flake.lock`+`.envrc`|V28,V62
+T21|x|itok baselines at crates/itok/ root: `lexicon.txt`·`coverage-baseline.json` (`.file-limits` dropped by T57|V27,V69
 T22|x|`gitref` primitive: token cost of a file AT a commit (`git cat-file` → dummy/bpe), shared by diff/show/log|V33
 T23|x|`show` verb: one commit's per-file delta (default HEAD), `-- path`, `<commit>:<path>` blob|V32,V33
-T24|x|cassette-replay the ollama backend: `vcr-cassette` dev-dep + ureq replay stub + fixtures (`/api/tags`·`/api/show`·`/api/generate`); live smoke → `#[ignore]`; `ollama` CI axis in `.uow`+hook; fold into `src/ollama/`|V38,V22,V23
+T24|x|cassette-replay the ollama backend: `vcr-cassette` dev-dep + ureq replay stub + fixtures|V38,V22,V23
 T25|x|metadata: `Cargo.toml` version `0.8.0` + `repository`·`homepage`·`documentation`·`readme`·`keywords`·`categories`·`rust-version`, `exclude` non-consumer files|V39,V13
 T26|x|public-clean provenance: scrub SPEC + src comments of origin-repo names & cross-repo invariant pointers (fold inline), header un-names the workspace, `exclude=[".uow"]`|V26,V39
 T27|x|bare-rust `.github/workflows/ci.yml`: fmt·clippy·test·`--features ollama`·`llvm-cov --fail-under-lines 98`, `fetch-depth:0`, no nix/uow|V39,V31,V38
-T28|x|assemble README = hand narrative + the `itok docs` reference block + badges (post-ORG); `CHANGELOG.md`; crate rustdoc for docs.rs|V39,V40,V15
-T29|x|`itok docs` verb: ONE command registry (verb·synopsis·flags·exit) renders `--help` + a markdown reference; read-only to stdout; guard diffs it vs README ∴ docs can't rot|V40,V6,V9
+T28|x|assemble README = hand narrative + the `itok docs` reference block + badges|V39,V40,V15
+T29|x|`itok docs` verb: ONE command registry (verb·synopsis·flags·exit) renders `--help` + a markdown reference|V40,V6,V9
 T30|.|session reader module: harness-PLUGGABLE, defensive JSONL parse → load events; unknown fields ignored, malformed records skipped & COUNTED; torn tail tolerated; ⊥ writes to the transcript|V43,V45,V76
 T30a|.|content-addressed snapshot cache (XDG, outside the tree, bounded, idempotent by construction) — the stable view `trace`/`top` read|V77,V19
-T30b|x|synthetic fixtures under `tests/fixtures/session/`: minimal · tool-shapes · truncated · torn-tail · weird (bare-string result, null isSidechain, unknown type). Hand-written & tiny; a REAL transcript is ⊥ committed (V45)|V43,V45,V76,V79
+T30b|x|synthetic fixtures under `tests/fixtures/session/`|V43,V45,V76,V79
 T30c|.|attachment load class: hook output / reminders / injected context counted beside tool results|V78,V44
 T31|.|`trace` verb: 1 line/load event, chronological, `-n`·`--since`·`--reverse`·json|V46,V9,V59
 T32|.|`top` verb: ranked occupancy, `-h`·`-s`·`--top N`, dup + stale columns, `-- <path>` per-path attribution (⊥ a `blame` verb)|V46,V59
@@ -892,23 +888,25 @@ T46|.|fuse telemetry: trip · cap · override are ledger events; `top` reports o
 T47|.|ledger REPLAY: recorded events × a policy, offline & deterministic ⇒ policy A/B with no agent & no network|V53,V5
 T48|.|session-cost regression gate: a recorded run over its input-token budget fails CI (the `--budget` shape, on a session)|V53,V16
 T54|x|adopt hk as the gate runner: vendor `pkl/Config.pkl` (⊥ `package://`), `hk.pkl` w/ fast set + `all` amending it, `depends` chain over the cargo steps, `stash = "git"` on pre-commit, dev shell provides hk pinned to the vendored schema's version|V64,V66,V67
-T55|x|`ci.yml` = orchestration ONLY, delegating to `hk check --all --check`; `tests/ci.rs` retargeted from freezing a second copy to freezing the SINGLE definition (ops in hk.pkl, workflow restates none, schema vendored)|V64,V65
-T56|x|fix the cassette stub's request drain (B5): read to `Content-Length` before replying, `Connection: close`; verified 8/8 parallel runs green where it was 2/3 failing|V68,V38
-T58|x|`packages.default`/`itok-minimal`/`itok-ollama` via `buildRustPackage`+`cargoLock.lockFile`; version read from `Cargo.toml`; `doCheck = false` (no `.git` in the store); `nix build`/`nix run` verified on aarch64-darwin for all three|V62,V23
-T57|x|drop `.file-limits`: no standalone runner reads it ∴ hand-maintained ceilings gating nothing; refs scrubbed from SPEC/CONTRIBUTING/`Cargo.toml` exclude; file-size limits remain a monorepo guard|V69,V28
+T55|x|`ci.yml` = orchestration ONLY, delegating to `hk check --all --check`|V64,V65
+T56|x|fix the cassette stub's request drain (B5): read to `Content-Length` before replying, `Connection: close`|V68,V38
+T58|x|`packages.default`/`itok-minimal`/`itok-ollama` via `buildRustPackage`+`cargoLock.lockFile`|V62,V23
+T57|x|drop `.file-limits`: no standalone runner reads it ∴ hand-maintained ceilings gating nothing|V69,V28
 T59|.|public exposure: create the GitHub repo, publish `0.7.0-rc.1` FIRST (immutability -- prove the pipeline before spending a permanent number), install it from crates.io, then `0.7.0`|V70,V39
 T60|.|CI hardening: platform matrix (ubuntu + macos-arm), MSRV `1.82` axis, release automation, a green streak before `0.8.0`|V70,V39
 T61|.|closure: fold public feedback, freeze the CLI surface & the json contract, `1.0.0`|V70,V9
 T62|x|gate UX: silent on success (`HK_HIDE_WHEN_DONE`), explicit `fail_fast` locally & `--no-fail-fast` in CI, per-step remediation hints on the non-obvious failures, `AGENTS.md` playbook + CONTRIBUTING pointer|V71,V65
-T63|x|external-tool lints: `typos`·`actionlint`·`taplo`·`shellcheck` pinned in the dev shell + at pinned versions in CI (`install-action` for 3, pinned release download for actionlint); `.typos.toml` exemptions named|V72,V73
+T63|x|external-tool lints: `typos`·`actionlint`·`taplo`·`shellcheck` pinned in the dev shell + at pinned versions in CI|V72,V73
 T64|x|dev shell installs hooks on entry, written BY HAND w/ a runner-missing guard (B6), skipped when a global install exists ∵ git aggregates `hook.*.command` across scopes ⇒ double fire|V71,V74
 T65|x|`packages.*` src narrowed via `lib.fileset` to `src/`+`Cargo.toml`+`Cargo.lock` ∴ a doc edit no longer invalidates the build|V62
-T66|x|CI = nix: `nix develop --command hk check` + `nix build` of all 3 feature configurations; hk & every linter reached THROUGH the pinned shell, ⊥ installed; pending parts (matrix·MSRV·cache·SHA pins·publish) listed in-file|V75,V64
-T67|x|`nixfmt --check` gates `*.nix`: the flake decides what every other step runs with ∴ drift there is drift everywhere. CHECK mode only -- the file is hand-commented|V72
-T68|x|transcript guards BEFORE the capability: `.gitignore` transcript patterns (fixtures exempt) + a CONTENT-signature hygiene test (a rename defeats a filename pattern; content cannot be renamed), verified by planting a real sample|V45,V71
-T49|.|SPEC compaction debt (M3 closed; V84 makes it DUE, ⊥ deferrable -- every byte is re-billed per turn, per session): compact §V/§B prose; one-file rule holds — more sections, ⊥ more files|V15
-T50|x|flake to repo ROOT (`git mv` out of the unit dir) + dev shell PROVIDES `itok` via a `cargo run` shim; `ITOK_MANIFEST` resolved at entry, `ITOK_PROFILE`/`ITOK_FEATURES` hatches; dev files `exclude`d from the `.crate`|V62,V15,V39
-T51|x|drop the unit declaration from the standalone repo; `ci.yml` carries all 5 ops at >= their old strength (clippy gains `--all-features -- -D warnings`, coverage keeps the corrected 98) & records what was deliberately ⊥ carried (`--test-threads=1`, the phase split)|V28,V29,V31
+T66|x|CI = nix: `nix develop --command hk check` + `nix build` of all 3 feature configurations|V75,V64
+T67|x|`nixfmt --check` gates `*.nix`: the flake decides what every other step runs with ∴ drift there is drift everywhere. CHECK mode only|V72
+T68|x|transcript guards BEFORE the capability: `.gitignore` transcript patterns (fixtures exempt) + a CONTENT-signature hygiene test (a rename defeats a filename pattern|V45,V71
+T70|.|scripted bulk compaction: CPU derives (sizes·citation graph·orphans·stale refs·shared n-grams·must-keep fact sets), ONE inference call rewrites the top-N under a byte budget, CPU VERIFIES every citation/number/identifier survived, named `--allow-drop` for deliberate removals. Seeded by T49's measurements|V84,V73,V80
+T69|.|`.context-limits`/`.context-models`/`.context-policy`: an unparsable row FAILS w/ file+line+expected, ⊥ silent skip (B7); fractional units (`20.5k`) either parse or are rejected LOUDLY|V88,V11
+T49|x|SPEC compaction FIRST PASS + the machine to finish it: 25 done-`§T` rows trimmed to what+cites (method lives in the commit, V26), V62/V22/V70/V71/V31 destaled & tightened, `tests/spec_integrity.rs` guard, `.context-limits` turned into a RATCHET. MEASURED gross -2,781 chars; NET -2.1% only ∵ the pass itself added V88+B7+T69. 5 of 86 invariants touched ∴ the BULK is T70|V84,V15,V26
+T50|x|flake to repo ROOT (`git mv` out of the unit dir) + dev shell PROVIDES `itok` via a `cargo run` shim|V62,V15,V39
+T51|x|drop the unit declaration from the standalone repo|V28,V29,V31
 T52|x|`.gitignore` (`/target`, `/.direnv`): cargo packages untracked-not-ignored files ∴ `.direnv/` (5.5MB of vendored nixpkgs source) was landing in `cargo package --list` ⇒ would ship in the `.crate`|V39,V13
 T53|x|track `Cargo.lock`: a BIN crate pins its own deps, & nix flakes read git-TRACKED files only ∴ an untracked lock is invisible to a `packages.default` build|V62,V39
 
@@ -918,6 +916,7 @@ id|date|cause|fix
 B1|2026-07-24|extraction: `rustfmt.toml`/`clippy.toml` root-only ⇒ standalone `cargo fmt --check` reformats (default width 100 vs 80); traveling gate ⊥ reproduces verdict|V27
 B2|2026-07-24|extraction: git-command tests use `CARGO_MANIFEST_DIR.parent().parent()` as repo root + hardcode `crates/itok/…` paths ⇒ standalone `cargo nextest` fails|V37
 B3|2026-07-24|`diff --budget` test asserted a breach on live `HEAD~1..HEAD`, presuming a substantial last commit; a near-zero-delta ceiling bump as HEAD gave no breach ⇒ exit 0 ≠ 1, blocking every commit until HEAD grew|V37
+B7|2026-07-26|`.context-limits` silently SKIPS a row whose limit it cannot parse: `SPEC.md 20.5k` ⇒ `checked:1` of 2 registered paths, exit 0, NO diagnostic ∴ the ratchet set by T49 gated NOTHING & read as if it did. V11 already forbids exactly this for `.context-models` (unknown model ⇒ FAIL, ⊥ silent fallback); the rule was never carried to the sibling registry. Found by TESTING the new ceiling instead of trusting it (V80)|V88
 B6|2026-07-25|dev-shell auto-install wrote `hk install`'s command, which assumes `hk` on PATH. Outside the shell: `hk: command not found` ⇒ hook exit nonzero ⇒ EVERY git commit in the repo blocked, ⊥ merely ungated. Caught within one minute, by the very next commit failing|V74
 B5|2026-07-25|cassette replay stub read the request with ONE `read()`; TCP segments the only POST (`/api/generate`) so the body can arrive second ⇒ reply-then-close raced the client's write ⇒ `itok: ollama read ...: Invalid argument (os error 22)`. Flaky 2/3 runs parallel, 3/3 green serial ∴ the deleted unit declaration's `--test-threads=1` had been MASKING it, & the claim that the suite was hermetic (argued from reading temp-dir/port handling) was wrong. Surfaced the first time the new gate ran the ollama axis|V68
 B4|2026-07-25|ci.yml `--fail-under-lines 99` copied the monorepo WORKSPACE total; itok ALONE is 98.03% (siblings inflate the aggregate) ⇒ the standalone gate fails coverage. Caught by the T359 proving ground. Floor set to itok's own 98|V31
