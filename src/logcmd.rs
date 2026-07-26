@@ -94,7 +94,7 @@ fn delta(cost: u64, was: u64) -> i64 {
 }
 
 fn report(path: &str, bpe: bool, rows: &[Row]) -> String {
-    let mut s = format!("{path}  ({})\n", method(bpe).label);
+    let mut s = format!("{path}  ({})\n", method(bpe).label());
     for (h, date, subj, cost, d) in rows {
         s.push_str(&format!(
             "{h}  {date}  {cost:>8} itok  {:>7}  {subj}\n",
@@ -118,7 +118,7 @@ fn json(path: &str, bpe: bool, rows: &[Row]) -> String {
     format!(
         "{{\"path\":\"{}\",\"method\":\"{}\",\"commits\":[{items}]}}\n",
         crate::json::escape(path),
-        method(bpe).label,
+        method(bpe).label(),
     )
 }
 

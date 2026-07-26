@@ -46,7 +46,7 @@ fn verdict(pct: u64, warn_at: u64) -> &'static str {
 }
 
 pub(crate) fn human(h: &Health) -> String {
-    let method = h.method.label;
+    let method = h.method.label();
     let mut s = format!("context: {} itok ({method})\n", h.real_total);
     s.push_str(&fit_line(h));
     s.push_str(&balance_line(h));
@@ -88,7 +88,7 @@ fn confidence_line(h: &Health) -> String {
 }
 
 pub(crate) fn json(h: &Health) -> String {
-    let method = h.method.label;
+    let method = h.method.label();
     let window = h
         .window
         .map_or_else(|| "null".to_owned(), |w| w.to_string());

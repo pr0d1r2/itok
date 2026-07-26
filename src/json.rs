@@ -15,12 +15,29 @@ const UNIT: &str = "input_tokens";
 pub fn object(est: &Estimate, method: &Method) -> String {
     format!(
         "{{\"path\":\"{}\",\"tokens\":{},\"unit\":\"{UNIT}\",\
-         \"estimated\":{},\"method\":\"{}\"}}",
+         \"estimated\":{},\"method\":\"{}\"{}}}",
         escape(&est.path),
         est.tokens,
         method.approximate,
-        escape(method.label),
+        escape(method.tier),
+        endpoint(method),
     )
+}
+
+/// The remote tier's endpoint, as its OWN field.
+///
+/// `method` keeps the bare tier a parser already matches on -- folding
+/// `via model@host` into it would break every consumer testing for
+/// `"exact"`, and V9 calls that field a contract. The human label carries
+/// the qualifier inline instead: different idioms, one rule (V101/V9).
+///
+/// Absent for the local tiers -- no key rather than an empty one, since
+/// there is no endpoint to report, not an unknown one.
+fn endpoint(method: &Method) -> String {
+    match &method.endpoint {
+        Some(e) => format!(",\"endpoint\":\"{}\"", escape(e)),
+        None => String::new(),
+    }
 }
 
 /// Minimal JSON string escaping: quote, backslash, and the control
@@ -75,7 +92,8 @@ mod tests {
     #[test]
     fn an_exact_tier_is_not_estimated() {
         let exact = Method {
-            label: "exact",
+            tier: "exact",
+            endpoint: None,
             approximate: false,
         };
         let o = object(&est("a.rs", 12), &exact);

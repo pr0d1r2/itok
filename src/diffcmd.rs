@@ -158,7 +158,7 @@ fn report(c: &Cmp, rows: &[(String, i64)]) -> String {
         Side::Ref(r) => format!("{}..{r}", c.old),
         Side::Working => format!("{}..working", c.old),
     };
-    let mut s = format!("{head}  ({})\n", m.label);
+    let mut s = format!("{head}  ({})\n", m.label());
     for (p, d) in rows {
         s.push_str(&format!("{:>10} itok  {p}\n", signed(*d)));
     }
@@ -167,7 +167,7 @@ fn report(c: &Cmp, rows: &[(String, i64)]) -> String {
 }
 
 fn json(raw: &Raw, rows: &[(String, i64)]) -> String {
-    let method = method(raw.bpe).label;
+    let method = method(raw.bpe).label();
     let files: String = rows
         .iter()
         .map(|(p, d)| {

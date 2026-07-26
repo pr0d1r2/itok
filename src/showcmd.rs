@@ -50,7 +50,7 @@ fn method(bpe: bool) -> &'static Method {
 /// A single blob's cost at a ref (`<commit>:<path>`).
 fn blob_cost(root: &Path, commit: &str, path: &str, bpe: bool) -> String {
     let n = gitref::count_at(root, commit, path, bpe).unwrap_or(0);
-    format!("{n} itok  {path}@{commit} ({})\n", method(bpe).label)
+    format!("{n} itok  {path}@{commit} ({})\n", method(bpe).label())
 }
 
 /// Per-file (path, delta) for the files the commit changed, path-filtered.
@@ -88,7 +88,7 @@ fn report(
 ) -> String {
     let subj =
         gitref::subject(root, commit).unwrap_or_else(|| commit.to_owned());
-    let mut s = format!("{subj}  ({})\n", method(bpe).label);
+    let mut s = format!("{subj}  ({})\n", method(bpe).label());
     for (p, d) in rows {
         s.push_str(&format!("{:>10} itok  {p}\n", signed(*d)));
     }
@@ -107,7 +107,7 @@ fn json(commit: &str, bpe: bool, rows: &[(String, i64)]) -> String {
     format!(
         "{{\"commit\":\"{}\",\"method\":\"{}\",\"total\":{},\"files\":[{files}]}}\n",
         crate::json::escape(commit),
-        method(bpe).label,
+        method(bpe).label(),
         total(rows),
     )
 }

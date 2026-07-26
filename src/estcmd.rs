@@ -7,8 +7,6 @@ use crate::args::{parse, Format, Opts};
 use crate::cli::Output;
 use crate::estimate::{measure, over_budget, Estimate};
 use crate::json;
-#[cfg(feature = "ollama")]
-use crate::render::EXACT;
 #[cfg(feature = "bpe")]
 use crate::render::O200K;
 use crate::render::{report, Method, Style, DUMMY};
@@ -34,7 +32,7 @@ fn graded(opts: &Opts) -> Output {
         return exact(opts, &root);
     }
     match measure(opts, &root) {
-        Ok(ests) => present(&ests, opts),
+        Ok(ests) => present(&ests, opts, method(opts)),
         Err(e) => Output::usage_err(format!("itok: {e}")),
     }
 }
@@ -43,7 +41,7 @@ fn graded(opts: &Opts) -> Output {
 #[cfg(feature = "ollama")]
 fn exact(opts: &Opts, root: &Path) -> Output {
     match exact_measure(opts, root) {
-        Ok(ests) => present(&ests, opts),
+        Ok((ests, m)) => present(&ests, opts, &m),
         Err(f) => Output {
             out: String::new(),
             err: format!("itok: {}\n", f.msg),
@@ -53,8 +51,8 @@ fn exact(opts: &Opts, root: &Path) -> Output {
 }
 
 /// Render the estimates and apply `--budget`; shared by every tier.
-fn present(ests: &[Estimate], opts: &Opts) -> Output {
-    let out = rendered(ests, opts);
+fn present(ests: &[Estimate], opts: &Opts, m: &Method) -> Output {
+    let out = rendered(ests, opts, m);
     let breaches = over_budget(ests, opts.budget);
     if breaches.is_empty() {
         Output::ok(out)
@@ -87,7 +85,10 @@ impl From<String> for Fail {
 }
 
 #[cfg(feature = "ollama")]
-fn exact_measure(opts: &Opts, root: &Path) -> Result<Vec<Estimate>, Fail> {
+fn exact_measure(
+    opts: &Opts,
+    root: &Path,
+) -> Result<(Vec<Estimate>, Method), Fail> {
     // Counting needs ONE host+model; a fleet's union is the doctor concept
     // (V24). Use the first resolved host.
     let fleet =
@@ -105,7 +106,10 @@ fn exact_measure(opts: &Opts, root: &Path) -> Result<Vec<Estimate>, Fail> {
         let tokens = crate::ollama::count(base, &model, &text)?;
         ests.push(Estimate { path: f, tokens });
     }
-    Ok(crate::estimate::cap(ests, opts.top))
+    // The label names the endpoint that produced these counts, so a
+    // number from an unintended tokenizer is visible (V101/V3).
+    let m = crate::render::exact_via(&model, base);
+    Ok((crate::estimate::cap(ests, opts.top), m))
 }
 
 /// The model to tokenize with: `--model` if given, else the host's first
@@ -153,21 +157,23 @@ fn breach_msg(breaches: &[&Estimate], budget: u64) -> String {
     s
 }
 
-/// The method the numbers were reached by -- names the tier (V3). Exact
-/// (ollama) beats bpe beats dummy.
+/// The LOCAL tiers' method -- each one IS its name (V3).
+///
+/// The remote tier is absent here on purpose: `exact` is incomplete
+/// without the tokenizer that produced it, and that is only known after
+/// the host and model resolve, so `exact_measure` builds its own (V101).
 fn method(opts: &Opts) -> &'static Method {
     match opts.tier {
-        #[cfg(feature = "ollama")]
-        crate::args::Tier::Ollama => &EXACT,
         #[cfg(feature = "bpe")]
         crate::args::Tier::Bpe => &O200K,
+        #[cfg(feature = "ollama")]
+        crate::args::Tier::Ollama => &DUMMY, // unreachable: see `exact`
         crate::args::Tier::Dummy => &DUMMY,
     }
 }
 
 /// Human table (cosmetic) or JSONL (stable contract), per `--format`.
-fn rendered(ests: &[Estimate], opts: &Opts) -> String {
-    let m = method(opts);
+fn rendered(ests: &[Estimate], opts: &Opts, m: &Method) -> String {
     match opts.format {
         Format::Json => json::report(ests, m),
         Format::Human => {

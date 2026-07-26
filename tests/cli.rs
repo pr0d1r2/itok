@@ -247,9 +247,14 @@ mod ollama_cassette {
             .current_dir(DIR)
             .assert()
             .success()
+            // T79: the label NAMES the tokenizer that produced the count,
+            // so a number from an unintended endpoint is visible (V101).
+            // `(exact)` alone used to render identically for every model
+            // on every host.
             .stdout(
-                predicate::str::contains("42 itok")
-                    .and(predicate::str::contains("(exact)")),
+                predicate::str::contains("42 itok").and(
+                    predicate::str::contains("exact via qwen3-coder:30b@"),
+                ),
             );
     }
 
@@ -284,6 +289,23 @@ mod ollama_cassette {
                 predicate::str::contains("qwen3-coder:30b")
                     .and(predicate::str::contains("262144")),
             );
+    }
+
+    /// V9: json keeps `method` as the bare tier a parser matches on, and
+    /// carries the endpoint as its OWN field -- folding it into `method`
+    /// would break every consumer testing for `"exact"`.
+    #[test]
+    fn estimate_ollama_json_keeps_method_and_adds_endpoint() {
+        let host = replay();
+        itok()
+            .args(["estimate", "--ollama", "--format", "json", "Cargo.toml"])
+            .env("OLLAMA_HOST", &host)
+            .current_dir(DIR)
+            .assert()
+            .success()
+            .stdout(predicate::str::contains("\"method\":\"exact\"").and(
+                predicate::str::contains("\"endpoint\":\"qwen3-coder:30b@"),
+            ));
     }
 
     /// V6 on a discovered set: a family prefix narrows to the one model

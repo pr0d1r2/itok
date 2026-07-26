@@ -1130,7 +1130,7 @@ T75|x|`top`: add the `size × turns-remaining` column (V98) & state the uncompac
 T76|.|`doctor --session [<id>]`: retarget doctor at a CONTEXT — progression (use% · rate triple · `~turns left`, from T72) + per-item `projected` (T75's carried, forward); paths w/ `--session` = usage error, ⊥ a silent ignore. AFTER T72: no progression number without `headroom`|V99,V100,V17
 T77|.|the advice block: V97's two levers ONLY, mid-session eviction NAMED as a trap, no third suggestion; fires only when a level is CROSSED; a test asserts the forbidden advice is absent|V99,V97,V71
 T78|x|`--ollama=HOSTS`, & the `=` form generally for optional-value flags ∴ the documented bare `host` becomes reachable; heuristic kept as convenience; tests pin a BARE host & a bare IP|V101,V24,V25
-T79|.|remote-tier method label names the ENDPOINT (`exact via HOST`) ∴ a count from an unintended tokenizer is VISIBLE; needs `Method.label` to carry an owned endpoint, ⊥ a `&'static str`|V101,V3,V22
+T79|x|remote-tier method label names the ENDPOINT (`exact via HOST`) ∴ a count from an unintended tokenizer is VISIBLE; needs `Method.label` to carry an owned endpoint, ⊥ a `&'static str`|V101,V3,V22
 T80|x|`--model` narrowing over an `--ollama` fleet: enumerate ONCE, then exact > `:latest` > unique prefix; ambiguous & not-found errors NAME the candidates. Reuses `fleet_all`'s enumeration, ⊥ a second fetch|V6,V22,V71
 T81|x|carry `--model` resolution to `estimate --ollama` (B11a): ONE resolver shared w/ `discover`, ⊥ a second copy|V6,V64
 T82|x|name the SKIPPED fleet hosts (B11b): report answered-vs-named ∴ a partial union ⊥ reads as whole, & `no fleet host serves X` says how many answered|V44

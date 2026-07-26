@@ -104,7 +104,7 @@ fn path_list(paths: &[String]) -> String {
 }
 
 fn json(window: u64, tokens: u64, bpe: bool, paths: &[String]) -> String {
-    let method = if bpe { O200K.label } else { DUMMY.label };
+    let method = if bpe { O200K.label() } else { DUMMY.label() };
     let files = paths
         .iter()
         .map(|p| format!("\"{}\"", crate::json::escape(p)))

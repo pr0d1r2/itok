@@ -177,7 +177,7 @@ mod tests {
             encoding: &crate::render::DUMMY,
             window: None,
         });
-        assert_eq!(m.encoding.label, "o200k");
+        assert_eq!(m.encoding.label(), "o200k");
         assert!(!m.encoding.approximate);
         assert_eq!(m.window, Some(128_000));
     }

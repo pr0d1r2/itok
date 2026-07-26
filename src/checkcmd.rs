@@ -85,14 +85,14 @@ fn verdict(n: usize, breaches: &[Breach], format: Format) -> Output {
 }
 
 fn human(n: usize, breaches: &[Breach]) -> Output {
-    let label = method().label;
+    let label = method().label();
     if breaches.is_empty() {
         let out = format!("check ok: {n} path(s) within budget ({label})\n");
         return Output::ok(out);
     }
     Output {
         out: String::new(),
-        err: breach_report(label, breaches),
+        err: breach_report(&label, breaches),
         code: 1,
     }
 }
@@ -110,7 +110,7 @@ fn json(n: usize, breaches: &[Breach]) -> Output {
     let ok = breaches.is_empty();
     let out = format!(
         "{{\"ok\":{ok},\"method\":\"{}\",\"checked\":{n},\"breaches\":[{}]}}\n",
-        method().label,
+        method().label(),
         json_items(breaches),
     );
     if ok {
