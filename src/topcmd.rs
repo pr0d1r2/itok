@@ -33,7 +33,7 @@ use crate::args::Format;
 use crate::cli::Output;
 use crate::json::escape;
 use crate::render::{human, Style};
-use crate::session::{claude_code, LoadEvent, Session};
+use crate::session::{LoadEvent, Session};
 use crate::tracecmd::value;
 use std::collections::BTreeMap;
 
@@ -65,19 +65,18 @@ pub(crate) fn top(rest: &[String]) -> Output {
 }
 
 fn run(raw: &Raw) -> Output {
-    let Some(path) = crate::tracecmd::source_path(
-        raw.session.as_deref(),
-        raw.chdir.as_deref(),
-    ) else {
-        return Output::ok(String::new());
-    };
     // Unreadable is NOT the same as empty: printing a zero total would
     // read as a measurement of nothing, when in fact nothing was read
-    // (V47's rule -- absent must stay distinguishable from zero).
-    let Ok(text) = std::fs::read_to_string(&path) else {
-        return Output::ok(String::new());
+    // (V47's rule -- absent must stay distinguishable from zero). This
+    // comment used to sit above two silent `ok("")` returns that did
+    // exactly what it forbids; V104 now binds them (B14).
+    let parsed = match crate::tracecmd::session_at(
+        raw.session.as_deref(),
+        raw.chdir.as_deref(),
+    ) {
+        Ok((p, _)) => p,
+        Err(o) => return o,
     };
-    let parsed = claude_code::parse(crate::session::complete_prefix(&text));
     let rows = rank(&parsed, raw);
     Output::ok(match raw.format {
         Format::Json => json(&rows, &parsed),
@@ -460,6 +459,7 @@ fn with_value<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::session::claude_code;
 
     fn fixture(name: &str) -> String {
         format!(
@@ -595,12 +595,19 @@ mod tests {
         assert!(out.err.contains("top"), "the message names the verb");
     }
 
-    /// V5: report-only. Nothing to read is not an error.
+    /// V104: a NAMED miss is a usage error, an INFERRED one is silence.
+    ///
+    /// This test asserted exit 0 for a named path that does not exist, and
+    /// cited V5 for it -- which is the defect B14 records, encoded as law.
+    /// Report-only means never gating on CONTENT; it never meant a bad
+    /// argument goes unreported, and `top --bpe` two tests up has always
+    /// exited 2 on the same verb.
     #[test]
-    fn a_missing_transcript_is_empty_and_exit_zero() {
+    fn a_named_miss_is_a_usage_error() {
         let out = top(&["/nonexistent/s.jsonl".to_owned()]);
-        assert_eq!(out.code, 0);
-        assert!(out.out.is_empty());
+        assert_eq!(out.code, 2, "a name that resolves to nothing");
+        assert!(out.out.is_empty(), "nothing on stdout");
+        assert!(out.err.contains("no session"), "{}", out.err);
     }
 
     #[test]

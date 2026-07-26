@@ -29,7 +29,7 @@
 use crate::args::Format;
 use crate::cli::Output;
 use crate::render::human;
-use crate::session::{claude_code, Session};
+use crate::session::Session;
 use crate::tracecmd::{value, Origin};
 
 /// The rate windows, in turns -- loadavg's three, on a turn clock (V91).
@@ -78,8 +78,9 @@ fn run(raw: &Raw) -> Output {
 /// whole row is absent rather than zero -- a zero would read as a
 /// measurement of an empty context (V47).
 fn report(raw: &Raw, cap: Option<u64>, task: Option<u64>) -> Output {
-    let Some((parsed, origin)) = session_of(raw) else {
-        return Output::ok(String::new());
+    let (parsed, origin) = match session_of(raw) {
+        Ok(v) => v,
+        Err(o) => return o,
     };
     let note = crate::tracecmd::origin_note(&origin);
     let Some(room) = room_of(&parsed, cap, task) else {
@@ -107,14 +108,8 @@ fn room_of(
 
 /// The session, and WHERE it came from -- the origin is part of the claim
 /// this verb makes about whose context it is reporting (V96/T74).
-fn session_of(raw: &Raw) -> Option<(Session, Origin)> {
-    let (path, origin) = crate::tracecmd::resolve_session(
-        raw.session.as_deref(),
-        raw.chdir.as_deref(),
-    )?;
-    let text = std::fs::read_to_string(path).ok()?;
-    let parsed = claude_code::parse(crate::session::complete_prefix(&text));
-    Some((parsed, origin))
+fn session_of(raw: &Raw) -> Result<(Session, Origin), Output> {
+    crate::tracecmd::session_at(raw.session.as_deref(), raw.chdir.as_deref())
 }
 
 /// One task's declared cost, in the one unit grammar (V18).
@@ -660,12 +655,19 @@ mod tests {
         }
     }
 
-    /// V5: nothing to read is not an error, and no usage is not a zero.
+    /// V104: a NAMED miss is a usage error, an INFERRED one is silence.
+    ///
+    /// This asserted exit 0 for a named path that does not exist, citing
+    /// V5 -- the defect B14 records, encoded as law. Report-only means
+    /// never gating on CONTENT, never that a bad argument goes unreported.
+    /// No usage anywhere is still absent rather than zero (V47); that is a
+    /// different question and still exits 0.
     #[test]
-    fn a_missing_transcript_is_empty_and_exit_zero() {
+    fn a_named_miss_is_a_usage_error() {
         let out = headroom(&["/nonexistent/s.jsonl".to_owned()]);
-        assert_eq!(out.code, 0);
-        assert!(out.out.is_empty());
+        assert_eq!(out.code, 2, "a name that resolves to nothing");
+        assert!(out.out.is_empty(), "nothing on stdout");
+        assert!(out.err.contains("no session"), "{}", out.err);
     }
 
     /// V45: a real tier is refused with its reason -- no content is

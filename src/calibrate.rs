@@ -25,7 +25,7 @@
 use crate::args::Format;
 use crate::cli::Output;
 use crate::render::human;
-use crate::session::{claude_code, Fit, Session, MIN_FIT_TURNS};
+use crate::session::{Fit, Session, MIN_FIT_TURNS};
 use crate::tracecmd::value;
 
 #[derive(Default)]
@@ -44,8 +44,10 @@ pub(crate) fn calibrate(rest: &[String]) -> Output {
 }
 
 fn run(raw: &Raw) -> Output {
-    let Some(parsed) = read(raw) else {
-        return Output::ok(String::new()); // nothing to read is not an error
+    // An INFERRED absence is not an error; a NAMED miss is (V104).
+    let parsed = match read(raw) {
+        Ok(p) => p,
+        Err(o) => return o,
     };
     Output::ok(match raw.format {
         Format::Json => json(&parsed),
@@ -53,13 +55,9 @@ fn run(raw: &Raw) -> Output {
     })
 }
 
-fn read(raw: &Raw) -> Option<Session> {
-    let path = crate::tracecmd::source_path(
-        raw.session.as_deref(),
-        raw.chdir.as_deref(),
-    )?;
-    let text = std::fs::read_to_string(path).ok()?;
-    Some(claude_code::parse(crate::session::complete_prefix(&text)))
+fn read(raw: &Raw) -> Result<Session, Output> {
+    crate::tracecmd::session_at(raw.session.as_deref(), raw.chdir.as_deref())
+        .map(|(parsed, _)| parsed)
 }
 
 /// Turns that carried a usable window -- the fit's sample size, and the
@@ -440,12 +438,19 @@ mod tests {
         assert_eq!(band_str(0), "+-0.0%");
     }
 
-    /// V5: nothing to read is not an error.
+    /// V104: a NAMED miss is a usage error, an INFERRED one is silence.
+    ///
+    /// This asserted exit 0 for a named path that does not exist, citing
+    /// V5 -- the defect B14 records, encoded as law. Report-only means
+    /// never gating on CONTENT, never that a bad argument goes unreported.
+    /// No usage anywhere is still absent rather than zero (V47); that is a
+    /// different question and still exits 0.
     #[test]
-    fn a_missing_transcript_is_empty_and_exit_zero() {
+    fn a_named_miss_is_a_usage_error() {
         let out = calibrate(&["/nonexistent/s.jsonl".to_owned()]);
-        assert_eq!(out.code, 0);
-        assert!(out.out.is_empty());
+        assert_eq!(out.code, 2, "a name that resolves to nothing");
+        assert!(out.out.is_empty(), "nothing on stdout");
+        assert!(out.err.contains("no session"), "{}", out.err);
     }
 
     /// V45: a real tier is refused -- no content is stored to tokenize.

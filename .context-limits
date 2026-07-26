@@ -22,9 +22,20 @@
 # machine pays the debt -- two jobs, and conflating them made the ceiling
 # useless at both.
 #
-# History: 19,542 -> 20,500 (T49) -> 21,500 -> 25,000 -> 27,500. Four
-# raises, every addition correct: the spec grows because the project does
-# (101 invariants). Why each raise was justified lives in its commit, not
-# here (V26).
-SPEC.md    27500
+# History: 19,542 -> 20,500 (T49) -> 21,500 -> 25,000 -> 27,500 -> 31,000.
+# Five raises, every addition correct: the spec grows because the project
+# does (103 invariants). Why each raise was justified lives in its commit,
+# not here (V26).
+#
+# The fifth was REVIEWED, not reflexive, and the review shed 855 chars
+# before it moved the number: T90 and T91 described machinery that no
+# longer exists (`cavekit-spec`, the ported guard), and V26 says method
+# lives in the commit trail, so they trimmed to what+cites. The raise
+# covers what remained -- V104 and B14, a new invariant class with its bug
+# record, which is the spec growing because the project did.
+#
+# 31,000 against 27,724 is ~12% slack, per the rule above. The previous
+# ceiling had drifted to 242, which is not a ceiling: it fires on the next
+# legitimate sentence and trains the reflex it exists to catch (V71).
+SPEC.md    31000
 README.md  4k

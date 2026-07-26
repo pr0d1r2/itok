@@ -16,7 +16,7 @@
 use crate::args::Format;
 use crate::cli::Output;
 use crate::json::escape;
-use crate::session::{claude_code, LoadEvent, Source};
+use crate::session::{claude_code, LoadEvent, Session, Source};
 use std::path::{Path, PathBuf};
 
 #[derive(Default)]
@@ -37,16 +37,14 @@ pub(crate) fn trace(rest: &[String]) -> Output {
 }
 
 fn run(raw: &Raw) -> Output {
-    let Some(path) = source_path(raw.session.as_deref(), raw.chdir.as_deref())
-    else {
-        // No transcript is not an error: this project may simply have no
-        // recorded session. Report-only means exit 0 (V5).
-        return Output::ok(String::new());
+    // An INFERRED absence is not an error: this project may simply have no
+    // recorded session, and report-only means exit 0 (V5). A NAMED one is,
+    // because silence would read as "that session is empty" (V104).
+    let parsed = match session_at(raw.session.as_deref(), raw.chdir.as_deref())
+    {
+        Ok((p, _)) => p,
+        Err(o) => return o,
     };
-    let text = std::fs::read_to_string(&path).unwrap_or_default();
-    // Truncate at the last complete line so a session still being written
-    // gives the same answer twice (V77/V43).
-    let parsed = claude_code::parse(crate::session::complete_prefix(&text));
     let rows = select(parsed.events, raw);
     Output::ok(match raw.format {
         Format::Json => json(&rows),
@@ -97,34 +95,127 @@ fn first_id(values: impl Iterator<Item = String>) -> Option<String> {
     values.map(|v| v.trim().to_owned()).find(|v| !v.is_empty())
 }
 
-/// An explicit path wins; then a harness-offered id; then newest-by-mtime.
+/// Why no transcript was read. The two cases mean OPPOSITE things (V104).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum Missing {
+    /// Nothing was named and nothing was found. Silence is the honest
+    /// answer -- the caller asked for no session in particular.
+    Inferred,
+    /// A session WAS named and did not resolve. Silence here would read as
+    /// "that session is empty", which is a different claim and a false one,
+    /// so this carries the diagnostic instead.
+    Named(String),
+}
+
+/// A named session, then a harness-offered id, then newest-by-mtime.
 ///
 /// The ORDER is V96's rule: prefer identity the harness knows over a guess
 /// from the filesystem, and fall back only when nothing was offered.
+///
+/// A NAMED session is an id OR a path (V104, and the shared `<session>`
+/// clause in section I). It used to be a path and only a path -- so a harness id,
+/// which is what V96 says identity actually looks like, resolved to a
+/// relative path that never existed. The id branch was already written
+/// three lines below, for the INFERRED case, and was never carried to the
+/// named one: B11's shape, and the reason M12 exists.
+///
+/// Path first, then id, because "a file that exists" is unambiguous and a
+/// session id is never also a real relative path. When neither resolves,
+/// the error NAMES both attempts rather than reporting a bare not-found.
 pub(crate) fn resolve_session(
     session: Option<&str>,
     chdir: Option<&str>,
-) -> Option<(PathBuf, Origin)> {
+) -> Result<(PathBuf, Origin), Missing> {
     if let Some(s) = session {
-        return Some((PathBuf::from(s), Origin::Argument));
+        return named_session(s, chdir);
     }
-    let dir = project_dir(chdir)?;
+    let dir = project_dir(chdir).ok_or(Missing::Inferred)?;
     if let Some(id) = harness_session() {
         let named = dir.join(format!("{id}.jsonl"));
         if named.is_file() {
-            return Some((named, Origin::Harness));
+            return Ok((named, Origin::Harness));
         }
     }
-    newest_in(&dir).map(|p| (p, Origin::Newest))
+    newest_in(&dir)
+        .map(|p| (p, Origin::Newest))
+        .ok_or(Missing::Inferred)
 }
 
-/// Backwards-compatible path-only resolution for callers that do not report
-/// their source yet.
-pub(crate) fn source_path(
+/// Resolve what the caller NAMED, or say what was tried.
+fn named_session(
+    s: &str,
+    chdir: Option<&str>,
+) -> Result<(PathBuf, Origin), Missing> {
+    let dir = project_dir(chdir);
+    match found(s, dir.as_deref()) {
+        Some(p) => Ok((p, Origin::Argument)),
+        None => Err(Missing::Named(no_session(s, dir.as_deref()))),
+    }
+}
+
+/// A path that exists, else the id form under the project dir.
+fn found(s: &str, dir: Option<&Path>) -> Option<PathBuf> {
+    let as_path = PathBuf::from(s);
+    if as_path.is_file() {
+        return Some(as_path);
+    }
+    let as_id = dir?.join(format!("{s}.jsonl"));
+    as_id.is_file().then_some(as_id)
+}
+
+/// The diagnostic names BOTH forms and the directory searched, because
+/// "not found" without them cannot be acted on: the caller cannot tell a
+/// typo in an id from a session that is really gone (V71).
+fn no_session(s: &str, dir: Option<&Path>) -> String {
+    let where_ = dir.map_or_else(
+        || "no project directory for this working directory".to_owned(),
+        |d| d.display().to_string(),
+    );
+    format!(
+        "itok: no session '{s}' -- not a readable path, \
+         and no '{s}.jsonl' in {where_}"
+    )
+}
+
+/// The one place a `Missing` becomes an `Output`, so all four runtime verbs
+/// answer it identically (V64) -- a named miss is a usage error (exit 2,
+/// per section I), an inferred one is honest silence.
+pub(crate) fn missing_output(m: &Missing) -> Output {
+    match m {
+        Missing::Inferred => Output::ok(String::new()),
+        Missing::Named(msg) => Output::usage(format!("{msg}\n")),
+    }
+}
+
+/// A resolved source that cannot be READ is also a named failure: it
+/// existed a moment ago, so silence would hide a real I/O fault.
+fn read_source(path: &Path) -> Result<String, Output> {
+    std::fs::read_to_string(path).map_err(|e| {
+        Output::usage(format!("itok: cannot read {}: {e}\n", path.display()))
+    })
+}
+
+/// Resolve, read, parse -- the whole front half of every runtime verb, in
+/// ONE place (V64).
+///
+/// It was four copies, and they had drifted into four different silences.
+/// A verb that owns its own copy of "what does a missing session mean" is
+/// how B14 reached all four at once, so the answer lives here and each
+/// caller just propagates the `Output`.
+///
+/// Truncates at the last complete line so a session still being written
+/// gives the same answer twice (V77/V43).
+pub(crate) fn session_at(
     session: Option<&str>,
     chdir: Option<&str>,
-) -> Option<PathBuf> {
-    resolve_session(session, chdir).map(|(p, _)| p)
+) -> Result<(Session, Origin), Output> {
+    let (path, origin) =
+        resolve_session(session, chdir).map_err(|m| missing_output(&m))?;
+    let text = read_source(&path)?;
+    Ok((
+        claude_code::parse(crate::session::complete_prefix(&text)),
+        origin,
+    ))
 }
 
 /// The harness's transcript directory for this project.
@@ -175,14 +266,94 @@ mod origin_tests {
         assert!(note.contains("CLAUDE_SESSION_ID"), "and says what to do");
     }
 
-    /// An explicit path is the strongest claim and needs no environment.
+    /// An explicit path is the strongest claim and needs no environment --
+    /// but it must EXIST. This test used to pass a path that was never
+    /// there and assert it resolved, which is the behaviour B14 was: a name
+    /// accepted without being checked, then read into silence.
     #[test]
     fn an_explicit_path_is_its_own_origin() {
-        let got = resolve_session(Some("/tmp/x.jsonl"), None);
-        assert_eq!(
-            got,
-            Some((PathBuf::from("/tmp/x.jsonl"), Origin::Argument))
-        );
+        let dir = std::env::temp_dir().join("itok-v104-path");
+        let _ = std::fs::create_dir_all(&dir);
+        let file = dir.join("x.jsonl");
+        let _ = std::fs::write(&file, "");
+        let got = resolve_session(Some(&file.to_string_lossy()), None);
+        assert_eq!(got, Ok((file.clone(), Origin::Argument)));
+        let _ = std::fs::remove_file(&file);
+    }
+
+    /// V104: a NAMED source that cannot be read is an ERROR, and the
+    /// diagnostic names both forms that were tried plus where it looked.
+    ///
+    /// PLANTED: the guard is proven by a name that resolves to nothing,
+    /// because a check that has never rejected anything cannot be told from
+    /// one that cannot (V79).
+    #[test]
+    fn v104_a_named_session_that_misses_is_an_error() {
+        let got = resolve_session(Some("no-such-session-xyz"), None);
+        let msg = match got {
+            Err(Missing::Named(m)) => m,
+            Err(Missing::Inferred) => {
+                unreachable!("a NAMED miss reported as an inferred one")
+            }
+            Ok(_) => unreachable!("a name resolving to nothing succeeded"),
+        };
+        assert!(msg.contains("no-such-session-xyz"), "{msg}");
+        assert!(msg.contains(".jsonl"), "names the id form tried: {msg}");
+    }
+
+    /// V104's other half: the two absences render differently. An inferred
+    /// miss is silence at exit 0; a named one is a diagnostic at exit 2.
+    #[test]
+    fn v104_only_a_named_miss_is_a_usage_error() {
+        let inferred = missing_output(&Missing::Inferred);
+        assert_eq!(inferred.code, 0, "nothing was asked for");
+        assert!(inferred.out.is_empty() && inferred.err.is_empty());
+        let named = missing_output(&Missing::Named("itok: gone".to_owned()));
+        assert_eq!(named.code, 2, "a named miss is a usage error");
+        assert!(named.err.contains("itok: gone"), "{}", named.err);
+        assert!(named.out.is_empty(), "nothing on stdout");
+    }
+
+    /// A transcript under a throwaway HOME, and the id that should find it.
+    fn planted_transcript(id: &str) -> (PathBuf, PathBuf, PathBuf) {
+        let home = std::env::temp_dir().join("itok-v104-home");
+        let cwd = std::env::temp_dir().join("itok-v104-proj");
+        let _ = std::fs::create_dir_all(&cwd);
+        let canon = std::fs::canonicalize(&cwd).unwrap_or_else(|_| cwd.clone());
+        let dir = crate::session::claude_code::project_dir(&home, &canon);
+        let _ = std::fs::create_dir_all(&dir);
+        let file = dir.join(format!("{id}.jsonl"));
+        let _ = std::fs::write(&file, "");
+        (home, cwd, file)
+    }
+
+    /// Resolve with `HOME` pointed at the planted tree, then put it back --
+    /// an ambient variable left changed would break whatever runs next
+    /// (B3's lesson).
+    fn resolve_under_home(
+        home: &Path,
+        cwd: &Path,
+        arg: &str,
+    ) -> Result<(PathBuf, Origin), Missing> {
+        let prev = std::env::var("HOME").ok();
+        std::env::set_var("HOME", home);
+        let got = resolve_session(Some(arg), Some(&cwd.to_string_lossy()));
+        match prev {
+            Some(h) => std::env::set_var("HOME", h),
+            None => std::env::remove_var("HOME"),
+        }
+        got
+    }
+
+    /// A session ID resolves against the project directory, which is what
+    /// V96 says identity actually looks like. The id branch existed for the
+    /// INFERRED case and was never carried to the named one (B14/B11).
+    #[test]
+    fn v104_a_bare_id_resolves_against_the_project_dir() {
+        let (home, cwd, file) = planted_transcript("abc-123");
+        let got = resolve_under_home(&home, &cwd, "abc-123");
+        assert_eq!(got, Ok((file.clone(), Origin::Argument)), "id resolved");
+        let _ = std::fs::remove_file(&file);
     }
 
     /// An id the harness offers wins over newest-by-mtime -- but only if the
@@ -195,7 +366,7 @@ mod origin_tests {
         std::env::remove_var("ITOK_SESSION_ID");
         // Either no transcript dir at all, or the newest one -- never the
         // named file, which does not exist.
-        if let Some((path, origin)) = got {
+        if let Ok((path, origin)) = got {
             assert_eq!(origin, Origin::Newest, "stale id must not win");
             assert!(!path.to_string_lossy().contains("no-such-session-id-xyz"));
         }
@@ -464,13 +635,19 @@ mod tests {
         }
     }
 
-    /// V5: report-only. A missing or unreadable transcript is not an
-    /// error -- it means there is nothing to report.
+    /// V104: a NAMED miss is a usage error, an INFERRED one is silence.
+    ///
+    /// This test asserted exit 0 for a named path that does not exist, and
+    /// cited V5 for it -- which is the defect B14 records, encoded as law.
+    /// Report-only means never gating on CONTENT; it never meant a bad
+    /// argument goes unreported, and `trace --bpe` two tests up has always
+    /// exited 2 on the same verb.
     #[test]
-    fn a_missing_transcript_is_empty_and_exit_zero() {
+    fn a_named_miss_is_a_usage_error() {
         let out = trace(&["/nonexistent/session.jsonl".to_owned()]);
-        assert_eq!(out.code, 0);
-        assert!(out.out.is_empty());
+        assert_eq!(out.code, 2, "a name that resolves to nothing");
+        assert!(out.out.is_empty(), "nothing on stdout");
+        assert!(out.err.contains("no session"), "{}", out.err);
     }
 
     /// V43: a torn tail must not change the answer, so a session still
