@@ -25,6 +25,16 @@ who knows those tools needs no teaching.
   READ-ONLY. ⊥ store content, ⊥ egress, ⊥ touch credentials (V43/V45).
 - Enforcement is opt-in & ADAPTER-shaped: no daemon, no server, no
   in-flight interception, ⊥ in the request path (V52/V53/V58).
+- WORKING principles (V80-V87) bind how the work is done, ⊥ only what is
+  built. Lineage: `pr0d1r2/set-and-setting` `set/skills/principles`
+  (Dalio's Principles + DRY/KISS/SOLID/POLA) — a SEE-ALSO, ⊥
+  load-bearing: each invariant below stands on its OWN reasoning & its
+  own evidence FROM THIS REPO (V26's rule, applied to an external
+  source). Already-encoded ones are ⊥ restated: truth=V3/V44/V47/V48/V61
+  · reality=V68/V38 · rootcause & progress=the §B→§V loop ·
+  machine=V71/V64/V42 · transparency=§V itself · POLA=V1/V2/V46/V49 ·
+  KISS=V20/V21/V24/V25/V35/V58 · DRY=V64/V40/V33/V66 · SOLID=the clippy
+  caps + V33/V43/V52.
 
 ## §I INTERFACE
 
@@ -737,6 +747,83 @@ capture carries & no hand-written fixture has — ⊥ on LOCATION: exempting
 `tests/fixtures/` would disarm the guard exactly where a real transcript
 is most likely to be pasted "to make a test easier". Proven by planting
 one there & watching it fail.
+V80: **try to REFUTE before you trust — self-review is ⊥ review.** The
+context that produced a finding shares its blind spot ∴ cannot audit it;
+that is STRUCTURAL, ⊥ a matter of care. Every §V invariant & every §B
+diagnosis earns an attempt to KILL it — ideally by a fresh context that
+has ⊥ seen the author's reasoning first (reading it ANCHORS the reviewer,
+so agreement afterwards is worth less than independent agreement).
+EVIDENCE, this repo: every correction so far arrived via a FAILURE — B5
+(hermeticity claimed from READING the fixtures, disproved by running
+parallel), B6 (a hook installed then blocking every commit), a fixture
+test that PASSED while asserting nothing — ⊥ one came from someone
+looking in advance. That is reactive, ⊥ open. Openness ⊥ indecision:
+once the disconfirming evidence is sought & weighed, DECIDE; reopening a
+settled question w/o NEW evidence is churn, ⊥ rigour.
+V81: **an unresolved disagreement is a HIDDEN DEFECT.** Two assumptions
+then drive one system until they fail at a boundary — B4's shape exactly
+(two declarations, two floors, both authoritative). ∴ surface a
+disagreement WHEN IT APPEARS, naming the competing positions, their
+evidence, & the decision they affect; SILENCE ⊥ alignment. Verify
+alignment by BEHAVIOR — re-run the check, inspect the artifact — ⊥ by
+verbal assent, which hides different readings of the same words. Where
+agreement is impossible, RECORD the governing decision & the REMAINING
+RISK (V21/V24/V58's "considered & rejected, escape hatch recorded" is
+this pattern already). `SPEC.md` IS the sync artifact: a resolution lands
+in §V so future-me & a fresh agent inherit the SAME assumptions.
+V82: **believability is per-DOMAIN & earned by OUTCOME, ⊥ asserted.**
+Weight a claim by its source's track record IN THAT AREA; an unproven
+source gets a second verification gate. Applied concretely &
+uncomfortably: in THIS repo, my assertions-from-inspection have a
+MEASURED record of being wrong — B5, B6, & a test that passed for the
+wrong reason ∴ "I read it and it looks correct" carries LOW believability
+here & earns a verification pass BY DEFAULT (V68 generalized beyond
+tests). Symmetrically, a claim backed by a RUN — exit code, diff,
+counted output — needs no such gate. Update the weight on evidence, in
+both directions.
+V83: **best idea wins; make the COMPARISON auditable.** itok already does
+half — V21/V24/V25/V35/V58 record what was considered, REJECTED, why, &
+the TRIGGER that would reopen it ∴ a reader can audit the decision rather
+than merely obey it. The other half: where several designs compete, score
+them against EXPLICIT criteria & graft the strongest parts of the losers,
+⊥ discard them wholesale. Merit is established by SURVIVING SCRUTINY
+(V80), ⊥ by gathering agreement — & an idea's source is ⊥ evidence for
+it.
+V84: **evolve or decay — & spec growth is a RECURRING cost.** Propagate a
+proven improvement to every consumer (⊥ leave it local); keep spec &
+toolchain current; MEASURE the rate of adaptation ∵ a system that still
+works but no longer learns is ALREADY decaying. Failing case, named
+rather than hidden: T49's compaction debt has slid 4x while `SPEC.md`
+DOUBLED (29k→60k bytes). MEASURED consequence: the spec is re-billed on
+EVERY turn of EVERY session (~5% of a 112M-token session) ∴ every added
+byte is a permanent tax on all future work, & compaction is a COST
+control, ⊥ tidiness. This invariant indicts its own commit: V80-V87 grew
+the file again ∴ T49 is now DUE, ⊥ deferred.
+V85: **drive to a TERMINAL state; a marked blocker IS terminal.** Green
+gate, or an EXPLICIT blocker carrying evidence + the required next action
++ who can unblock it. SILENCE is abandonment; a clearly-marked blocker is
+an honest end state (the workflow's PENDING list, V75, is this shape).
+The MACHINE BOUNDARY is owned — toolchain, CI, config, deps are PARTS of
+the system producing the result, ⊥ excuses for a bad one (V71). A handoff
+closes only w/ an acknowledged owner & a VERIFIABLE completion condition;
+"done" ⊥ mean "I stopped".
+V86: **the 5-step loop IS the SDD loop, ⊥ a parallel ritual.** goals =
+§G + a §T done-when · problems = observed reality vs goal · diagnose =
+ROOT CAUSE before fix (§B) · design = §V + plan · do = build & VERIFY
+against the goal. Do ⊥ skip steps; the common skip is problem→fix w/o
+diagnosis, which patches a symptom & leaves the disease — B4 recurred
+precisely because a FIX was copied while the CAUSE (two sources of one
+number) went unnamed.
+V87: **weigh 2nd- & 3rd-order consequences, ⊥ only the 1st.** The
+immediately pleasant choice is often wrong once downstream effects are
+counted. Recorded cases: V58 (an in-flight proxy 1st-order SEES
+EVERYTHING; 2nd-order it sits in the CREDENTIAL & STREAMING path on every
+request) · V54 (a binary deny 1st-order stops a bad load; 2nd-order it
+burns retry turns & the agent routes around it) · V45 (a telemetry file
+that copied content is 1st-order convenient; 2nd-order it is a NEW LEAK
+SURFACE buying nothing) · V84 (a spec addition is 1st-order clarity;
+2nd-order a per-turn tax forever). The generalization: ask what a choice
+COSTS ON EVERY LATER TURN, ⊥ only what it buys now.
 
 ## §T TASKS
 
@@ -819,7 +906,7 @@ T65|x|`packages.*` src narrowed via `lib.fileset` to `src/`+`Cargo.toml`+`Cargo.
 T66|x|CI = nix: `nix develop --command hk check` + `nix build` of all 3 feature configurations; hk & every linter reached THROUGH the pinned shell, ⊥ installed; pending parts (matrix·MSRV·cache·SHA pins·publish) listed in-file|V75,V64
 T67|x|`nixfmt --check` gates `*.nix`: the flake decides what every other step runs with ∴ drift there is drift everywhere. CHECK mode only -- the file is hand-commented|V72
 T68|x|transcript guards BEFORE the capability: `.gitignore` transcript patterns (fixtures exempt) + a CONTENT-signature hygiene test (a rename defeats a filename pattern; content cannot be renamed), verified by planting a real sample|V45,V71
-T49|.|SPEC compaction debt (M3 closed, now DUE): compact §V/§B prose; one-file rule holds — more sections, ⊥ more files|V15
+T49|.|SPEC compaction debt (M3 closed; V84 makes it DUE, ⊥ deferrable -- every byte is re-billed per turn, per session): compact §V/§B prose; one-file rule holds — more sections, ⊥ more files|V15
 T50|x|flake to repo ROOT (`git mv` out of the unit dir) + dev shell PROVIDES `itok` via a `cargo run` shim; `ITOK_MANIFEST` resolved at entry, `ITOK_PROFILE`/`ITOK_FEATURES` hatches; dev files `exclude`d from the `.crate`|V62,V15,V39
 T51|x|drop the unit declaration from the standalone repo; `ci.yml` carries all 5 ops at >= their old strength (clippy gains `--all-features -- -D warnings`, coverage keeps the corrected 98) & records what was deliberately ⊥ carried (`--test-threads=1`, the phase split)|V28,V29,V31
 T52|x|`.gitignore` (`/target`, `/.direnv`): cargo packages untracked-not-ignored files ∴ `.direnv/` (5.5MB of vendored nixpkgs source) was landing in `cargo package --list` ⇒ would ship in the `.crate`|V39,V13
