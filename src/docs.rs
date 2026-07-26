@@ -60,6 +60,11 @@ const COMMANDS: &[Command] = &[
         blurb: "Ranked context occupancy for a session, `du`-shaped: how much each thing cost, how many times it was loaded, how many turns have passed since, and how much cache re-billing it has `carried` since it entered (`size x turns remaining` -- the number that makes early reduction's leverage visible; assumes no compaction). `-- <path>` narrows to one path's loads. Ends with the accounted-vs-unaccounted split: what itok can attribute against what the model actually received, each naming its method. Report-only; per-load sizes are estimates (`bytes/4`).",
     },
     Command {
+        name: "headroom",
+        synopsis: "headroom [<session>] [--model X] [--window N] [-h] [--format human|json] [-C dir]",
+        blurb: "`df` for a context: window, used, avail, use% -- plus the growth rate over the last 10/50/200 TURNS (context grows per turn, so a per-second rate would be meaningless) and `~turns left` at the recent rate. Without `--window` or `--model` there is no capacity, so `avail`/`use%`/`turns left` are reported as absent rather than computed against a guessed window. Report-only.",
+    },
+    Command {
         name: "docs",
         synopsis: "docs",
         blurb: "Print this command reference as markdown -- the source for README's generated block, kept in sync by a guard.",

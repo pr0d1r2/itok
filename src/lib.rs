@@ -23,6 +23,8 @@ mod estcmd;
 pub mod estimate;
 mod fitcmd;
 mod gitref;
+#[cfg(feature = "session")]
+mod headroom;
 pub mod json;
 mod logcmd;
 mod models;

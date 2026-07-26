@@ -97,6 +97,11 @@ fn handle(res: Resolution, verb: &str, rest: &[String]) -> Output {
 fn runtime(v: Verb, rest: &[String]) -> Output {
     match v {
         Verb::Top => crate::topcmd::top(rest),
+        Verb::Headroom => crate::headroom::headroom(rest),
+        // Trace, and by construction nothing else -- `dispatch` routes
+        // only the runtime verbs here. A future runtime verb that forgot
+        // its arm above would silently BECOME trace, so
+        // `each_runtime_verb_reaches_its_own_module` pins the mapping.
         _ => crate::tracecmd::trace(rest),
     }
 }
@@ -117,7 +122,7 @@ fn dispatch(v: Verb, rest: &[String]) -> Output {
         Verb::Log => crate::logcmd::log(rest),
         Verb::Check => crate::checkcmd::check(rest),
         Verb::Fit => crate::fitcmd::fit(rest),
-        Verb::Trace | Verb::Top => runtime(v, rest),
+        Verb::Trace | Verb::Top | Verb::Headroom => runtime(v, rest),
     }
 }
 
@@ -217,6 +222,22 @@ mod tests {
         assert_eq!(o.code, 2);
         assert!(o.err.contains("ambiguous"));
         assert!(o.err.contains("diff") && o.err.contains("doctor"));
+    }
+
+    /// The wildcard in `runtime` routes anything unmatched to `trace`, so
+    /// a runtime verb that lost its arm would silently BECOME trace and
+    /// still exit 0. Each one is pinned to output only its own module
+    /// produces.
+    #[cfg(feature = "session")]
+    #[test]
+    fn each_runtime_verb_reaches_its_own_module() {
+        // tool-shapes, not minimal: minimal has no load events, so trace
+        // prints nothing there and the assertion would pass vacuously.
+        let f = format!("{DIR}/tests/fixtures/session/tool-shapes.jsonl");
+        let out = |v: &str| run(&args(&[v, &f, "--format", "json"])).out;
+        assert!(out("headroom").contains("\"rate_unit\""), "headroom");
+        assert!(out("top").contains("\"summary\":true"), "top");
+        assert!(out("trace").contains("\"ts\":"), "trace");
     }
 
     fn arg() -> impl Strategy<Value = String> {

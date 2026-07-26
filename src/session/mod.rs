@@ -272,6 +272,55 @@ impl Session {
     }
 }
 
+impl Session {
+    /// Per-turn context occupancy, in order, with ZERO-window turns
+    /// dropped (V93).
+    ///
+    /// The exclusion is the whole point. Measured on a real session, one
+    /// turn reported a window of 0; differencing it against its
+    /// neighbours rendered a -387,741 "compaction" that never happened.
+    /// A zero is not an occupancy of nothing, it is a turn that reported
+    /// nothing (V47), and keeping it would let a missing measurement
+    /// masquerade as a measured collapse.
+    ///
+    /// Filtering BEFORE differencing is what makes the series honest:
+    /// the deltas are then between two turns that both reported.
+    #[must_use]
+    pub fn occupancy(&self) -> Vec<u64> {
+        self.turns
+            .iter()
+            .filter_map(Turn::billed_input)
+            .filter(|w| *w > 0)
+            .collect()
+    }
+
+    /// Mean context growth over the last `n` turns, in itok PER TURN.
+    ///
+    /// The clock is TURNS, not wall-seconds (V91): context grows per turn
+    /// and nothing happens between them, so a per-second rate would
+    /// report "load dropping" through an idle hour while the window sat
+    /// exactly as full as it was.
+    ///
+    /// `None` when the series holds fewer than `n + 1` samples -- `n`
+    /// deltas need `n + 1` points. Substituting a shorter window's value
+    /// would read as a flat trend when the truth is "not enough turns
+    /// yet", and absent must stay distinguishable from measured (V47).
+    ///
+    /// Growth only: a window that SHRANK yields 0 rather than a negative.
+    /// The question this answers is how fast the context is filling, and
+    /// a negative rate would make `turns left` extrapolate backwards.
+    #[must_use]
+    pub fn rate(&self, n: usize) -> Option<u64> {
+        let occ = self.occupancy();
+        let last = occ.last()?;
+        let first = occ.get(occ.len().checked_sub(n.checked_add(1)?)?)?;
+        u64::try_from(n)
+            .ok()
+            .filter(|d| *d > 0)
+            .map(|d| last.saturating_sub(*first).checked_div(d).unwrap_or(0))
+    }
+}
+
 /// Turns whose cache WRITE exceeded their cache READ: the prefix was
 /// re-written rather than served.
 ///

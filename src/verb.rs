@@ -22,6 +22,7 @@ pub(crate) enum Verb {
     Fit,
     Trace,
     Top,
+    Headroom,
 }
 
 /// Read-only verbs, the only ones prefix-inference resolves. `fit` selects
@@ -36,6 +37,7 @@ pub(crate) const VERBS: &[(&str, Verb)] = &[
     ("fit", Verb::Fit),
     ("trace", Verb::Trace),
     ("top", Verb::Top),
+    ("headroom", Verb::Headroom),
 ];
 
 /// The outcome of resolving a verb token.
@@ -112,6 +114,17 @@ mod tests {
             other => vec![format!("{other:?}").leak() as &str],
         };
         assert_eq!(got, vec!["top", "trace"]);
+    }
+
+    /// V91's naming rests on this: `headroom` was chosen over `free` --
+    /// the better unix prior -- precisely because `fit` already owns an
+    /// `f`, so `itok f` would have become AMBIGUOUS and broken a working
+    /// prefix (V6). Both halves are pinned: `h` resolves, and `f` still
+    /// does too.
+    #[test]
+    fn headroom_takes_h_without_costing_fit_its_f() {
+        assert_eq!(resolve("h"), Resolution::Verb(Verb::Headroom));
+        assert_eq!(resolve("f"), Resolution::Verb(Verb::Fit));
     }
 
     /// Longer prefixes still resolve, so the ambiguity costs nothing.
