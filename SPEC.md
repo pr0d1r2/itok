@@ -65,6 +65,9 @@ who knows those tools needs no teaching.
   `--cost` · `--format json`. Ranked context OCCUPANCY + dup · stale ·
   cache columns. `-- <path>` = that path's loads (per-path attribution;
   ⊥ a separate `blame` verb, V46). Report-only.
+- `itok headroom [<session>]` — `--model X` · `--window N` · `-h` ·
+  `--format json`. `df` for a context: window · used · avail · use% ·
+  the rate triple · turns left. Report-only (V91).
 - `itok calibrate [<session>]` — estimate-vs-actual factor from CLEAN
   samples only, reports `n`; `--format json`. Report-only (V48).
 - `itok cap [N]` — stdin→stdout token filter. `--strip` · `--dedup` ·
@@ -868,6 +871,44 @@ ARBITRARY repos (V10) ∴ an untracked dir in a clone you do ⊥ own is
 intrusive & surfaces in someone else's `git status`. NEVER both without
 two DISTINCT lifetimes — two caches means two invalidation stories & a
 precedence rule, which is where "which one is stale?" bugs live.
+V91: **`headroom` = `df` for a context; the RATE is per TURN, ⊥ per
+second.** V8 already binds `estimate` to `du`; `df` is `du`'s sibling & the
+gap was real — "how much room is LEFT" had no verb. Columns are `df`'s
+own (window · used · avail · use%) ∴ the layout needs no teaching (V1).
+loadavg's THREE-WINDOW shape is kept ∵ comparing short vs long reads the
+TREND at a glance (MEASURED on a real session: 958/921/838 itok/turn =
+rising; at another point 623/915/82 = a burst that had passed) — but the
+CLOCK is TURNS, ⊥ wall-seconds: context grows per TURN & nothing happens
+between them, so a wall-clock rate would report "load dropping" through
+an idle hour when the window is exactly as full as it was. V2's rule:
+keep the convention's SEMANTICS (work per unit of the clock that
+matters), ⊥ its literal unit.
+NAMING, considered & rejected: `load` — "load" ALREADY means a load
+EVENT here (`LoadEvent`, top's `loads` column) ∴ it would collide INSIDE
+the tool, worse than colliding with an outside prior (V2); `uptime` —
+means a DURATION, we report a rate; `turns` — names the UNIT, ⊥ the
+question, & a plural noun reads as a LISTING, which is `trace`'s job;
+`free` — the best unix prior (`free -h`) but `fit` exists ∴ `itok f`
+would become AMBIGUOUS, breaking a working prefix (V6). `headroom` names
+the QUESTION, has a free prefix (`h`), & needs no teaching ∵ it is
+already the word used for this.
+V92: **no window ⇒ NO denominator, ⊥ a guessed one.** `avail`/`use%`/
+`turns left` all divide by a capacity that comes from `--window` |
+`--model` | `.context-models` (V18). Absent ⇒ report `used` alone & SAY
+the capacity is unknown — V11's rule (unknown model ⇒ FAIL, name an
+encoding) applied to a denominator: assuming 200k | 1M would make every
+derived column a FICTION while looking measured (V3/V47).
+V93: **`turns left` is an EXTRAPOLATION & says so.** It is `df`'s
+"how long until full at the current write rate" — arithmetic on a STATED
+assumption, ⊥ a verdict, so it stays inside V59's boundary. It ! name the
+assumption ("at the recent rate") & carry the tilde. A zero-window turn
+is EXCLUDED from the rate, ⊥ treated as a measurement: MEASURED, one
+turn in a real session reported window 0, which a naive delta rendered as
+a -387,741 "compaction" that never happened (V47, from a third
+direction). Note the distribution is HEAVY-TAILED (median 285 vs mean
+~900 itok/turn) ∴ a high rate often means ONE big read landed recently,
+⊥ that everything is heavy — the triple's SPREAD is the signal, ⊥ any
+single number.
 
 ## §T TASKS
 
@@ -952,6 +993,7 @@ T67|x|`nixfmt --check` gates `*.nix`: the flake decides what every other step ru
 T68|x|transcript guards BEFORE the capability: `.gitignore` transcript patterns (fixtures exempt) + a CONTENT-signature hygiene test (a rename defeats a filename pattern|V45,V71
 T70|.|scripted bulk compaction: CPU derives (sizes·citation graph·orphans·stale refs·shared n-grams·must-keep fact sets), ONE inference call rewrites the top-N under a byte budget, CPU VERIFIES every citation/number/identifier survived, named `--allow-drop` for deliberate removals. Seeded by T49's measurements|V84,V73,V80
 T71|.|concurrency guard: a test that runs N itok processes at once over the same tree & asserts identical output + zero writes outside `target/`; keeps V89's free property from being lost silently|V89
+T72|.|`headroom` verb: `df` columns (window·used·avail·use%) + the rate triple (10/50/200 turns) + `~turns left`; `-h`·`--model`·`--window`·json; zero-window turns excluded from the rate|V91,V92,V93
 T69|.|`.context-limits`/`.context-models`/`.context-policy`: an unparsable row FAILS w/ file+line+expected, ⊥ silent skip (B7); fractional units (`20.5k`) either parse or are rejected LOUDLY|V88,V11
 T49|x|SPEC compaction FIRST PASS + the machine to finish it: 25 done-`§T` rows trimmed to what+cites (method lives in the commit, V26), V62/V22/V70/V71/V31 destaled & tightened, `tests/spec_integrity.rs` guard, `.context-limits` turned into a RATCHET. MEASURED gross -2,781 chars; NET -2.1% only ∵ the pass itself added V88+B7+T69. 5 of 86 invariants touched ∴ the BULK is T70|V84,V15,V26
 T50|x|flake to repo ROOT (`git mv` out of the unit dir) + dev shell PROVIDES `itok` via a `cargo run` shim|V62,V15,V39
