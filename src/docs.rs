@@ -50,6 +50,11 @@ const COMMANDS: &[Command] = &[
         blurb: "Greedy subset of files that fits a token window; emits a pipeable path list (git-tracked by default). `itok fit --window 200k src/ | xargs cat` builds a context bundle under budget.",
     },
     Command {
+        name: "trace",
+        synopsis: "trace [<session>] [-n N] [--since D] [--reverse] [--format human|json]",
+        blurb: "Runtime load events for a session, one line each, chronologically -- what entered the context, when, and how big. Defaults to the newest transcript for the working directory. Report-only. Per-event sizes are estimates (`bytes/4`): no content is stored, so there is nothing to tokenize.",
+    },
+    Command {
         name: "docs",
         synopsis: "docs",
         blurb: "Print this command reference as markdown -- the source for README's generated block, kept in sync by a guard.",

@@ -100,6 +100,12 @@ fn dispatch(v: Verb, rest: &[String]) -> Output {
         Verb::Log => crate::logcmd::log(rest),
         Verb::Check => crate::checkcmd::check(rest),
         Verb::Fit => crate::fitcmd::fit(rest),
+        #[cfg(feature = "session")]
+        Verb::Trace => crate::tracecmd::trace(rest),
+        #[cfg(not(feature = "session"))]
+        Verb::Trace => Output::usage_err(
+            "itok: trace needs the `session` feature".to_owned(),
+        ),
     }
 }
 

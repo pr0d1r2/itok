@@ -916,8 +916,8 @@ T29|x|`itok docs` verb: ONE command registry (verb·synopsis·flags·exit) rende
 T30|x|session reader module: harness-PLUGGABLE, defensive JSONL parse → load events; unknown fields ignored, malformed records skipped & COUNTED; torn tail tolerated; ⊥ writes to the transcript|V43,V45,V76
 T30a|x|stable read: truncate at the last COMPLETE line + a content key over that prefix ∴ a torn tail ⊥ changes the answer; NO cache dir (measured 8ms, B8)|V77,V43
 T30b|x|synthetic fixtures under `tests/fixtures/session/`|V43,V45,V76,V79
-T30c|.|attachment load class: hook output / reminders / injected context counted beside tool results|V78,V44
-T31|.|`trace` verb: 1 line/load event, chronological, `-n`·`--since`·`--reverse`·json|V46,V9,V59
+T30c|x|attachment load class: hook output / reminders / injected context counted beside tool results|V78,V44
+T31|x|`trace` verb: 1 line/load event, chronological, `-n`·`--since`·`--reverse`·json|V46,V9,V59
 T32|.|`top` verb: ranked occupancy, `-h`·`-s`·`--top N`, dup + stale columns, `-- <path>` per-path attribution (⊥ a `blame` verb)|V46,V59
 T33|.|accounted-vs-unaccounted split; method label on every runtime number (`ledger(actual)` ≠ `ledger(bytes/4)`)|V44,V3
 T34|.|cache columns read from `usage` (`cache_creation`/`cache_read`); fields absent ⇒ NO column, ⊥ a zero|V47

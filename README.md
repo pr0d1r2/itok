@@ -116,7 +116,6 @@ $ itok estimate --format json SPEC.md
 the machine-readable form of the `~` marker.
 
 <!-- BEGIN itok docs -->
-
 ## Commands
 
 Every verb, its synopsis and what it does. Regenerate with `itok docs`.
@@ -177,6 +176,14 @@ fit --window N [--by size] [--bpe] [--format human|json] [-C dir] [paths...]
 
 Greedy subset of files that fits a token window; emits a pipeable path list (git-tracked by default). `itok fit --window 200k src/ | xargs cat` builds a context bundle under budget.
 
+### `trace`
+
+```text
+trace [<session>] [-n N] [--since D] [--reverse] [--format human|json]
+```
+
+Runtime load events for a session, one line each, chronologically -- what entered the context, when, and how big. Defaults to the newest transcript for the working directory. Report-only. Per-event sizes are estimates (`bytes/4`): no content is stored, so there is nothing to tokenize.
+
 ### `docs`
 
 ```text
@@ -193,7 +200,6 @@ Print this command reference as markdown -- the source for README's generated bl
 | `1` | budget breach or nonzero delta |
 | `2` | usage error |
 | `7` | network error (`--ollama`) |
-
 <!-- END itok docs -->
 
 The command reference above is **generated**: `itok docs` prints it, and a

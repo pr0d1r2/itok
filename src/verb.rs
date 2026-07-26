@@ -20,6 +20,7 @@ pub(crate) enum Verb {
     Log,
     Check,
     Fit,
+    Trace,
 }
 
 /// Read-only verbs, the only ones prefix-inference resolves. `fit` selects
@@ -32,6 +33,7 @@ pub(crate) const VERBS: &[(&str, Verb)] = &[
     ("log", Verb::Log),
     ("check", Verb::Check),
     ("fit", Verb::Fit),
+    ("trace", Verb::Trace),
 ];
 
 /// The outcome of resolving a verb token.

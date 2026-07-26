@@ -34,6 +34,8 @@ pub mod session;
 mod showcmd;
 #[cfg(test)]
 mod testutil;
+#[cfg(feature = "session")]
+mod tracecmd;
 mod units;
 mod verb;
 pub mod walk;

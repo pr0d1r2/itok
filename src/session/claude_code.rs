@@ -15,6 +15,7 @@
 
 use super::{LoadEvent, Session, Source, Turn};
 use serde_json::Value;
+use std::path::{Path, PathBuf};
 
 /// Parse a whole transcript. Never fails: unreadable input yields an
 /// empty session with a skip count, because "this file is garbage" and
@@ -222,5 +223,112 @@ fn attachment_bytes(a: &Value) -> usize {
             .map(attachment_bytes)
             .fold(0usize, usize::saturating_add),
         _ => 0,
+    }
+}
+
+/// The directory this harness keeps a project's transcripts in.
+///
+/// Claude Code encodes the project path by replacing every separator with
+/// `-`, e.g. `/w/proj` -> `-w-proj`. Derived rather than hardcoded, so it
+/// follows the caller's cwd (V37).
+#[must_use]
+pub fn project_dir(home: &Path, project: &Path) -> PathBuf {
+    let encoded: String = project
+        .to_string_lossy()
+        .chars()
+        .map(|c| if c == '/' || c == '\\' { '-' } else { c })
+        .collect();
+    home.join(".claude").join("projects").join(encoded)
+}
+
+/// The newest transcript for a project, or `None` when there is none.
+///
+/// "Newest" is by modification time: a session that is still running is
+/// the one being appended to, which is almost always what a bare `itok
+/// trace` means (V1 -- `git log` defaults to the current repo).
+#[must_use]
+pub fn newest_transcript(home: &Path, project: &Path) -> Option<PathBuf> {
+    let dir = project_dir(home, project);
+    let mut best: Option<(std::time::SystemTime, PathBuf)> = None;
+    for entry in std::fs::read_dir(dir).ok()?.flatten() {
+        let path = entry.path();
+        if path.extension().is_none_or(|x| x != "jsonl") {
+            continue;
+        }
+        let Ok(when) = entry.metadata().and_then(|m| m.modified()) else {
+            continue;
+        };
+        if best.as_ref().is_none_or(|(b, _)| when > *b) {
+            best = Some((when, path));
+        }
+    }
+    best.map(|(_, p)| p)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Per-PID, so the suite stays parallel-safe (V89/B5).
+    fn scratch(tag: &str) -> PathBuf {
+        let d = std::env::temp_dir()
+            .join(format!("itok-cc-{tag}-{}", std::process::id()));
+        std::fs::remove_dir_all(&d).ok();
+        d
+    }
+
+    /// The harness encodes a project path by replacing separators.
+    #[test]
+    fn project_dir_encodes_the_path() {
+        let got = project_dir(Path::new("/home/u"), Path::new("/w/proj"));
+        assert_eq!(got, Path::new("/home/u/.claude/projects/-w-proj"));
+    }
+
+    /// No directory is not an error -- the project simply has no sessions.
+    #[test]
+    fn no_project_dir_yields_none() {
+        let home = scratch("nodir");
+        assert!(newest_transcript(&home, Path::new("/w/proj")).is_none());
+    }
+
+    /// Only transcripts count; a stray file in the same directory is not
+    /// one just because it is there.
+    #[test]
+    fn only_jsonl_files_are_transcripts() {
+        let home = scratch("filter");
+        let dir = project_dir(&home, Path::new("/w/p"));
+        std::fs::create_dir_all(&dir).ok();
+        std::fs::write(dir.join("notes.txt"), "x").ok();
+        std::fs::write(dir.join("a.jsonl"), "{}\n").ok();
+        let got = newest_transcript(&home, Path::new("/w/p"));
+        assert_eq!(got, Some(dir.join("a.jsonl")));
+    }
+
+    /// A directory with no transcript is the same as no directory.
+    #[test]
+    fn a_dir_without_transcripts_yields_none() {
+        let home = scratch("empty");
+        let dir = project_dir(&home, Path::new("/w/p"));
+        std::fs::create_dir_all(&dir).ok();
+        std::fs::write(dir.join("readme.md"), "x").ok();
+        assert!(newest_transcript(&home, Path::new("/w/p")).is_none());
+    }
+
+    /// With several transcripts, one is chosen -- and it is always one of
+    /// them. Which one depends on mtime, which this test deliberately does
+    /// not race: asserting an ordering would need controllable clocks, and
+    /// a sleep in a test buys flakiness rather than confidence (B5).
+    #[test]
+    fn several_transcripts_yield_one_of_them() {
+        let home = scratch("many");
+        let dir = project_dir(&home, Path::new("/w/p"));
+        std::fs::create_dir_all(&dir).ok();
+        for name in ["a.jsonl", "b.jsonl"] {
+            std::fs::write(dir.join(name), "{}\n").ok();
+        }
+        let got = newest_transcript(&home, Path::new("/w/p"));
+        let ok = got == Some(dir.join("a.jsonl"))
+            || got == Some(dir.join("b.jsonl"));
+        assert!(ok, "picked {got:?}");
     }
 }
