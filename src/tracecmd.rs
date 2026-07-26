@@ -17,7 +17,7 @@ use crate::args::Format;
 use crate::cli::Output;
 use crate::json::escape;
 use crate::session::{claude_code, LoadEvent, Source};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[derive(Default)]
 struct Raw {
@@ -54,22 +54,167 @@ fn run(raw: &Raw) -> Output {
     })
 }
 
-/// An explicit path wins; otherwise the newest transcript for the working
-/// directory, the way `git log` defaults to the current repo (V1).
+/// Where a session came from -- the claim itself, not just the path.
+///
+/// "The newest transcript" and "your session" are DIFFERENT claims (V96),
+/// and a report labelled with the wrong one is a report about someone
+/// else's context. So the origin travels with the path and the caller can
+/// say which it was.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum Origin {
+    /// A path the caller named.
+    Argument,
+    /// An id the HARNESS offered -- authoritative for "your session".
+    Harness,
+    /// Newest-by-mtime. A GUESS: with two sessions in one project it can
+    /// silently pick the wrong one.
+    Newest,
+}
+
+/// The env vars a harness may use to name the live session.
+///
+/// Checked in order and treated as equivalent, because the point is the
+/// SOURCE (the harness said so) rather than which spelling it used. An
+/// unset or empty value is no offer at all -- an empty string is not an id.
+const SESSION_VARS: [&str; 3] = [
+    "CLAUDE_SESSION_ID",
+    "ITOK_SESSION_ID",
+    "CLAUDE_CODE_SESSION_ID",
+];
+
+/// A session id the harness offered, if any.
+fn harness_session() -> Option<String> {
+    first_id(SESSION_VARS.iter().filter_map(|k| std::env::var(k).ok()))
+}
+
+/// The first value that is actually an id.
+///
+/// Pure, so the rule is testable without depending on which variables the
+/// ambient environment happens to set -- this machine really does export
+/// `CLAUDE_CODE_SESSION_ID`, and a test that assumed otherwise passed or
+/// failed on where it ran (B3's ambient-state lesson).
+fn first_id(values: impl Iterator<Item = String>) -> Option<String> {
+    values.map(|v| v.trim().to_owned()).find(|v| !v.is_empty())
+}
+
+/// An explicit path wins; then a harness-offered id; then newest-by-mtime.
+///
+/// The ORDER is V96's rule: prefer identity the harness knows over a guess
+/// from the filesystem, and fall back only when nothing was offered.
+pub(crate) fn resolve_session(
+    session: Option<&str>,
+    chdir: Option<&str>,
+) -> Option<(PathBuf, Origin)> {
+    if let Some(s) = session {
+        return Some((PathBuf::from(s), Origin::Argument));
+    }
+    let dir = project_dir(chdir)?;
+    if let Some(id) = harness_session() {
+        let named = dir.join(format!("{id}.jsonl"));
+        if named.is_file() {
+            return Some((named, Origin::Harness));
+        }
+    }
+    newest_in(&dir).map(|p| (p, Origin::Newest))
+}
+
+/// Backwards-compatible path-only resolution for callers that do not report
+/// their source yet.
 pub(crate) fn source_path(
     session: Option<&str>,
     chdir: Option<&str>,
 ) -> Option<PathBuf> {
-    if let Some(s) = session {
-        return Some(PathBuf::from(s));
-    }
+    resolve_session(session, chdir).map(|(p, _)| p)
+}
+
+/// The harness's transcript directory for this project.
+fn project_dir(chdir: Option<&str>) -> Option<PathBuf> {
     let cwd = chdir.map_or_else(
         || std::env::current_dir().ok(),
         |d| Some(PathBuf::from(d)),
     )?;
     let home = std::env::var("HOME").ok().map(PathBuf::from)?;
     let project = std::fs::canonicalize(&cwd).unwrap_or(cwd);
-    claude_code::newest_transcript(&home, &project)
+    Some(claude_code::project_dir(&home, &project))
+}
+
+fn newest_in(dir: &Path) -> Option<PathBuf> {
+    claude_code::newest_in(dir)
+}
+
+/// A one-line note naming WHICH session was read, when that is a guess.
+///
+/// Silent for an explicit path or a harness id: the caller already knows
+/// what it asked for. Loud for newest-by-mtime, because with two sessions in
+/// one project that is a guess, and "the newest transcript" is a weaker
+/// claim than "your session" (V96/V3). Only the guess needs saying, or the
+/// note becomes output that always appears and nobody reads (V71).
+pub(crate) fn origin_note(origin: &Origin) -> String {
+    match origin {
+        Origin::Newest => "  session: newest by mtime -- not necessarily \
+             yours; pass a path or set CLAUDE_SESSION_ID\n"
+            .to_owned(),
+        Origin::Argument | Origin::Harness => String::new(),
+    }
+}
+
+#[cfg(test)]
+mod origin_tests {
+    use super::*;
+
+    /// V96/V3: only the GUESS is announced. An explicit path or a harness id
+    /// is what the caller asked for, so a note there would be output that
+    /// always appears and nobody reads (V71).
+    #[test]
+    fn only_the_guess_announces_itself() {
+        assert!(origin_note(&Origin::Argument).is_empty());
+        assert!(origin_note(&Origin::Harness).is_empty());
+        let note = origin_note(&Origin::Newest);
+        assert!(note.contains("newest by mtime"), "{note}");
+        assert!(note.contains("not necessarily"), "the claim is weakened");
+        assert!(note.contains("CLAUDE_SESSION_ID"), "and says what to do");
+    }
+
+    /// An explicit path is the strongest claim and needs no environment.
+    #[test]
+    fn an_explicit_path_is_its_own_origin() {
+        let got = resolve_session(Some("/tmp/x.jsonl"), None);
+        assert_eq!(
+            got,
+            Some((PathBuf::from("/tmp/x.jsonl"), Origin::Argument))
+        );
+    }
+
+    /// An id the harness offers wins over newest-by-mtime -- but only if the
+    /// transcript EXISTS. A stale variable pointing at a deleted session must
+    /// fall back rather than resolve to nothing.
+    #[test]
+    fn a_stale_harness_id_falls_back_instead_of_failing() {
+        std::env::set_var("ITOK_SESSION_ID", "no-such-session-id-xyz");
+        let got = resolve_session(None, None);
+        std::env::remove_var("ITOK_SESSION_ID");
+        // Either no transcript dir at all, or the newest one -- never the
+        // named file, which does not exist.
+        if let Some((path, origin)) = got {
+            assert_eq!(origin, Origin::Newest, "stale id must not win");
+            assert!(!path.to_string_lossy().contains("no-such-session-id-xyz"));
+        }
+    }
+
+    /// An empty or whitespace value is no offer at all: an empty string is
+    /// not an id. The first REAL value wins, in variable order.
+    #[test]
+    fn an_empty_variable_is_not_an_offer() {
+        let vals = |v: &[&str]| first_id(v.iter().map(|s| (*s).to_owned()));
+        assert_eq!(vals(&["", "   ", "\t"]), None, "nothing offered");
+        assert_eq!(
+            vals(&["", "abc"]),
+            Some("abc".to_owned()),
+            "first real one"
+        );
+        assert_eq!(vals(&["  id  "]), Some("id".to_owned()), "trimmed");
+        assert_eq!(vals(&[]), None);
+    }
 }
 
 /// Apply the git-log selectors, in git's own order: filter, then reverse,

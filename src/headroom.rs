@@ -30,7 +30,7 @@ use crate::args::Format;
 use crate::cli::Output;
 use crate::render::human;
 use crate::session::{claude_code, Session};
-use crate::tracecmd::value;
+use crate::tracecmd::{value, Origin};
 
 /// The rate windows, in turns -- loadavg's three, on a turn clock (V91).
 /// Ordered shortest-first, which is also the order `turns left` prefers.
@@ -78,15 +78,16 @@ fn run(raw: &Raw) -> Output {
 /// whole row is absent rather than zero -- a zero would read as a
 /// measurement of an empty context (V47).
 fn report(raw: &Raw, cap: Option<u64>, task: Option<u64>) -> Output {
-    let Some(parsed) = session_of(raw) else {
+    let Some((parsed, origin)) = session_of(raw) else {
         return Output::ok(String::new());
     };
+    let note = crate::tracecmd::origin_note(&origin);
     let Some(room) = room_of(&parsed, cap, task) else {
         return Output::ok(String::new());
     };
     Output::ok(match raw.format {
         Format::Json => json(&room),
-        Format::Human => table(&room, raw.human),
+        Format::Human => table(&room, raw.human) + &note,
     })
 }
 
@@ -104,13 +105,16 @@ fn room_of(
     })
 }
 
-fn session_of(raw: &Raw) -> Option<Session> {
-    let path = crate::tracecmd::source_path(
+/// The session, and WHERE it came from -- the origin is part of the claim
+/// this verb makes about whose context it is reporting (V96/T74).
+fn session_of(raw: &Raw) -> Option<(Session, Origin)> {
+    let (path, origin) = crate::tracecmd::resolve_session(
         raw.session.as_deref(),
         raw.chdir.as_deref(),
     )?;
     let text = std::fs::read_to_string(path).ok()?;
-    Some(claude_code::parse(crate::session::complete_prefix(&text)))
+    let parsed = claude_code::parse(crate::session::complete_prefix(&text));
+    Some((parsed, origin))
 }
 
 /// One task's declared cost, in the one unit grammar (V18).

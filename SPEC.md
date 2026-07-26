@@ -1128,7 +1128,7 @@ T70|x|scripted bulk compaction: CPU derives (sizes·citation graph·orphans·sta
 T71|x|concurrency guard: a test that runs N itok processes at once over the same tree & asserts identical output + zero writes outside `target/`; keeps V89's free property from being lost silently|V89
 T72|x|`headroom` verb: `df` columns (window·used·avail·use%) + the rate triple (10/50/200 turns) + `~turns left`; `-h`·`--model`·`--window`·json; zero-window turns excluded from the rate|V91,V92,V93
 T73|x|report cold-cache events: a turn whose cache WRITE dwarfs its read is a prefix re-write; name the cost (~250x a normal turn) & leave the cause to the reader. Observation only -- ⊥ a fuse input (V95)|V94,V95,V47
-T74|.|session identity: prefer an explicit harness-provided session id over newest-by-mtime; when falling back, SAY so. Two sessions in one project currently resolve to whichever was touched last|V96,V3
+T74|x|session identity: prefer an explicit harness-provided session id over newest-by-mtime; when falling back, SAY so. Two sessions in one project currently resolve to whichever was touched last|V96,V3
 T75|x|`top`: add the `size × turns-remaining` column (V98) & state the uncompacted caveat; it is the number that makes early reduction's leverage visible|V98,V94,V59
 T76|.|`doctor --session [<id>]`: retarget doctor at a CONTEXT — progression (use% · rate triple · `~turns left`, from T72) + per-item `projected` (T75's carried, forward); paths w/ `--session` = usage error, ⊥ a silent ignore. AFTER T72: no progression number without `headroom`|V99,V100,V17
 T77|.|the advice block: V97's two levers ONLY, mid-session eviction NAMED as a trap, no third suggestion; fires only when a level is CROSSED; a test asserts the forbidden advice is absent|V99,V97,V71

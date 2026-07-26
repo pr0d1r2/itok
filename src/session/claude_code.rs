@@ -297,7 +297,14 @@ pub fn project_dir(home: &Path, project: &Path) -> PathBuf {
 /// trace` means (V1 -- `git log` defaults to the current repo).
 #[must_use]
 pub fn newest_transcript(home: &Path, project: &Path) -> Option<PathBuf> {
-    let dir = project_dir(home, project);
+    newest_in(&project_dir(home, project))
+}
+
+/// The newest `.jsonl` in a transcript directory. Split out so a caller can
+/// reach it after resolving the directory by another route (T74).
+#[must_use]
+pub fn newest_in(dir: &Path) -> Option<PathBuf> {
+    let dir = dir.to_path_buf();
     let mut best: Option<(std::time::SystemTime, PathBuf)> = None;
     for entry in std::fs::read_dir(dir).ok()?.flatten() {
         let path = entry.path();
