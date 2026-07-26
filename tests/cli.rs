@@ -286,6 +286,39 @@ mod ollama_cassette {
             );
     }
 
+    /// V6 on a discovered set: a family prefix narrows to the one model
+    /// the fleet serves. The cassette serves only `qwen3-coder:30b`, so
+    /// `qwen3` is unambiguous and must resolve rather than 404.
+    #[test]
+    fn doctor_ollama_narrows_by_a_model_prefix() {
+        let host = replay();
+        itok()
+            .args(["doctor", "--ollama", "--model", "qwen3"])
+            .env("OLLAMA_HOST", &host)
+            .current_dir(DIR)
+            .assert()
+            .success()
+            .stdout(predicate::str::contains("qwen3-coder:30b"));
+    }
+
+    /// V71: an unserved name is a USAGE error that NAMES what is served.
+    /// The fleet answered, so exit 7 (network) would be a lie -- and a CI
+    /// retry loop would spin on what is really a typo.
+    #[test]
+    fn an_unserved_model_names_the_alternatives() {
+        let host = replay();
+        itok()
+            .args(["doctor", "--ollama", "--model", "no-such-model"])
+            .env("OLLAMA_HOST", &host)
+            .current_dir(DIR)
+            .assert()
+            .code(2)
+            .stderr(
+                predicate::str::contains("no fleet host serves")
+                    .and(predicate::str::contains("qwen3-coder:30b")),
+            );
+    }
+
     // The LIVE check (V38): never in the gate. Run by hand against a real
     // host: `OLLAMA_HOST=box:11434 cargo test -p itok --features ollama -- \
     // --ignored`.

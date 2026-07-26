@@ -126,7 +126,14 @@ resolve silently (`itok e`, `itok di`, `itok ch`). Ambiguous ⇒ error listing
 candidates, never silent-pick. Non-prefix typo ⇒ SUGGEST (edit-distance),
 ⊥ run. Canonical names are the full words; prefixes are convenience,
 never promised. Any future MUTATING verb requires its full name — no
-inference into a write.
+inference into a write. SAME rule binds a name resolved from a DISCOVERED
+SET: `--model` over an `--ollama` fleet resolves exact > ollama's own
+`name`=`name:latest` > unique prefix; ambiguous ⇒ error LISTING
+candidates, absent ⇒ error listing what IS served (V71). Step 2 keeps
+ollama's grammar EXACTLY where it applies ∵ an almost-match is V2's
+expensive failure. One prefix grammar, ⊥ a per-domain reinvention (V1).
+⊥ `.context-models`: that is a REVIEWED registry & V11 wants an exact
+row. Write-safety above is untouched ∵ `doctor` is read-only.
 V7: **`diff` mirrors `git diff` arg-forms verbatim** — working-tree,
 `--staged`, `<A> <B>`, `<ref>`, `-- <path>`, `--exit-code`. Zero new
 mental model (V1).
@@ -1103,6 +1110,7 @@ T76|.|`doctor --session [<id>]`: retarget doctor at a CONTEXT — progression (u
 T77|.|the advice block: V97's two levers ONLY, mid-session eviction NAMED as a trap, no third suggestion; fires only when a level is CROSSED; a test asserts the forbidden advice is absent|V99,V97,V71
 T78|x|`--ollama=HOSTS`, & the `=` form generally for optional-value flags ∴ the documented bare `host` becomes reachable; heuristic kept as convenience; tests pin a BARE host & a bare IP|V101,V24,V25
 T79|.|remote-tier method label names the ENDPOINT (`exact via HOST`) ∴ a count from an unintended tokenizer is VISIBLE; needs `Method.label` to carry an owned endpoint, ⊥ a `&'static str`|V101,V3,V22
+T80|x|`--model` narrowing over an `--ollama` fleet: enumerate ONCE, then exact > `:latest` > unique prefix; ambiguous & not-found errors NAME the candidates. Reuses `fleet_all`'s enumeration, ⊥ a second fetch|V6,V22,V71
 T74|.|session identity: prefer an explicit harness-provided session id over newest-by-mtime; when falling back, SAY so. Two sessions in one project currently resolve to whichever was touched last|V96,V3
 T69|.|`.context-limits`/`.context-models`/`.context-policy`: an unparsable row FAILS w/ file+line+expected, ⊥ silent skip (B7); fractional units (`20.5k`) either parse or are rejected LOUDLY|V88,V11
 T49|x|SPEC compaction FIRST PASS + the machine to finish it: 25 done-`§T` rows trimmed to what+cites (method lives in the commit, V26), V62/V22/V70/V71/V31 destaled & tightened, `tests/spec_integrity.rs` guard, `.context-limits` turned into a RATCHET. MEASURED gross -2,781 chars; NET -2.1% only ∵ the pass itself added V88+B7+T69. 5 of 86 invariants touched ∴ the BULK is T70|V84,V15,V26
