@@ -46,9 +46,12 @@ who knows those tools needs no teaching.
   commit's per-file token delta (default HEAD); `<commit>:<path>` = a
   blob's cost at a ref. Report-only · `--bpe` · `--format json`.
 - `itok check` — reads `.context-limits`, pinned `--bpe`, pass/fail.
-- `itok doctor <path>` — `--model X` · `--window N` · `--format json` ·
-  `-C <dir>`. Advisory: fit-to-window · balance · noise · estimate
-  confidence. Reports & suggests; never gates.
+- `itok doctor <path> | --session [<id>]` — `--model X` · `--window N` ·
+  `--format json` · `-C <dir>`. Advisory: fit-to-window · balance · noise
+  · estimate confidence. `--session` retargets it at a CONTEXT:
+  progression (use% · rate · `~turns left`) + per-item `projected` +
+  V97's two levers. Paths w/ `--session` = usage error (V2). Reports &
+  suggests; never gates.
 - `itok log <path>` — `-n N` · `<A>..<B>` · `--reverse` · `--since` ·
   `--bpe` · `--format json`. Per-commit cost + delta; report-only.
 - `itok fit --window N [paths]` — `--by size` · `--bpe` · `--format json`.
@@ -972,6 +975,29 @@ holds for UNCOMPACTED sessions, which is all that has been observed. If
 a compaction is ever seen, items DO leave & the product becomes an upper
 bound — say so then, ⊥ silently keep multiplying (V3).
 
+V99: **progression advice names V97's TWO levers & names the TRAP as a
+trap.** A visible `use%` (V91) invites "evict the stale stuff", & V97
+measured that backwards: the prefix is append-only in practice ∴ an early
+deletion re-writes everything after it (~250k, V95). ∴ the suggestion is
+REJECTED as advice, ⊥ merely omitted — omission leaves the reader to
+invent it, & the reader's intuition is wrong here. PERMITTED set = V97's
+two shapes ONLY: cap at ENTRY (V50) · END the session | fan out (V60).
+`doctor` gains a SESSION TARGET, ⊥ tentacles (V17): every figure comes
+from `headroom` (T72) | `top` (T75), ⊥ a new estimator. A level that
+triggers ADVICE is ⊥ a fuse (V42) ∵ ignorable advice costs ~0 when wrong
+while a deny burns turns (V54) ∴ it needs no tuning data & does ⊥ wait on
+M6 — but it ! appear only when a level is CROSSED, ⊥ on every run (V71).
+V100: **`carried` has TWO directions; they are LABELLED apart.** T75's
+column is BACKWARD — billing already paid, over OBSERVED turns (V98).
+`projected` is `size × turns REMAINING`, & its count comes from
+`headroom`'s `~turns left` (V93) ∴ an extrapolation ON an extrapolation:
+tilde + the named assumption ("at the recent rate"), like every derived
+number (V3). TWO names, ⊥ one column w/ a sign — a measured past
+near-colliding w/ a guessed future is V2's expensive failure & the tilde
+is the at-a-glance separator. No window ⇒ no `turns left` ⇒ NO
+`projected` (V92). Both directions inherit V98's uncompacted caveat: a
+compaction makes them UPPER BOUNDS, & the day one is seen they say so.
+
 ## §T TASKS
 
 | id | scope | tasks | done-when |
@@ -1058,6 +1084,8 @@ T71|.|concurrency guard: a test that runs N itok processes at once over the same
 T72|.|`headroom` verb: `df` columns (window·used·avail·use%) + the rate triple (10/50/200 turns) + `~turns left`; `-h`·`--model`·`--window`·json; zero-window turns excluded from the rate|V91,V92,V93
 T73|x|report cold-cache events: a turn whose cache WRITE dwarfs its read is a prefix re-write; name the cost (~250x a normal turn) & leave the cause to the reader. Observation only -- ⊥ a fuse input (V95)|V94,V95,V47
 T75|x|`top`: add the `size × turns-remaining` column (V98) & state the uncompacted caveat; it is the number that makes early reduction's leverage visible|V98,V94,V59
+T76|.|`doctor --session [<id>]`: retarget doctor at a CONTEXT — progression (use% · rate triple · `~turns left`, from T72) + per-item `projected` (T75's carried, forward); paths w/ `--session` = usage error, ⊥ a silent ignore. AFTER T72: no progression number without `headroom`|V99,V100,V17
+T77|.|the advice block: V97's two levers ONLY, mid-session eviction NAMED as a trap, no third suggestion; fires only when a level is CROSSED; a test asserts the forbidden advice is absent|V99,V97,V71
 T74|.|session identity: prefer an explicit harness-provided session id over newest-by-mtime; when falling back, SAY so. Two sessions in one project currently resolve to whichever was touched last|V96,V3
 T69|.|`.context-limits`/`.context-models`/`.context-policy`: an unparsable row FAILS w/ file+line+expected, ⊥ silent skip (B7); fractional units (`20.5k`) either parse or are rejected LOUDLY|V88,V11
 T49|x|SPEC compaction FIRST PASS + the machine to finish it: 25 done-`§T` rows trimmed to what+cites (method lives in the commit, V26), V62/V22/V70/V71/V31 destaled & tightened, `tests/spec_integrity.rs` guard, `.context-limits` turned into a RATCHET. MEASURED gross -2,781 chars; NET -2.1% only ∵ the pass itself added V88+B7+T69. 5 of 86 invariants touched ∴ the BULK is T70|V84,V15,V26
