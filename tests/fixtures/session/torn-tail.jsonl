@@ -1,0 +1,2 @@
+{"type":"assistant","uuid":"a1","parentUuid":null,"sessionId":"s-torn","timestamp":"2026-01-01T00:00:01.000Z","isSidechain":false,"message":{"role":"assistant","content":[{"type":"text","text":"complete"}],"usage":{"input_tokens":3,"output_tokens":4,"cache_creation_input_tokens":0,"cache_read_input_tokens":30}}}
+{"type":"assistant","uuid":"a2","parentUuid":"a1","sessionId":"s-torn","timestamp":"2026-01-01T00:00:02.000Z","isSidechain":false,"message":{"role":"assis

@@ -727,6 +727,16 @@ attachments ≈ 45k itok in one session — invisible today & fully
 attributable w/o storing any content (V45). Counting only tool results
 would under-report the accounted share & inflate `unaccounted` (V44)
 while the data sat right there.
+V79: **a fixture PINS its own shape, & the guard stays armed WHERE the
+data lives.** A fixture that quietly stops representing its case does ⊥
+fail — it WEAKENS whatever depends on it, invisibly ∴ each property is
+asserted (torn tail stays torn · garbage line stays mid-file · spilled
+size stays >> billed). The transcript guard (V45) & the fixtures
+INTERLOCK on an INTRINSIC signal — a UUID-shaped id, which every real
+capture carries & no hand-written fixture has — ⊥ on LOCATION: exempting
+`tests/fixtures/` would disarm the guard exactly where a real transcript
+is most likely to be pasted "to make a test easier". Proven by planting
+one there & watching it fail.
 
 ## §T TASKS
 
@@ -774,7 +784,7 @@ T28|x|assemble README = hand narrative + the `itok docs` reference block + badge
 T29|x|`itok docs` verb: ONE command registry (verb·synopsis·flags·exit) renders `--help` + a markdown reference; read-only to stdout; guard diffs it vs README ∴ docs can't rot|V40,V6,V9
 T30|.|session reader module: harness-PLUGGABLE, defensive JSONL parse → load events; unknown fields ignored, malformed records skipped & COUNTED; torn tail tolerated; ⊥ writes to the transcript|V43,V45,V76
 T30a|.|content-addressed snapshot cache (XDG, outside the tree, bounded, idempotent by construction) — the stable view `trace`/`top` read|V77,V19
-T30b|.|synthetic fixtures under `tests/fixtures/session/`: minimal · tool-shapes · truncated · torn-tail · weird (bare-string result, null isSidechain, unknown type). Hand-written & tiny; a REAL transcript is ⊥ committed (V45)|V43,V45,V76
+T30b|x|synthetic fixtures under `tests/fixtures/session/`: minimal · tool-shapes · truncated · torn-tail · weird (bare-string result, null isSidechain, unknown type). Hand-written & tiny; a REAL transcript is ⊥ committed (V45)|V43,V45,V76,V79
 T30c|.|attachment load class: hook output / reminders / injected context counted beside tool results|V78,V44
 T31|.|`trace` verb: 1 line/load event, chronological, `-n`·`--since`·`--reverse`·json|V46,V9,V59
 T32|.|`top` verb: ranked occupancy, `-h`·`-s`·`--top N`, dup + stale columns, `-- <path>` per-path attribution (⊥ a `blame` verb)|V46,V59

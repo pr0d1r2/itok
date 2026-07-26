@@ -109,11 +109,35 @@ fn tracked_data_files(root: &Path) -> Vec<String> {
         .collect()
 }
 
-/// A `sessionId` beside the per-turn token accounting: the pair only a
-/// real transcript carries.
+/// True when the text carries a UUID-shaped token, which every real
+/// harness session has and a hand-written fixture does not.
+///
+/// This is what separates a CAPTURE from a synthetic fixture, and it is
+/// deliberately intrinsic to the content rather than based on location:
+/// the likeliest place to drop a real transcript is the fixture
+/// directory, so exempting that directory would disarm the guard exactly
+/// where it is most needed.
+fn has_a_uuid(text: &str) -> bool {
+    text.split(|c: char| !(c.is_ascii_hexdigit() || c == '-'))
+        .any(is_uuid_shaped)
+}
+
+/// `8-4-4-4-12` hex groups.
+fn is_uuid_shaped(token: &str) -> bool {
+    let parts: Vec<&str> = token.split('-').collect();
+    parts.len() == 5
+        && [8usize, 4, 4, 4, 12].iter().zip(&parts).all(|(n, p)| {
+            p.len() == *n && p.chars().all(|c| c.is_ascii_hexdigit())
+        })
+}
+
+/// A `sessionId` beside the per-turn token accounting -- the pair only a
+/// real transcript carries -- plus a UUID, which is what makes it a
+/// capture rather than a fixture faithfully imitating the shape.
 fn looks_like_a_transcript(text: &str) -> bool {
     text.contains("\"sessionId\"")
         && text.contains("\"cache_read_input_tokens\"")
+        && has_a_uuid(text)
 }
 
 /// A harness transcript must never be committed (V45). `.gitignore`
