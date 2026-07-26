@@ -119,21 +119,36 @@ fn task_and_bug_ids_are_unique() {
     }
 }
 
-/// The audit trail V83 depends on: options considered and rejected, each
-/// with the trigger that would reopen it. Compaction must never trade
-/// these away for bytes -- they are what makes a decision auditable
+/// The audit trail V83 depends on: options considered and CLOSED -- either
+/// rejected, or deferred under a stated trigger -- each recorded with the
+/// reason and the condition that would reopen it. Compaction must never
+/// trade these away for bytes; they are what makes a decision auditable
 /// rather than merely obeyable.
 ///
-/// Named invariants rather than a word count: a threshold on how often a
-/// word appears is arbitrary, and an arbitrary threshold either fires on
-/// nothing or fires on prose edits that changed no decision.
-const AUDIT_RECORDS: [(&str, &str); 5] = [
-    ("V21", "DEFERRED"),
-    ("V24", "rejected"),
-    ("V25", "rejected"),
-    ("V35", "REJECTED"),
-    ("V58", "DEFERRED"),
-];
+/// Named records rather than a word count: a threshold on how often a word
+/// appears is arbitrary, and an arbitrary threshold either fires on nothing
+/// or fires on prose edits that changed no decision.
+///
+/// The list lives in `.spec-records`, not in this file, because it is DATA
+/// this repo owns rather than a rule any checker owns: survival across
+/// edits is not derivable from one text, so the baseline has to travel with
+/// the spec being checked. Reading it here is transitional -- `nanokit
+/// check --records .spec-records` takes this over, and the file is already
+/// in the shape that command reads.
+fn audit_records() -> Vec<(String, String)> {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join(".spec-records");
+    let raw = std::fs::read_to_string(&path).unwrap_or_default();
+    assert!(!raw.is_empty(), ".spec-records is missing or empty");
+    let rows: Vec<(String, String)> = raw
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty() && !l.starts_with('#'))
+        .filter_map(|l| l.split_once(char::is_whitespace))
+        .map(|(id, marker)| (id.to_owned(), marker.trim().to_owned()))
+        .collect();
+    assert!(!rows.is_empty(), ".spec-records parsed to nothing");
+    rows
+}
 
 /// The body of one invariant, up to the next one.
 fn invariant_body(text: &str, id: &str) -> String {
@@ -389,12 +404,34 @@ fn the_line_guard_accepts_every_real_shape() {
 }
 
 #[test]
-fn the_rejected_option_records_survive() {
+fn the_closed_option_records_survive() {
     let text = spec();
-    for (id, marker) in AUDIT_RECORDS {
+    let records = audit_records();
+    assert_eq!(records.len(), 5, "a record was added or dropped silently");
+    for (id, marker) in records {
         assert!(
-            invariant_body(&text, id).contains(marker),
+            invariant_body(&text, &id).contains(&marker),
             "{id} lost its `{marker}` record -- that is the audit trail (V83)"
+        );
+    }
+}
+
+/// The guard is proven by PLANTING a violation, not by reading it: a check
+/// that has never rejected anything is indistinguishable from one that
+/// cannot. Both directions, because a baseline that matched everything
+/// would pass just as quietly as one that matched nothing.
+#[test]
+fn the_record_guard_rejects_a_vanished_record() {
+    let text = spec();
+    let stripped = text.replace("DEFERRED", "planned");
+    assert!(
+        !invariant_body(&stripped, "V21").contains("DEFERRED"),
+        "the planted edit did not remove the record"
+    );
+    for (id, marker) in audit_records() {
+        assert!(
+            invariant_body(&text, &id).contains(&marker),
+            "{id} does not carry its own marker in the real spec"
         );
     }
 }

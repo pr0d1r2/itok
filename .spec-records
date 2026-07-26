@@ -1,0 +1,56 @@
+# The considered-and-CLOSED records that must SURVIVE an edit: an option
+# REJECTED, or DEFERRED under a stated trigger. Baseline for `nanokit check
+# --records .spec-records SPEC.md`.
+#
+# `<id>` then whitespace then the marker, which runs to end of line and may
+# contain spaces. `#` comments and blank lines are skipped.
+#
+# WHY A FILE AND NOT A DERIVED RULE: every other structural rule asks "is
+# this file well formed", which one text can answer. This one asks "is this
+# record still here" -- a claim about EDITS OVER TIME, and no single text can
+# say what used to be in it. So the checker owns the rule and this repo owns
+# the list.
+#
+# The marker is a SUBSTRING of the record, not the whole thing: long enough
+# to be specific, short enough that rewording the surrounding prose does not
+# fire it. What must survive is the DECISION, not the sentence.
+#
+# WHY THESE FIVE ARE THE FRAGILE ONES: none of them describes anything itok
+# builds, so to a compaction pass counting bytes they read as the most
+# deletable text in the file -- pure "we weighed it and said no". Delete them
+# and the spec stays internally consistent, every citation still resolves,
+# and the gate stays green. Then someone re-proposes CIDR scanning and
+# nothing says it was already answered. That is what V83 (best idea wins,
+# make the COMPARISON auditable) rests on.
+#
+# DEFERRED is not a weaker REJECTED -- it is a different state, and the two
+# are told apart by the trigger. V21 and V58 say `DEFERRED (⊥ rejected)` in
+# their own text and each names the condition that reopens it. The deferred
+# ones need this guard MORE: a rejection reads as a closed decision, while a
+# deferral reads as an unbuilt feature, which is exactly what a byte-cutting
+# pass drops thinking "not built = not needed". So the marker pinned for
+# those two is the deferral itself.
+#
+# Adding a line here is how a new closed option becomes load-bearing.
+# Removing one is a reviewed decision: it says the option is no longer worth
+# recording, which is the trade this file exists to stop being made silently.
+
+# DEFERRED -- trigger: a real fileset where greedy drops a better-fitting
+# combination.
+V21  DEFERRED
+
+# REJECTED -- a subnet probe is a port scan; discovery is composed, not
+# built in.
+V24  rejected
+
+# REJECTED -- `host[:port]` is already the convention; a flag cannot express
+# per-host ports in a fleet list.
+V25  rejected
+
+# REJECTED -- a cloud count_tokens needs an API key and egresses file
+# content. Escape hatch recorded, never a default.
+V35  REJECTED
+
+# DEFERRED -- trigger: a measured need for a signal only in-flight
+# interception can give.
+V58  DEFERRED
