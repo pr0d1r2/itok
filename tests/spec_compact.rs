@@ -278,6 +278,58 @@ fn spec_at(git_ref: &str) -> String {
         .unwrap_or_default()
 }
 
+// ------------------------------------------------- host format checker
+
+/// The HOST's format checker, run over our spec as a SECOND OPINION (T90).
+///
+/// itok's own guards in `spec_integrity` are the TRAVELING ones (V31/V13):
+/// they must stand alone, so `cavekit-spec` can never be a dependency here.
+/// This drives it through `tools/specfmt`, its own package outside itok's,
+/// whose path dep may dangle after extraction -- which is why a build
+/// failure means UNAVAILABLE and says so rather than failing (V74: degrade,
+/// do not block).
+///
+/// Why a second opinion at all: B12. itok's gate was green for a full day
+/// while 88 tasks belonged to no milestone, because the rule that caught it
+/// lived in a checker itok's gate cannot invoke. The ported rules close that
+/// specific gap; this catches the NEXT rule the host has and we have not.
+///
+/// `#[ignore]`: it shells out to cargo and reaches outside the repo, so it
+/// is by-hand machinery like the rest of this file.
+#[test]
+#[ignore = "host format checker; run with --ignored --nocapture"]
+fn host_format_checker_is_clean() {
+    let Some(stdout) = run_specfmt() else {
+        // LOUD about being skipped: a silently skipped check is
+        // indistinguishable from a passing one (V71/V74).
+        println!(
+            "specfmt: host checker UNAVAILABLE (needs ../unit_of_work) -- \
+             SKIPPED, not passed"
+        );
+        return;
+    };
+    print!("{stdout}");
+    assert!(
+        stdout.contains(": 0 violation(s)"),
+        "the host format checker reports violations; clear them first (T90)"
+    );
+}
+
+/// The driver's output, or `None` when it could not run at all -- no cargo,
+/// no host workspace, or a path dep left dangling by extraction.
+fn run_specfmt() -> Option<String> {
+    let dir = std::path::Path::new(DIR);
+    let out = Command::new("cargo")
+        .args(["run", "-q", "--manifest-path"])
+        .arg(dir.join("tools/specfmt/Cargo.toml"))
+        .arg("--")
+        .arg(dir.join("SPEC.md"))
+        .output()
+        .ok()?;
+    let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
+    stdout.contains("violation(s)").then_some(stdout)
+}
+
 // ----------------------------------------------------------- by-hand use
 
 /// The derivation report: what to cut, biggest first.
