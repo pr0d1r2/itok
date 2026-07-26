@@ -3,16 +3,32 @@
 # is itok checking itself -- the dogfood.
 # A CEILING that forces a REVIEW, not one that forces a shrink (V84).
 #
-# History: 19,542 -> 20,500 (T49) -> 21,500 -> 25,000. It has now bitten
-# three times on spec ADDITIONS, and every time the addition was correct:
-# the spec grows because the project does (93 invariants). A ceiling set a
-# hair above current turns every legitimate addition into a raise, and a
-# threshold raised reflexively is the noise-nobody-reads failure V71
-# warns about -- it trains the reflex instead of catching the problem.
+# History: 19,542 -> 20,500 (T49) -> 21,500 -> 25,000 -> 27,500. It has now
+# bitten four times on spec ADDITIONS, and every time the addition was
+# correct: the spec grows because the project does (101 invariants). A
+# ceiling set a hair above current turns every legitimate addition into a
+# raise, and a threshold raised reflexively is the noise-nobody-reads
+# failure V71 warns about -- it trains the reflex instead of catching the
+# problem.
 #
 # So: real headroom (~13%), and the actual control is T70's scripted
 # compaction, which is now overdue rather than pending. The ceiling
 # catches RUNAWAY growth; T70 pays the debt. Two different jobs, and
 # conflating them made the ceiling useless at both.
-SPEC.md    25000
+#
+# 25,000 -> 27,500 was NOT a reflexive raise, and the distinction is the
+# one the paragraph above draws. The ceiling had decayed to 0.3% headroom
+# (24,927 of 25,000) -- precisely the "hair above current" state it warns
+# against -- and what it was blocking was not growth but RECORDING: five
+# measured defects and four designs could not be written into §B/§T. An
+# unrecordable defect is strictly worse than a larger spec, because §B is
+# the memory that stops recurrence (V69's false-assurance argument, from
+# the other side). Restores ~10% headroom. T70 is still the control, and
+# this buys it time rather than replacing it.
+#
+# NOT a fit constraint. SPEC.md is 2.5% of a 1M window and fits every
+# model we target. The ceiling exists for the re-billing INTEGRAL (V84,
+# V94): held from turn 1 it bills ~9M itok per session, on free inference
+# and paid alike. Size is not the cost; size x turns is.
+SPEC.md    27500
 README.md  4k
