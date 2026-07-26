@@ -224,7 +224,31 @@ fn cache_lines(parsed: &Session, style: &Style) -> String {
     .iter()
     .filter_map(|(label, v)| Some((label, (*v)?)))
     .map(|(label, v)| format!("{:>19} itok    {label}\n", size(v, style)))
-    .collect()
+    .collect::<String>()
+        + &cold_line(parsed, style)
+}
+
+/// Turns that re-wrote the prefix instead of reading it (V95).
+///
+/// Reports the COST and stops. No cause: a re-auth explains the one
+/// instance measured, and generalising from a sample of two would be the
+/// confident guess V3 forbids. No advice either -- this is an
+/// observation, and judgment belongs to `doctor` (V59). Explicitly NOT a
+/// fuse input: the version of this finding that retargeted the fuse was
+/// drafted, then refuted by looking at the data (V95).
+fn cold_line(parsed: &Session, style: &Style) -> String {
+    let Some(cold) = parsed.cold_cache() else {
+        return String::new(); // cache fields absent: cannot tell (V47)
+    };
+    if cold.turns == 0 {
+        return String::new();
+    }
+    format!(
+        "{:>28} turn(s) re-wrote the prefix ({} written, {} read)\n",
+        cold.turns,
+        size(cold.written, style),
+        size(cold.read, style),
+    )
 }
 
 fn total_line(total: u64, style: &Style) -> String {
@@ -289,10 +313,15 @@ fn json_cache(parsed: &Session) -> String {
     let field =
         |v: Option<u64>| v.map_or_else(|| "null".to_owned(), |n| n.to_string());
     format!(
-        "\"fresh\":{},\"cache_write\":{},\"cache_read\":{}",
+        "\"fresh\":{},\"cache_write\":{},\"cache_read\":{},\
+         \"cold_cache_turns\":{},\"cold_cache_written\":{}",
         field(parsed.fresh_input()),
         field(parsed.cache_written()),
         field(parsed.cache_read()),
+        // null, not 0: "cannot tell" and "none found" are different
+        // answers, and only one of them is a measurement (V47).
+        field(parsed.cold_cache().map(|c| c.turns as u64)),
+        field(parsed.cold_cache().map(|c| c.written)),
     )
 }
 
@@ -711,6 +740,93 @@ mod tests {
             .find(|l| l.contains("cache read"))
             .unwrap_or_default();
         assert!(!line.contains('~'), "read from usage: no tilde");
+    }
+
+    /// The rule needs no threshold: warm turns read the whole prefix and
+    /// write only the new content, so read dominates; cold, there is
+    /// nothing to read. Measured, the populations sit 20x apart.
+    #[test]
+    fn write_over_read_classifies_a_cold_turn() {
+        let mut s = crate::session::Session::default();
+        s.turns.push(turn_with(1_000, 600_000)); // warm
+        s.turns.push(turn_with(250_657, 20_628)); // cold
+        let cold = s.cold_cache().unwrap_or_default();
+        assert_eq!(cold.turns, 1, "only the write-heavy turn counts");
+        assert_eq!(cold.written, 250_657);
+        assert_eq!(cold.read, 20_628);
+    }
+
+    /// Equal values are NEITHER. A turn reporting zero for both is not a
+    /// cold cache; it is a turn that reported nothing -- the zero-window
+    /// case found in a real transcript.
+    #[test]
+    fn equal_values_classify_as_neither() {
+        let mut s = crate::session::Session::default();
+        s.turns.push(turn_with(0, 0));
+        s.turns.push(turn_with(500, 500));
+        assert_eq!(s.cold_cache().unwrap_or_default().turns, 0);
+    }
+
+    /// V47: absent fields mean CANNOT TELL, which is not "none found".
+    /// `None` and `Some(0)` are different answers and only one of them is
+    /// a measurement.
+    #[test]
+    fn absent_cache_fields_cannot_be_classified() {
+        let mut s = crate::session::Session::default();
+        s.turns.push(crate::session::Turn {
+            input: Some(10),
+            ..crate::session::Turn::default()
+        });
+        assert_eq!(s.cold_cache(), None, "cannot tell, not none-found");
+        assert!(cold_line(&s, &Style::default()).is_empty());
+    }
+
+    /// No cold turns means no line -- the report stays quiet when there
+    /// is nothing to report (V47).
+    #[test]
+    fn no_cold_turns_means_no_line() {
+        let mut s = crate::session::Session::default();
+        s.turns.push(turn_with(1_000, 600_000));
+        assert_eq!(s.cold_cache().unwrap_or_default().turns, 0);
+        assert!(cold_line(&s, &Style::default()).is_empty());
+    }
+
+    /// The figures come from `usage`, so they are exact -- no tilde. And
+    /// the line states the COST only: no cause, no advice (V95/V59).
+    #[test]
+    fn the_cold_line_reports_cost_without_cause_or_advice() {
+        let mut s = crate::session::Session::default();
+        s.turns.push(turn_with(250_657, 20_628));
+        let out = cold_line(&s, &Style::default());
+        assert!(out.contains("re-wrote the prefix"));
+        assert!(!out.contains('~'), "read from usage: exact");
+        for word in ["login", "auth", "avoid", "should", "consider"] {
+            assert!(
+                !out.to_lowercase().contains(word),
+                "no cause/advice: {word}"
+            );
+        }
+    }
+
+    /// V47/V9: json says `null` when the fields were never reported.
+    #[test]
+    fn json_cold_fields_are_null_when_unclassifiable() {
+        let mut s = crate::session::Session::default();
+        s.turns.push(crate::session::Turn {
+            input: Some(1),
+            ..crate::session::Turn::default()
+        });
+        let out = json_cache(&s);
+        assert!(out.contains("\"cold_cache_turns\":null"));
+        assert!(!out.contains("\"cold_cache_turns\":0"));
+    }
+
+    fn turn_with(write: u64, read: u64) -> crate::session::Turn {
+        crate::session::Turn {
+            cache_creation: Some(write),
+            cache_read: Some(read),
+            ..crate::session::Turn::default()
+        }
     }
 
     /// `stale` counts turns AFTER the last load. The fixture's turns all

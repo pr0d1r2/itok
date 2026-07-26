@@ -271,3 +271,44 @@ impl Session {
         total_of(&self.turns, |t| t.cache_read)
     }
 }
+
+/// Turns whose cache WRITE exceeded their cache READ: the prefix was
+/// re-written rather than served.
+///
+/// The rule needs no threshold. On a warm cache the read IS the whole
+/// prefix while the write is only the new turn's content, so read
+/// dominates; cold, there is nothing to read. Measured on a real
+/// session, the two populations sit 20x apart -- warm turns peak at a
+/// write/read ratio of 0.589, the cold ones start at 12.15 -- so `write
+/// > read` separates them without a tuned number.
+///
+/// Equal values classify as NEITHER. A turn reporting zero for both is
+/// not a cold cache, it is a turn that reported nothing.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ColdCache {
+    pub turns: usize,
+    pub written: u64,
+    pub read: u64,
+}
+
+impl Session {
+    /// Cold-cache turns, or `None` when no turn reported BOTH cache
+    /// fields -- "cannot tell" is not "none found" (V47).
+    #[must_use]
+    pub fn cold_cache(&self) -> Option<ColdCache> {
+        let mut seen = false;
+        let mut out = ColdCache::default();
+        for t in &self.turns {
+            let (Some(w), Some(r)) = (t.cache_creation, t.cache_read) else {
+                continue;
+            };
+            seen = true;
+            if w > r {
+                out.turns = out.turns.saturating_add(1);
+                out.written = out.written.saturating_add(w);
+                out.read = out.read.saturating_add(r);
+            }
+        }
+        seen.then_some(out)
+    }
+}
