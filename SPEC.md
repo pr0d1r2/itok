@@ -46,7 +46,9 @@ who knows those tools needs no teaching.
   commit's per-file token delta (default HEAD); `<commit>:<path>` = a
   blob's cost at a ref. Report-only · `--bpe` · `--format json`.
 - `itok check` — reads `.context-limits`, pinned `--bpe`, pass/fail.
-- `itok doctor <path> | --session [<id>]` — `--model X` · `--window N` ·
+- `itok doctor <path> | --session [<id>]` — `--model X[,Y...]` (a
+  comma-list narrows to those models, each resolved by V6; ONE
+  unresolvable element FAILS the call, naming it) · `--window N` ·
   `--format json` · `-C <dir>`. Advisory: fit-to-window · balance · noise
   · estimate confidence. `--session` retargets it at a CONTEXT:
   progression (use% · rate · `~turns left`) + per-item `projected` +
@@ -69,8 +71,10 @@ who knows those tools needs no teaching.
   `--cost` · `--format json`. Ranked context OCCUPANCY + dup · stale ·
   cache columns. `-- <path>` = that path's loads (per-path attribution;
   ⊥ a separate `blame` verb, V46). Report-only.
-- `itok headroom [<session>]` — `--model X` · `--window N` · `-h` ·
-  `--format json`. `df` for a context: window · used · avail · use% ·
+- `itok headroom [<session>]` — `--model X` · `--window N` · `--task N` ·
+  `-h` · `--format json`. `--task N` adds a `tasks left` column
+  (`avail`/N, tilde'd, naming the declared cost); `>= 1` is the
+  can-I-finish question & the VERDICT stays `doctor --session` (V99). `df` for a context: window · used · avail · use% ·
   the rate triple · turns left. Report-only (V91).
 - `itok calibrate [<session>]` — estimate-vs-actual factor from CLEAN
   samples only, reports `n`; `--format json`. Report-only (V48).
@@ -1020,6 +1024,23 @@ an exact count's meaning depends on WHICH tokenizer produced it ∴ the
 method label ! name the ENDPOINT — `(exact via 192.168.0.181:11434)`, ⊥ a
 bare `(exact)`.
 
+V102: **total context is DERIVABLE offline, as a 2-PARAMETER fit w/ a
+stated BAND.** MEASURED (n=363 turns, fit on the first half, VALIDATED on
+the unseen second): window = a FIXED 32,074 itok (system prompt + tool
+schemas — invisible to the transcript, yet read almost directly at turn 1:
+31,989 window vs 614 of content) + 1.571 × `bytes/4` of transcript
+content; held-out error mean 5.0% · max 7.4%. ∴ `unaccounted` (V44)
+DECOMPOSES into a measured CONSTANT + our own UNDERCOUNT, ⊥ a mystery.
+Needs NO per-item attribution ∴ strictly better than V48's clean-sample
+factor, which DISCARDS turns to get one. The transcript beats `--ollama`
+as the calibrator for a Claude session ∵ `usage` is that model's OWN exact
+count; ollama stays the calibrator for a LOCAL target. RULES: report the
+BAND & `n`, ⊥ a point (5% of 340k = ±17k); REFUSE a fit verdict INSIDE the
+band (V92's no-denominator rule, applied to precision); derive PER SESSION
+& per harness ∵ the slope absorbs message framing + the STRIPPED
+`thinking` text (0 bytes stored, an 808-byte signature kept) ∴ it is ⊥ a
+tokenizer ratio; a compaction breaks the monotonic premise (V98).
+
 ## §T TASKS
 
 | id | scope | done-when |
@@ -1111,6 +1132,14 @@ T77|.|the advice block: V97's two levers ONLY, mid-session eviction NAMED as a t
 T78|x|`--ollama=HOSTS`, & the `=` form generally for optional-value flags ∴ the documented bare `host` becomes reachable; heuristic kept as convenience; tests pin a BARE host & a bare IP|V101,V24,V25
 T79|.|remote-tier method label names the ENDPOINT (`exact via HOST`) ∴ a count from an unintended tokenizer is VISIBLE; needs `Method.label` to carry an owned endpoint, ⊥ a `&'static str`|V101,V3,V22
 T80|x|`--model` narrowing over an `--ollama` fleet: enumerate ONCE, then exact > `:latest` > unique prefix; ambiguous & not-found errors NAME the candidates. Reuses `fleet_all`'s enumeration, ⊥ a second fetch|V6,V22,V71
+T81|.|carry `--model` resolution to `estimate --ollama` (B11a): ONE resolver shared w/ `discover`, ⊥ a second copy|V6,V64
+T82|.|name the SKIPPED fleet hosts (B11b): report answered-vs-named ∴ a partial union ⊥ reads as whole, & `no fleet host serves X` says how many answered|V44
+T83|.|a DIRECTORY arg is REFUSED w/ its reason, ⊥ counted as 0 (B11d); `fit` never emits an unmeasured path|V47,V8
+T84|.|a feature-gated flag is KNOWN, ⊥ unknown (B11e): the diagnostic names the FEATURE + how to get it, & the docs registry marks gated tiers ∴ `--help` ⊥ advertises what this build lacks|V71,V23,V40
+T85|.|`--model` comma-list per the §I clause|V6,V24
+T86|.|`headroom --task N` -> `tasks left`; arithmetic only|V91,V93,V59
+T87|.|`total` estimator per V102: fit fixed-overhead + scale from transcript deltas, report band + `n`, refuse a verdict inside the band; SUPERSEDES T36's clean-sample factor|V102,V48,V44
+T88|.|`partition`: pack a fileset into N bins under `--window`, coupling graph read from STDIN (⊥ derived here — V24's compose-don't-scan), cut-set REPORTED loudly (V81); synthetic fixtures w/ KNOWN size+coupling ∵ real code gives no ground truth. Reopens V20's DECLINED `pack` scope (⊥ V21's knapsack trigger — a different problem): itok itself needs ~3 bins at a realistic 48k budget, & fan-out is one of only 2 cheap levers|V20,V60,V97
 T74|.|session identity: prefer an explicit harness-provided session id over newest-by-mtime; when falling back, SAY so. Two sessions in one project currently resolve to whichever was touched last|V96,V3
 T69|.|`.context-limits`/`.context-models`/`.context-policy`: an unparsable row FAILS w/ file+line+expected, ⊥ silent skip (B7); fractional units (`20.5k`) either parse or are rejected LOUDLY|V88,V11
 T49|x|SPEC compaction FIRST PASS + the machine to finish it: 25 done-`§T` rows trimmed to what+cites (method lives in the commit, V26), V62/V22/V70/V71/V31 destaled & tightened, `tests/spec_integrity.rs` guard, `.context-limits` turned into a RATCHET. MEASURED gross -2,781 chars; NET -2.1% only ∵ the pass itself added V88+B7+T69. 5 of 86 invariants touched ∴ the BULK is T70|V84,V15,V26
@@ -1128,6 +1157,7 @@ B3|2026-07-24|`diff --budget` test asserted a breach on live `HEAD~1..HEAD`, pre
 B8|2026-07-26|SPEC defect, mine: V77 specced an on-disk snapshot cache w/o EVER measuring the cost it was meant to avoid. Measured after the fact: 2.7MB parses in 8ms ∴ the cache bought 8ms & would have cost itok its first user-level state + a cross-platform cache-dir question + invalidation + pruning. Generalized MY workflow annoyance (re-copying a snapshot to scratchpad) into the tool's runtime w/o checking the cost transferred. KISS is an invariant-level rule now, ⊥ a preference|V77,V87
 B9|2026-07-26|SPEC defect, mine: the §T milestone table carried a `tasks` column — a SECOND copy of the row→milestone mapping — & it drifted to 25 ORPHANS of 79 rows (T50-T53·T57·T58·T62-T68·T69-T77), stale since T50. It read as the authoritative map of scope while covering neither the gate work nor 4 shipped runtime rows. B4's CAUSE exactly, third instance (two floors, then two doc renderings, now two mappings) ∴ policed, ⊥ eliminated, is what recurs. FIXED BY DELETION: `done-when` was always the real gate & the mapping nobody maintained was decoration (V69). No guard added ∵ there is no longer a copy to police (V64), & no new invariant ∵ V64+V69 already say it|V64,V69,V84
 B10|2026-07-26|`--ollama <bare-host>` SILENTLY IGNORED: the optional-value heuristic (`src/args.rs`) consumes the next token as hosts only when it holds `,` | `:` | is `-` ∴ `--ollama 192.168.0.181` left the tier BARE (⇒ localhost) & swallowed the IP as a PATH. §I documents `[scheme://]host[:port]` w/ default `11434` & V24 says "accepts a host" ∴ the DOCUMENTED bare form was the one unreachable form. SILENT: no error, & had localhost run a DIFFERENT model the answer would be a confident `(exact)` count from the wrong tokenizer (V3). Tests pinned `box1,box2` & `SPEC.md` only — a bare host was never tried, & it is genuinely ambiguous w/ a path, which is why the heuristic exists & why the gap was invisible. Found by a USER pointing a real LAN host at it, ⊥ by the suite (V80)|V101
+B11|2026-07-26|FIVE sites where an EXISTING invariant was never carried to a sibling path -- B7's shape, now the repo's DOMINANT defect class (w/ B1·B4·B7) ⊥ a one-off: (a) `--model` prefix resolution landed in `discover.rs` ONLY ∴ `estimate --ollama --model gpt-oss` 404s while `doctor` resolves it (V6; T80, mine & incomplete); (b) a DOWN fleet host is skipped w/ BYTE-IDENTICAL output ∴ a partial union reads as whole & `no fleet host serves X` can be WRONG (V44); (c) `(exact)` names no ENDPOINT ∴ a count from an unintended tokenizer is invisible on the SUCCESS path (V101 = T79); (d) a DIRECTORY arg counts as 0 itok ∴ `fit --window 40k src` emits `src` as fitting (V47); (e) a feature-gated flag reports `unknown flag` while `--help` advertises it, though `session` names its feature correctly (V71/V23). ZERO new invariants needed: every rule already existed ∴ the gap is PROPAGATION, & V84's "propagate a proven improvement to every consumer" is the invariant ignored. All five found by USING the tool in ONE session, ⊥ by the suite (V80/V82)|V84,V6,V44,V47,V71
 B7|2026-07-26|`.context-limits` silently SKIPS a row whose limit it cannot parse: `SPEC.md 20.5k` ⇒ `checked:1` of 2 registered paths, exit 0, NO diagnostic ∴ the ratchet set by T49 gated NOTHING & read as if it did. V11 already forbids exactly this for `.context-models` (unknown model ⇒ FAIL, ⊥ silent fallback); the rule was never carried to the sibling registry. Found by TESTING the new ceiling instead of trusting it (V80)|V88
 B6|2026-07-25|dev-shell auto-install wrote `hk install`'s command, which assumes `hk` on PATH. Outside the shell: `hk: command not found` ⇒ hook exit nonzero ⇒ EVERY git commit in the repo blocked, ⊥ merely ungated. Caught within one minute, by the very next commit failing|V74
 B5|2026-07-25|cassette replay stub read the request with ONE `read()`; TCP segments the only POST (`/api/generate`) so the body can arrive second ⇒ reply-then-close raced the client's write ⇒ `itok: ollama read ...: Invalid argument (os error 22)`. Flaky 2/3 runs parallel, 3/3 green serial ∴ the deleted unit declaration's `--test-threads=1` had been MASKING it, & the claim that the suite was hermetic (argued from reading temp-dir/port handling) was wrong. Surfaced the first time the new gate ran the ollama axis|V68
