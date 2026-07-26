@@ -1138,7 +1138,7 @@ T83|x|a DIRECTORY arg is REFUSED w/ its reason, ⊥ counted as 0 (B11d); `fit` n
 T84|x|a feature-gated flag is KNOWN, ⊥ unknown (B11e): the diagnostic names the FEATURE + how to get it, & the docs registry marks gated tiers ∴ `--help` ⊥ advertises what this build lacks|V71,V23,V40
 T85|.|`--model` comma-list per the §I clause|V6,V24
 T86|.|`headroom --task N` -> `tasks left`; arithmetic only|V91,V93,V59
-T87|.|`total` estimator per V102: fit fixed-overhead + scale from transcript deltas, report band + `n`, refuse a verdict inside the band; SUPERSEDES T36's clean-sample factor|V102,V48,V44
+T87|x|`total` estimator per V102: fit fixed-overhead + scale from transcript deltas, report band + `n`, refuse a verdict inside the band; SUPERSEDES T36's clean-sample factor|V102,V48,V44
 T88|.|`partition`: pack a fileset into N bins under `--window`, coupling graph read from STDIN (⊥ derived here — V24's compose-don't-scan), cut-set REPORTED loudly (V81); synthetic fixtures w/ KNOWN size+coupling ∵ real code gives no ground truth. Reopens V20's DECLINED `pack` scope (⊥ V21's knapsack trigger — a different problem): itok itself needs ~3 bins at a realistic 48k budget, & fan-out is one of only 2 cheap levers|V20,V60,V97
 T74|.|session identity: prefer an explicit harness-provided session id over newest-by-mtime; when falling back, SAY so. Two sessions in one project currently resolve to whichever was touched last|V96,V3
 T69|.|`.context-limits`/`.context-models`/`.context-policy`: an unparsable row FAILS w/ file+line+expected, ⊥ silent skip (B7); fractional units (`20.5k`) either parse or are rejected LOUDLY|V88,V11

@@ -43,8 +43,13 @@ pub fn parse(text: &str) -> Session {
 /// harness adds record kinds without warning, and a reader that rejected
 /// them would break on every upgrade.
 fn absorb(v: &Value, out: &mut Session) {
+    // Every record contributes to the CONTEXT, not just the ones that
+    // become load events: the conversation itself is re-sent each turn and
+    // is the bulk of a long window (V102). Counted as byte LENGTHS only --
+    // no text enters any type here (V45).
+    out.content_bytes = out.content_bytes.saturating_add(content_bytes(v));
     match str_at(v, "type") {
-        Some("assistant") => out.turns.extend(turn(v)),
+        Some("assistant") => out.turns.extend(turn(v, out.content_bytes)),
         Some("user") => out.events.extend(tool_event(v)),
         Some("attachment") => out.events.extend(attachment_event(v)),
         _ => {}
@@ -73,7 +78,7 @@ fn ts_of(v: &Value) -> String {
 /// show. On the transcript characterised, usage was present on 495 of
 /// 495 records -- but that is an observation about one harness version,
 /// not a guarantee, and the honest shape does not depend on it holding.
-fn turn(v: &Value) -> Option<Turn> {
+fn turn(v: &Value, cum_content_bytes: u64) -> Option<Turn> {
     let usage = usage_of(v);
     let num = |k: &str| usage.get(k).and_then(Value::as_u64);
     Some(Turn {
@@ -83,7 +88,51 @@ fn turn(v: &Value) -> Option<Turn> {
         cache_creation: num("cache_creation_input_tokens"),
         cache_read: num("cache_read_input_tokens"),
         output: num("output_tokens"),
+        cum_content_bytes,
     })
+}
+
+/// Byte length of everything this record puts into the context.
+///
+/// Sums the content blocks a request carries back: visible `text`,
+/// `tool_use` ARGUMENTS (a Write's body is an input token like any other),
+/// `tool_result` payloads, and a `thinking` block's SIGNATURE.
+///
+/// The signature, not the reasoning: measured, `thinking` is stored EMPTY
+/// with an ~808-byte signature beside it, so the reasoning text is not
+/// recoverable here and whatever it costs lands in the fit's slope instead
+/// (V102 says so rather than pretending the slope is a tokenizer ratio).
+///
+/// Lengths only -- this returns a count and keeps no text (V45).
+fn content_bytes(v: &Value) -> u64 {
+    let Some(c) = v.get("message").and_then(|m| m.get("content")) else {
+        return 0;
+    };
+    match c {
+        Value::String(s) => len_of(s.len()),
+        Value::Array(blocks) => blocks.iter().map(block_bytes).sum(),
+        _ => 0,
+    }
+}
+
+/// One content block's byte length, by its own shape.
+fn block_bytes(b: &Value) -> u64 {
+    let field = |k: &str| b.get(k).and_then(Value::as_str).map_or(0, str::len);
+    let json = |k: &str| b.get(k).map_or(0, |x| x.to_string().len());
+    len_of(match str_at(b, "type") {
+        Some("text") => field("text"),
+        // Empty in practice; the signature is what actually travels.
+        Some("thinking") => {
+            field("signature").saturating_add(field("thinking"))
+        }
+        Some("tool_use") => json("input"),
+        Some("tool_result") => json("content"),
+        _ => 0,
+    })
+}
+
+fn len_of(n: usize) -> u64 {
+    u64::try_from(n).unwrap_or(u64::MAX)
 }
 
 /// The `usage` object, or `Null` when the record carries none.

@@ -200,6 +200,14 @@ headroom [<session>] [--model X] [--window N] [-h] [--format human|json] [-C dir
 
 `df` for a context: window, used, avail, use% -- plus the growth rate over the last 10/50/200 TURNS (context grows per turn, so a per-second rate would be meaningless) and `~turns left` at the recent rate. Without `--window` or `--model` there is no capacity, so `avail`/`use%`/`turns left` are reported as absent rather than computed against a guessed window. Report-only.
 
+### `calibrate`
+
+```text
+calibrate [<session>] [-h] [--format human|json] [-C dir]
+```
+
+What this session's context actually cost, against what itok estimated: a fixed overhead the transcript cannot see (system prompt + tool schemas) and a scale from `bytes/4` to real tokens. Reports the error BAND measured on turns the fit never saw, plus `n` -- never a bare factor. Too few turns reports `n` and no factor. The scale absorbs message framing and unrecorded reasoning, so it is not a tokenizer ratio and is derived per session. Report-only.
+
 ### `docs`
 
 ```text

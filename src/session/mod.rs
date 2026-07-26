@@ -80,6 +80,11 @@ pub struct Turn {
     pub cache_creation: Option<u64>,
     pub cache_read: Option<u64>,
     pub output: Option<u64>,
+    /// Running total of transcript CONTENT bytes at this turn -- what the
+    /// conversation had accumulated when this window was billed (V102).
+    /// Stamped here because the fit pairs an exact window against the
+    /// content that produced it, and a pair needs both on one record.
+    pub cum_content_bytes: u64,
 }
 
 impl Turn {
@@ -113,6 +118,8 @@ pub struct Session {
     pub turns: Vec<Turn>,
     /// Records that could not be parsed, counted rather than dropped.
     pub skipped: usize,
+    /// Total transcript content bytes seen (V45: a count, never text).
+    pub content_bytes: u64,
 }
 
 impl Session {
@@ -360,4 +367,154 @@ impl Session {
         }
         seen.then_some(out)
     }
+}
+
+/// A session's fitted context model (V102).
+///
+/// Two parameters: a FIXED overhead the transcript cannot see -- system
+/// prompt plus tool schemas -- and a SCALE from `bytes/4` of transcript
+/// content to actual billed tokens.
+///
+/// The scale is NOT a tokenizer ratio and must not be sold as one: it also
+/// absorbs per-message framing and the stripped `thinking` text. That is
+/// why it is derived per session and per harness rather than shipped as a
+/// constant (V102), and why V48's rule still binds -- the factor is
+/// REPORTED, never folded silently into the estimator ladder (V4).
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct Fit {
+    /// Tokens present before any transcript content: the intercept.
+    pub overhead: u64,
+    /// Actual tokens per `bytes/4` unit, in THOUSANDTHS -- 1571 = 1.571x.
+    /// Integer so the reported number is stable to read and to test.
+    pub scale_milli: u64,
+    /// Turns the parameters were fitted on.
+    pub fitted: usize,
+    /// Turns held BACK and used only to measure error.
+    pub validated: usize,
+    /// Worst held-out error, in tenths of a percent: the BAND (V102).
+    pub band_permille: u64,
+}
+
+/// Turns needed before a fit is reported at all.
+///
+/// Two parameters can be solved from three points, but a BAND needs points
+/// the fit never saw, so half the sample is held back. Below this the band
+/// would be noise, and a band that understates is worse than none -- it is
+/// what the refuse-inside-the-band rule depends on (V102/V92).
+pub const MIN_FIT_TURNS: usize = 20;
+
+/// What a fit can honestly say about whether something fits a window.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Verdict {
+    Fits,
+    Over,
+    /// Inside the error band: the fit declines to say (V102).
+    TooClose,
+}
+
+impl Fit {
+    /// Predicted total context for a given content size.
+    #[must_use]
+    pub fn predict(&self, content_bytes: u64) -> u64 {
+        let units = content_bytes.checked_div(4).unwrap_or(0);
+        let scaled = units
+            .checked_mul(self.scale_milli)
+            .and_then(|v| v.checked_div(1000))
+            .unwrap_or(u64::MAX);
+        self.overhead.saturating_add(scaled)
+    }
+
+    /// Whether a predicted total fits a window -- and `TooClose` when the
+    /// answer lies INSIDE the band.
+    ///
+    /// A 5% band on 340k is +-17k: decisive at 20% full and at 90% full,
+    /// worthless at 97%. Returning Fits or Over there would be a verdict
+    /// the measurement cannot support (V102), so the third answer exists.
+    #[must_use]
+    pub fn verdict(&self, predicted: u64, window: u64) -> Verdict {
+        let margin = predicted
+            .saturating_mul(self.band_permille)
+            .checked_div(1000)
+            .unwrap_or(0);
+        if predicted.saturating_add(margin) <= window {
+            Verdict::Fits
+        } else if predicted.saturating_sub(margin) > window {
+            Verdict::Over
+        } else {
+            Verdict::TooClose
+        }
+    }
+}
+
+impl Session {
+    /// Fit the context model, or `None` when the sample cannot support one.
+    ///
+    /// Fits on the first half and measures error on the UNSEEN second half.
+    /// In-sample residuals understate, and an understated band is exactly
+    /// what `verdict` must not be handed (V102).
+    #[must_use]
+    pub fn fit(&self) -> Option<Fit> {
+        let s: Vec<(f64, f64)> = self.samples();
+        if s.len() < MIN_FIT_TURNS {
+            return None;
+        }
+        let half = s.len().checked_div(2)?;
+        let (train, test) = (s.get(..half)?, s.get(half..)?);
+        let (scale, overhead) = least_squares(train)?;
+        Some(Fit {
+            overhead: overhead.max(0.0) as u64,
+            scale_milli: (scale * 1000.0).max(0.0) as u64,
+            fitted: train.len(),
+            validated: test.len(),
+            band_permille: worst_error(test, scale, overhead),
+        })
+    }
+
+    /// (content units, actual window) per turn that reported usage.
+    ///
+    /// Zero-window turns are excluded for V93's reason: one real turn
+    /// reported a window of 0, and feeding it to a fit would drag the
+    /// intercept toward a measurement that never happened.
+    fn samples(&self) -> Vec<(f64, f64)> {
+        self.turns
+            .iter()
+            .filter_map(|t| Some((t.cum_content_bytes, t.billed_input()?)))
+            .filter(|(_, w)| *w > 0)
+            .map(|(c, w)| ((c / 4) as f64, w as f64))
+            .collect()
+    }
+}
+
+/// Ordinary least squares: returns `(slope, intercept)`.
+///
+/// `None` when the inputs cannot determine a line -- a degenerate sample
+/// with no variation in content gives a zero denominator, and a session
+/// long enough to reach here can still be degenerate. Returning None beats
+/// emitting an infinity that would render as a number (V47's rule, on
+/// arithmetic).
+fn least_squares(pts: &[(f64, f64)]) -> Option<(f64, f64)> {
+    let n = pts.len() as f64;
+    let sx: f64 = pts.iter().map(|(x, _)| x).sum();
+    let sy: f64 = pts.iter().map(|(_, y)| y).sum();
+    let sxx: f64 = pts.iter().map(|(x, _)| x * x).sum();
+    let sxy: f64 = pts.iter().map(|(x, y)| x * y).sum();
+    let denom = n * sxx - sx * sx;
+    if denom == 0.0 || !denom.is_finite() {
+        return None;
+    }
+    let slope = (n * sxy - sx * sy) / denom;
+    let intercept = (sy - slope * sx) / n;
+    (slope.is_finite() && intercept.is_finite()).then_some((slope, intercept))
+}
+
+/// Worst relative error over the HELD-OUT points, in tenths of a percent.
+fn worst_error(pts: &[(f64, f64)], slope: f64, intercept: f64) -> u64 {
+    pts.iter()
+        .filter(|(_, actual)| *actual > 0.0)
+        .map(|(x, actual)| {
+            let err = (intercept + slope * x - actual).abs() / actual;
+            (err * 1000.0) as u64
+        })
+        .max()
+        .unwrap_or(0)
 }

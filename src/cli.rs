@@ -98,6 +98,7 @@ fn runtime(v: Verb, rest: &[String]) -> Output {
     match v {
         Verb::Top => crate::topcmd::top(rest),
         Verb::Headroom => crate::headroom::headroom(rest),
+        Verb::Calibrate => crate::calibrate::calibrate(rest),
         // Trace, and by construction nothing else -- `dispatch` routes
         // only the runtime verbs here. A future runtime verb that forgot
         // its arm above would silently BECOME trace, so
@@ -122,7 +123,9 @@ fn dispatch(v: Verb, rest: &[String]) -> Output {
         Verb::Log => crate::logcmd::log(rest),
         Verb::Check => crate::checkcmd::check(rest),
         Verb::Fit => crate::fitcmd::fit(rest),
-        Verb::Trace | Verb::Top | Verb::Headroom => runtime(v, rest),
+        Verb::Trace | Verb::Top | Verb::Headroom | Verb::Calibrate => {
+            runtime(v, rest)
+        }
     }
 }
 

@@ -23,6 +23,7 @@ pub(crate) enum Verb {
     Trace,
     Top,
     Headroom,
+    Calibrate,
 }
 
 /// Read-only verbs, the only ones prefix-inference resolves. `fit` selects
@@ -38,6 +39,7 @@ pub(crate) const VERBS: &[(&str, Verb)] = &[
     ("trace", Verb::Trace),
     ("top", Verb::Top),
     ("headroom", Verb::Headroom),
+    ("calibrate", Verb::Calibrate),
 ];
 
 /// The outcome of resolving a verb token.
@@ -125,6 +127,25 @@ mod tests {
     fn headroom_takes_h_without_costing_fit_its_f() {
         assert_eq!(resolve("h"), Resolution::Verb(Verb::Headroom));
         assert_eq!(resolve("f"), Resolution::Verb(Verb::Fit));
+    }
+
+    /// V6: `calibrate` and `check` share a `c`, so the bare prefix must
+    /// ERROR with candidates rather than silently picking one. The verb
+    /// name is specced in the interface section, so the collision is accepted and HANDLED --
+    /// what V6 forbids is the silent pick, not the ambiguity.
+    #[test]
+    fn c_is_ambiguous_between_calibrate_and_check() {
+        let got = match resolve("c") {
+            Resolution::Ambiguous(mut c) => {
+                c.sort_unstable();
+                c
+            }
+            other => vec![format!("{other:?}").leak() as &str],
+        };
+        assert_eq!(got, vec!["calibrate", "check"]);
+        // Longer prefixes still resolve, so the cost is one keystroke.
+        assert_eq!(resolve("cal"), Resolution::Verb(Verb::Calibrate));
+        assert_eq!(resolve("ch"), Resolution::Verb(Verb::Check));
     }
 
     /// Longer prefixes still resolve, so the ambiguity costs nothing.
