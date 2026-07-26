@@ -909,14 +909,21 @@ direction). Note the distribution is HEAVY-TAILED (median 285 vs mean
 ~900 itok/turn) ∴ a high rate often means ONE big read landed recently,
 ⊥ that everything is heavy — the triple's SPREAD is the signal, ⊥ any
 single number.
-V94: **cache-READ volume is CHEAP; the fuse's premise needs the split,
-⊥ the total.** MEASURED (1012 turns, this repo's own session): 354M
-billed input = 99.5% cache READ · 0.001% fresh. Caching does ⊥ reduce
-the token VOLUME, it reduces the RATE on nearly all of it ∴ V50's
-reduction ladder & V54's load fuse mostly save CHEAP tokens, & any claim
-about what enforcement is WORTH ! be stated against the cache split
-(V47), ⊥ the headline total. itok bundles NO price list (V61) ∴ it
-reports the split & the reader applies their own rates.
+V94: **cache reads are cheap PER TOKEN & the aggregate is QUADRATIC.**
+MEASURED (1048 turns, this repo's own session): 379.6M billed input =
+99.5% cache READ · 0.001% fresh, & the window grew 32,780 → 720,349
+(22x). Total cost = the SUM OF WINDOWS ∴ it is the INTEGRAL of a growing
+line, ⊥ a constant × turns: mean window 362k against a final 720k.
+∴ a reduction's value is `size × turns REMAINING`, ⊥ its one-time load
+cost — dropping 100k at turn 200 of 1048 avoids 84.8M cache-read tokens,
+& a 200k CAP would have avoided 185.5M = 49% of the entire bill.
+EARLIEST reductions dominate. CORRECTED: the first version of this
+invariant said the ladder "mostly saves CHEAP tokens" & concluded
+enforcement was worth less than it looks — true per token, WRONG in
+aggregate, & backwards about V50/V54, which this strengthens. itok
+bundles NO price list (V61) ∴ it reports the split & the SIZE×TURNS
+leverage; the reader applies their own rates.
+
 V95: **n=2 is an ANECDOTE; the fuse gets NO new target from it.** Two
 turns wrote 250,657 each (26% of all cache writes) & the obvious reading
 — "agents bust the prefix cache constantly, so retarget the fuse" — was
@@ -941,6 +948,29 @@ sessions, saved only by their being in different projects. Prefer an
 explicit id from the environment; fall back to newest-by-mtime ONLY when
 none is offered, & SAY which was used (V3) — "the newest transcript" & "your
 session" are different claims.
+V97: **retention is cheap only at ENTRY or at SESSION END; the middle is
+a TRAP.** Prompt caching makes the prefix append-only in practice:
+deleting | mutating something EARLY invalidates everything after it &
+forces a full re-write — MEASURED at ~250k, ~250x a normal turn's write
+(V95). ∴ "evict the stale stuff", the intuitively obvious lever, COSTS
+MORE THAN IT SAVES, & the two viable levers are (a) cap BEFORE it enters
+(V50's ladder, which is why the ladder caps at LOAD ⊥ prunes later) &
+(b) END the session (which is why a spec that makes a fresh session
+productive is a COST control, ⊥ only a memory — V84). Harness-owned
+options (compaction · sub-agent fan-out, V60) are the same two shapes:
+compaction is a lossy session-end, fan-out is entry-control by giving
+the expensive work a context that DIES. itok MEASURES all of them &
+owns only (a).
+V98: **`size × turns` is now MEASURED, ⊥ assumed — the stale metric is
+unblocked.** T32 refused to compute it ∵ the multiplication "assumes
+every one of those turns re-sent the item, which the transcript does ⊥
+record per item". That assumption is now OBSERVED: `cache_read` ≈ the
+whole window on every warm turn, & the window only GROWS ∴ an item
+entering at turn N in a T-turn session really does carry ~`size × (T-N)`
+of cache-read billing. Report it, & state the CAVEAT it rests on: this
+holds for UNCOMPACTED sessions, which is all that has been observed. If
+a compaction is ever seen, items DO leave & the product becomes an upper
+bound — say so then, ⊥ silently keep multiplying (V3).
 
 ## §T TASKS
 
@@ -1027,6 +1057,7 @@ T70|.|scripted bulk compaction: CPU derives (sizes·citation graph·orphans·sta
 T71|.|concurrency guard: a test that runs N itok processes at once over the same tree & asserts identical output + zero writes outside `target/`; keeps V89's free property from being lost silently|V89
 T72|.|`headroom` verb: `df` columns (window·used·avail·use%) + the rate triple (10/50/200 turns) + `~turns left`; `-h`·`--model`·`--window`·json; zero-window turns excluded from the rate|V91,V92,V93
 T73|x|report cold-cache events: a turn whose cache WRITE dwarfs its read is a prefix re-write; name the cost (~250x a normal turn) & leave the cause to the reader. Observation only -- ⊥ a fuse input (V95)|V94,V95,V47
+T75|.|`top`: add the `size × turns-remaining` column (V98) & state the uncompacted caveat; it is the number that makes early reduction's leverage visible|V98,V94,V59
 T74|.|session identity: prefer an explicit harness-provided session id over newest-by-mtime; when falling back, SAY so. Two sessions in one project currently resolve to whichever was touched last|V96,V3
 T69|.|`.context-limits`/`.context-models`/`.context-policy`: an unparsable row FAILS w/ file+line+expected, ⊥ silent skip (B7); fractional units (`20.5k`) either parse or are rejected LOUDLY|V88,V11
 T49|x|SPEC compaction FIRST PASS + the machine to finish it: 25 done-`§T` rows trimmed to what+cites (method lives in the commit, V26), V62/V22/V70/V71/V31 destaled & tightened, `tests/spec_integrity.rs` guard, `.context-limits` turned into a RATCHET. MEASURED gross -2,781 chars; NET -2.1% only ∵ the pass itself added V88+B7+T69. 5 of 86 invariants touched ∴ the BULK is T70|V84,V15,V26
