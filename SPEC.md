@@ -1000,19 +1000,19 @@ compaction makes them UPPER BOUNDS, & the day one is seen they say so.
 
 ## §T TASKS
 
-| id | scope | tasks | done-when |
-|----|-------|-------|-----------|
-| M1 | offline core — estimate + report | T1, T2, T3, T4, T12 | `itok estimate`/`itok e` green on a real tree, json stable, `--budget` gates |
-| M2 | full ladder + gate + extract | T5, T7, T8, T9, T10, T11, T13, T14, T15, T16, T17, T18, T19, T20, T21, T22, T23, T24 | `--bpe`/`--ollama`/`diff`/`check`/`doctor`/`log`/`fit` done, subtree-split rehearsed |
-| M3 | publish — crates.io-ready, public CI | T25, T26, T27, T28, T29 | `cargo publish --dry-run` clean, public CI green, no origin-repo ref shipped, docs regenerate, `itok` installs |
-| M4 | runtime introspection — read-only ledger (V41, V42) | T30, T31, T32, T33, T34, T35, T36, T37, T38, T49 | `itok trace`/`itok top` green on itok's OWN sessions, accounted-vs-unaccounted stated, calibration factor + `n` reported, zero interception |
-| M5 | reduction — the standalone pipe filter | T39, T40, T41 | `cmd \| itok cap 10k` useful w/ no agent & no hook, every applied rung named in the footer, cut is resumable & deterministic |
-| M6 | enforcement — policy · guard · fuse | T42, T43, T44, T45, T46 | hook adapter decides from `.context-policy`, fuse graduated + always overridable, every trip/cap/override lands in the ledger |
-| M9 | public exposure — ships as `0.7.0` | T59 | repo public, `0.7.0-rc.1` published & installed from crates.io, then `0.7.0`; badges resolve |
-| M10 | CI hardening — ships as `0.8.0` | T60 | matrix (linux + macos-arm) green over a streak, release automation, MSRV axis |
-| M11 | closure — ships as `1.0.0` | T61 | public feedback folded; CLI surface + json contract frozen |
-| M8 | local guardrails — ONE gate definition, run by hk | T54, T55, T56 | `hk.pkl` is the only place an op is written; pre-commit/pre-push/CI all reach it; the suite is green run PARALLEL |
-| M7 | runtime CI — replay & regression | T47, T48 | a recorded ledger replays deterministically offline ∴ policy A/B w/o an agent; a run over session budget fails CI |
+| id | scope | done-when |
+|----|-------|-----------|
+| M1 | offline core — estimate + report | `itok estimate`/`itok e` green on a real tree, json stable, `--budget` gates |
+| M2 | full ladder + gate + extract | `--bpe`/`--ollama`/`diff`/`check`/`doctor`/`log`/`fit` done, subtree-split rehearsed |
+| M3 | publish — crates.io-ready, public CI | `cargo publish --dry-run` clean, public CI green, no origin-repo ref shipped, docs regenerate, `itok` installs |
+| M4 | runtime introspection — read-only ledger (V41, V42) | `itok trace`/`itok top` green on itok's OWN sessions, accounted-vs-unaccounted stated, calibration factor + `n` reported, zero interception |
+| M5 | reduction — the standalone pipe filter | `cmd \| itok cap 10k` useful w/ no agent & no hook, every applied rung named in the footer, cut is resumable & deterministic |
+| M6 | enforcement — policy · guard · fuse | hook adapter decides from `.context-policy`, fuse graduated + always overridable, every trip/cap/override lands in the ledger |
+| M9 | public exposure — ships as `0.7.0` | repo public, `0.7.0-rc.1` published & installed from crates.io, then `0.7.0`; badges resolve |
+| M10 | CI hardening — ships as `0.8.0` | matrix (linux + macos-arm) green over a streak, release automation, MSRV axis |
+| M11 | closure — ships as `1.0.0` | public feedback folded; CLI surface + json contract frozen |
+| M8 | local guardrails — ONE gate definition, run by hk | `hk.pkl` is the only place an op is written; pre-commit/pre-push/CI all reach it; the suite is green run PARALLEL |
+| M7 | runtime CI — replay & regression | a recorded ledger replays deterministically offline ∴ policy A/B w/o an agent; a run over session budget fails CI |
 
 T1|x|crate skeleton: standalone bin, Cargo.toml, MIT license, min deps|V13
 T2|x|`estimate` dummy tier: bytes/4 + word proxy, du flags, tracked-by-default|V4,V8
@@ -1101,6 +1101,7 @@ B1|2026-07-24|extraction: `rustfmt.toml`/`clippy.toml` root-only ⇒ standalone 
 B2|2026-07-24|extraction: git-command tests use `CARGO_MANIFEST_DIR.parent().parent()` as repo root + hardcode `crates/itok/…` paths ⇒ standalone `cargo nextest` fails|V37
 B3|2026-07-24|`diff --budget` test asserted a breach on live `HEAD~1..HEAD`, presuming a substantial last commit; a near-zero-delta ceiling bump as HEAD gave no breach ⇒ exit 0 ≠ 1, blocking every commit until HEAD grew|V37
 B8|2026-07-26|SPEC defect, mine: V77 specced an on-disk snapshot cache w/o EVER measuring the cost it was meant to avoid. Measured after the fact: 2.7MB parses in 8ms ∴ the cache bought 8ms & would have cost itok its first user-level state + a cross-platform cache-dir question + invalidation + pruning. Generalized MY workflow annoyance (re-copying a snapshot to scratchpad) into the tool's runtime w/o checking the cost transferred. KISS is an invariant-level rule now, ⊥ a preference|V77,V87
+B9|2026-07-26|SPEC defect, mine: the §T milestone table carried a `tasks` column — a SECOND copy of the row→milestone mapping — & it drifted to 25 ORPHANS of 79 rows (T50-T53·T57·T58·T62-T68·T69-T77), stale since T50. It read as the authoritative map of scope while covering neither the gate work nor 4 shipped runtime rows. B4's CAUSE exactly, third instance (two floors, then two doc renderings, now two mappings) ∴ policed, ⊥ eliminated, is what recurs. FIXED BY DELETION: `done-when` was always the real gate & the mapping nobody maintained was decoration (V69). No guard added ∵ there is no longer a copy to police (V64), & no new invariant ∵ V64+V69 already say it|V64,V69,V84
 B7|2026-07-26|`.context-limits` silently SKIPS a row whose limit it cannot parse: `SPEC.md 20.5k` ⇒ `checked:1` of 2 registered paths, exit 0, NO diagnostic ∴ the ratchet set by T49 gated NOTHING & read as if it did. V11 already forbids exactly this for `.context-models` (unknown model ⇒ FAIL, ⊥ silent fallback); the rule was never carried to the sibling registry. Found by TESTING the new ceiling instead of trusting it (V80)|V88
 B6|2026-07-25|dev-shell auto-install wrote `hk install`'s command, which assumes `hk` on PATH. Outside the shell: `hk: command not found` ⇒ hook exit nonzero ⇒ EVERY git commit in the repo blocked, ⊥ merely ungated. Caught within one minute, by the very next commit failing|V74
 B5|2026-07-25|cassette replay stub read the request with ONE `read()`; TCP segments the only POST (`/api/generate`) so the body can arrive second ⇒ reply-then-close raced the client's write ⇒ `itok: ollama read ...: Invalid argument (os error 22)`. Flaky 2/3 runs parallel, 3/3 green serial ∴ the deleted unit declaration's `--test-threads=1` had been MASKING it, & the claim that the suite was hermetic (argued from reading temp-dir/port handling) was wrong. Surfaced the first time the new gate ran the ollama axis|V68
