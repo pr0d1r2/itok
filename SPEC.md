@@ -1123,7 +1123,7 @@ T65|x|`packages.*` src narrowed via `lib.fileset` to `src/`+`Cargo.toml`+`Cargo.
 T66|x|CI = nix: `nix develop --command hk check` + `nix build` of all 3 feature configurations|V75,V64
 T67|x|`nixfmt --check` gates `*.nix`: the flake decides what every other step runs with ∴ drift there is drift everywhere. CHECK mode only|V72
 T68|x|transcript guards BEFORE the capability: `.gitignore` transcript patterns (fixtures exempt) + a CONTENT-signature hygiene test (a rename defeats a filename pattern|V45,V71
-T69|.|`.context-limits`/`.context-models`/`.context-policy`: an unparsable row FAILS w/ file+line+expected, ⊥ silent skip (B7); fractional units (`20.5k`) either parse or are rejected LOUDLY|V88,V11
+T69|x|`.context-limits`/`.context-models`/`.context-policy`: an unparsable row FAILS w/ file+line+expected, ⊥ silent skip (B7); fractional units (`20.5k`) either parse or are rejected LOUDLY|V88,V11
 T70|x|scripted bulk compaction: CPU derives (sizes·citation graph·orphans·stale refs·shared n-grams·must-keep fact sets), ONE inference call rewrites the top-N under a byte budget, CPU VERIFIES every citation/number/identifier survived, named `--allow-drop` for deliberate removals. Seeded by T49's measurements|V84,V73,V80
 T71|x|concurrency guard: a test that runs N itok processes at once over the same tree & asserts identical output + zero writes outside `target/`; keeps V89's free property from being lost silently|V89
 T72|x|`headroom` verb: `df` columns (window·used·avail·use%) + the rate triple (10/50/200 turns) + `~turns left`; `-h`·`--model`·`--window`·json; zero-window turns excluded from the rate|V91,V92,V93

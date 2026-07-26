@@ -26,9 +26,15 @@ pub(crate) fn check(rest: &[String]) -> Output {
 }
 
 fn run(root: &Path, format: Format) -> Output {
-    let entries = read_limits(root);
-    let breaches = evaluate(root, &entries);
-    verdict(entries.len(), &breaches, format)
+    match read_limits(root) {
+        Ok(entries) => {
+            let breaches = evaluate(root, &entries);
+            verdict(entries.len(), &breaches, format)
+        }
+        // A row the tool cannot read is a row the AUTHOR believes is
+        // enforced, so this is a usage error, not a pass (V88/B7).
+        Err(e) => Output::usage_err(format!("itok: {e}")),
+    }
 }
 
 fn method() -> &'static Method {
@@ -44,21 +50,46 @@ fn method() -> &'static Method {
     }
 }
 
-fn read_limits(root: &Path) -> Vec<(String, u64)> {
-    std::fs::read_to_string(root.join(LIMITS))
-        .map(|t| parse_limits(&t))
-        .unwrap_or_default()
+/// A registered path and its ceiling.
+type Entry = (String, u64);
+
+/// The registry, or the first row that could not be read.
+///
+/// A MISSING file is still no enforcement (V10, opt-in); an UNREADABLE ROW
+/// inside a present file is a different thing entirely.
+fn read_limits(root: &Path) -> Result<Vec<Entry>, String> {
+    match std::fs::read_to_string(root.join(LIMITS)) {
+        Ok(t) => parse_limits(&t),
+        Err(_) => Ok(Vec::new()),
+    }
 }
 
-fn parse_limits(text: &str) -> Vec<(String, u64)> {
+/// Parse every row, FAILING on the first unreadable one.
+///
+/// B7: this used to `filter_map`, so `SPEC.md 20.5k` was silently dropped
+/// and `check` reported `checked:1` of 2 registered paths with exit 0. The
+/// ratchet gated nothing and read as if it did -- strictly worse than
+/// having no row at all (V88/V69), and V11 had already forbidden exactly
+/// this for the sibling registry.
+fn parse_limits(text: &str) -> Result<Vec<Entry>, String> {
     text.lines()
-        .map(str::trim)
-        .filter(|l| !l.is_empty() && !l.starts_with('#'))
-        .filter_map(entry)
+        .enumerate()
+        .map(|(i, l)| (i.saturating_add(1), l.trim()))
+        .filter(|(_, l)| !l.is_empty() && !l.starts_with('#'))
+        .map(|(n, l)| entry(l).ok_or_else(|| row_err(n, l)))
         .collect()
 }
 
-fn entry(line: &str) -> Option<(String, u64)> {
+/// Names the FILE, the LINE, and what was expected (V88) -- a diagnostic
+/// that only says "bad row" leaves the author guessing which one.
+fn row_err(line: usize, text: &str) -> String {
+    format!(
+        "{LIMITS}:{line}: expected `<path> <count>` \
+         (count like 20000, 20k, 1M), got `{text}`"
+    )
+}
+
+fn entry(line: &str) -> Option<Entry> {
     let mut p = line.split_whitespace();
     let path = p.next()?.to_owned();
     let cap = units::parse(p.next()?).ok()?;
@@ -67,7 +98,7 @@ fn entry(line: &str) -> Option<(String, u64)> {
 
 /// Registered paths whose token cost exceeds their ceiling. A path absent
 /// on disk counts as 0 and passes.
-fn evaluate(root: &Path, entries: &[(String, u64)]) -> Vec<Breach> {
+fn evaluate(root: &Path, entries: &[Entry]) -> Vec<Breach> {
     entries
         .iter()
         .filter_map(|(path, cap)| {
@@ -182,13 +213,45 @@ mod tests {
         let e = parse_limits("# note\n\nSPEC.md  60k\nfoo/bar  100\n");
         assert_eq!(
             e,
-            vec![("SPEC.md".to_owned(), 60_000), ("foo/bar".to_owned(), 100)]
+            Ok(vec![
+                ("SPEC.md".to_owned(), 60_000),
+                ("foo/bar".to_owned(), 100)
+            ])
         );
     }
 
+    /// B7, REVERSED. This test previously asserted the bug: a malformed row
+    /// was "skipped" and the registry came back empty, so `check` passed
+    /// while gating nothing. It now asserts the row FAILS, and that the
+    /// message names the file, the line, and the expected form (V88).
     #[test]
-    fn a_malformed_line_is_skipped() {
-        assert!(parse_limits("SPEC.md notanumber\n").is_empty());
+    fn an_unreadable_row_fails_and_says_where() {
+        let e = parse_limits("# note\nSPEC.md notanumber\n").err();
+        let msg = e.unwrap_or_default();
+        assert!(msg.contains(".context-limits:2:"), "file and line: {msg}");
+        assert!(msg.contains("expected"), "what was wanted: {msg}");
+        assert!(msg.contains("notanumber"), "and what was found: {msg}");
+    }
+
+    /// B7's exact input. A fractional unit is rejected LOUDLY (T69).
+    #[test]
+    fn a_fractional_unit_is_rejected_not_dropped() {
+        assert!(parse_limits("SPEC.md 20.5k\n").is_err());
+    }
+
+    /// A row missing its ceiling entirely also fails -- the author wrote a
+    /// path expecting it to be gated.
+    #[test]
+    fn a_row_without_a_ceiling_fails() {
+        assert!(parse_limits("SPEC.md\n").is_err());
+    }
+
+    /// V10 still holds: a MISSING registry is no enforcement, not an error.
+    /// Only an unreadable row inside a present file fails.
+    #[test]
+    fn a_missing_registry_is_still_no_enforcement() {
+        let empty = Path::new("/nonexistent-itok-root");
+        assert_eq!(read_limits(empty), Ok(Vec::new()));
     }
 
     #[test]
@@ -236,7 +299,7 @@ mod tests {
         // Dogfood (V14): crates/itok/.context-limits keeps itok within budget,
         // and the pass is NON-vacuous -- the registry actually gates SPEC.md,
         // not an empty registry that trivially passes (V10).
-        let entries = read_limits(Path::new(DIR));
+        let entries = read_limits(Path::new(DIR)).unwrap_or_default();
         assert!(
             entries.iter().any(|(p, _)| p == "SPEC.md"),
             "dogfood registry must gate SPEC.md: {entries:?}"

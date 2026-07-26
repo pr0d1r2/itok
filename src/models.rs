@@ -66,39 +66,68 @@ pub(crate) fn resolve(root: &Path, name: &str) -> Result<Model, String> {
 
 /// Look up NAME's row. Absent model, an encoding this build cannot honor,
 /// or a malformed window are all errors -- never a silent wrong value.
+/// A row's three fields: model, encoding, and an optional window.
+type Row = (String, String, Option<String>);
+
 fn find(text: &str, name: &str) -> Result<Model, String> {
-    let (_, enc, win) =
-        rows(text).find(|(m, _, _)| m == name).ok_or_else(|| {
+    // Every row is parsed BEFORE the lookup, so an unreadable row fails
+    // even when the requested model is found earlier in the file (V88): the
+    // author wrote that row expecting it to work.
+    let (_, enc, win) = rows(text)?
+        .into_iter()
+        .find(|(m, _, _)| m == name)
+        .ok_or_else(|| {
             format!("unknown model '{name}'; add a row to {MODELS}")
         })?;
-    let window = match win {
-        Some(w) => Some(
-            units::parse(&w)
-                .map_err(|e| format!("bad window for '{name}': {e}"))?,
-        ),
-        None => None,
-    };
+    // Window BEFORE encoding, and the order is load-bearing: a malformed
+    // window means the ROW is unreadable (V88), while an unhonorable
+    // encoding only means THIS BUILD cannot serve it. The file's error
+    // should win, or `--no-default-features` reports a build limitation for
+    // a row that is simply wrong.
+    let window = window_of(win.as_deref(), name)?;
     Ok(Model {
         encoding: encoding(&enc)?,
         window,
     })
 }
 
+/// A row's optional window column, parsed with the one unit grammar (V18).
+fn window_of(win: Option<&str>, name: &str) -> Result<Option<u64>, String> {
+    match win {
+        Some(w) => units::parse(w)
+            .map(Some)
+            .map_err(|e| format!("bad window for '{name}': {e}")),
+        None => Ok(None),
+    }
+}
+
 /// The well-formed rows: `model  encoding [window]`, skipping comments,
 /// blanks, and any line without at least model + encoding. The window (a
 /// unit-suffixed count, T14) is optional; a row can name an encoding alone.
-fn rows(
-    text: &str,
-) -> impl Iterator<Item = (String, String, Option<String>)> + '_ {
+fn rows(text: &str) -> Result<Vec<Row>, String> {
     text.lines()
-        .map(str::trim)
-        .filter(|l| !l.is_empty() && !l.starts_with('#'))
-        .filter_map(|l| {
-            let mut p = l.split_whitespace();
-            let model = p.next()?.to_owned();
-            let enc = p.next()?.to_owned();
-            Some((model, enc, p.next().map(str::to_owned)))
-        })
+        .enumerate()
+        .map(|(i, l)| (i.saturating_add(1), l.trim()))
+        .filter(|(_, l)| !l.is_empty() && !l.starts_with('#'))
+        .map(|(n, l)| row(l).ok_or_else(|| row_err(n, l)))
+        .collect()
+}
+
+fn row(line: &str) -> Option<Row> {
+    let mut p = line.split_whitespace();
+    let model = p.next()?.to_owned();
+    let enc = p.next()?.to_owned();
+    Some((model, enc, p.next().map(str::to_owned)))
+}
+
+/// Names the FILE, the LINE, and what was expected (V88). The sibling
+/// registry silently dropped such a row for a day (B7); a model row that
+/// vanished would instead make `--model` report "unknown model" for a name
+/// the author can SEE in the file -- a worse kind of confusing.
+fn row_err(line: usize, text: &str) -> String {
+    format!(
+        "{MODELS}:{line}: expected `<model> <encoding> [window]`, got `{text}`"
+    )
 }
 
 /// Map an encoding name to its tier. `o200k` needs the bpe tokenizer, so
@@ -122,7 +151,7 @@ mod tests {
 
     #[test]
     fn rows_skip_comments_and_blanks() {
-        let got: Vec<_> = rows(TABLE).collect();
+        let got: Vec<_> = rows(TABLE).unwrap_or_default();
         assert_eq!(
             got,
             vec![
@@ -138,7 +167,11 @@ mod tests {
 
     #[test]
     fn a_line_missing_its_encoding_is_dropped() {
-        assert_eq!(rows("gpt-4o\n").count(), 0);
+        // B7's rule on this registry: an incomplete row FAILS, naming the
+        // file, the line, and the expected form -- it is not skipped (V88).
+        let msg = rows("gpt-4o\n").err().unwrap_or_default();
+        assert!(msg.contains(".context-models:1:"), "{msg}");
+        assert!(msg.contains("expected"), "{msg}");
     }
 
     #[test]
