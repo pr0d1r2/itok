@@ -204,7 +204,27 @@ fn ledger(parsed: &Session, style: &Style) -> String {
         gap = tilde(parsed.unaccounted_tokens().unwrap_or(0), style),
         billed = size(parsed.billed_input(), style),
         turns = parsed.turns.len(),
-    )
+    ) + &cache_lines(parsed, style)
+}
+
+/// How `billed` decomposes: fresh, written to cache, served from cache.
+/// READ from `usage`, never inferred (V47) -- so no hit-rate percentage
+/// either, which would be a judgment about whether caching is working.
+/// The three numbers are arithmetic; a reader can divide.
+///
+/// A field absent from EVERY turn produces NO line, rather than a zero
+/// that would read as "the cache was never used" (V47). Each part is
+/// independent: one missing must not suppress another that is present.
+fn cache_lines(parsed: &Session, style: &Style) -> String {
+    [
+        ("fresh", parsed.fresh_input()),
+        ("cache write", parsed.cache_written()),
+        ("cache read", parsed.cache_read()),
+    ]
+    .iter()
+    .filter_map(|(label, v)| Some((label, (*v)?)))
+    .map(|(label, v)| format!("{:>19} itok    {label}\n", size(v, style)))
+    .collect()
 }
 
 fn total_line(total: u64, style: &Style) -> String {
@@ -258,14 +278,33 @@ fn json_counts(parsed: &Session) -> String {
     )
 }
 
+/// The cache decomposition, as `null` when a field was never reported.
+///
+/// The human view OMITS an absent line; json keeps the KEY and writes
+/// `null`. Different idioms, one rule (V47): a reader must be able to
+/// tell "not measured" from "measured as zero". Omitting keys
+/// conditionally would make the stable contract (V9) awkward to parse,
+/// while `null` is json's own word for absent.
+fn json_cache(parsed: &Session) -> String {
+    let field =
+        |v: Option<u64>| v.map_or_else(|| "null".to_owned(), |n| n.to_string());
+    format!(
+        "\"fresh\":{},\"cache_write\":{},\"cache_read\":{}",
+        field(parsed.fresh_input()),
+        field(parsed.cache_written()),
+        field(parsed.cache_read()),
+    )
+}
+
 fn json_summary(parsed: &Session) -> String {
     let Some(win) = parsed.window() else {
         return String::new();
     };
     let counts = json_counts(parsed);
+    let cache = json_cache(parsed);
     format!(
         "{{\"summary\":true,\"window\":{win},\"accounted\":{acc},\
-         \"unaccounted\":{gap},\"billed\":{billed},{counts},\
+         \"unaccounted\":{gap},\"billed\":{billed},{cache},{counts},\
          \"unit\":\"input_tokens\",\"window_method\":\"actual\",\
          \"accounted_method\":\"bytes/4\"}}\n",
         acc = parsed.accounted_tokens(),
@@ -584,6 +623,94 @@ mod tests {
         assert!(last.contains("\"window_method\":\"actual\""));
         assert!(last.contains("\"accounted_method\":\"bytes/4\""));
         assert!(!out.out.contains('~'), "no tilde in json (V9)");
+    }
+
+    /// V44: the decomposition is exact -- fresh + written + read is the
+    /// whole bill, with nothing rounded away.
+    #[test]
+    fn the_cache_parts_sum_to_billed() {
+        let text = std::fs::read_to_string(fixture("minimal.jsonl"))
+            .unwrap_or_default();
+        let s = claude_code::parse(&text);
+        let parts = s
+            .fresh_input()
+            .unwrap_or(0)
+            .saturating_add(s.cache_written().unwrap_or(0))
+            .saturating_add(s.cache_read().unwrap_or(0));
+        assert_eq!(parts, s.billed_input());
+    }
+
+    /// Present fields produce lines, labelled and readable.
+    #[test]
+    fn cache_lines_appear_when_the_fields_are_present() {
+        let out = run_on("minimal.jsonl", &["-s"]);
+        for label in ["fresh", "cache write", "cache read"] {
+            assert!(out.out.contains(label), "missing `{label}` line");
+        }
+    }
+
+    /// V47, the one that matters: a field absent from EVERY turn produces
+    /// NO line -- never a zero, which would read as "the cache was never
+    /// used" when the truth is that nothing was measured.
+    ///
+    /// Built in memory: every fixture carries these fields, as does every
+    /// real transcript characterised. This is the defensive case V47
+    /// exists for, so it has to be constructed rather than found.
+    #[test]
+    fn absent_cache_fields_produce_no_lines_and_no_zeros() {
+        let mut s = crate::session::Session::default();
+        s.turns.push(crate::session::Turn {
+            input: Some(100),
+            ..crate::session::Turn::default()
+        });
+        assert_eq!(s.cache_read(), None, "never reported stays None");
+        let out = ledger(&s, &Style::default());
+        assert!(out.contains("fresh"), "the present field still shows");
+        assert!(!out.contains("cache read"), "absent field: no line");
+        assert!(!out.contains("cache write"), "absent field: no line");
+    }
+
+    /// Each part is independent: one absent field must not suppress
+    /// another that IS present.
+    #[test]
+    fn a_missing_field_does_not_suppress_a_present_one() {
+        let mut s = crate::session::Session::default();
+        s.turns.push(crate::session::Turn {
+            cache_read: Some(500),
+            ..crate::session::Turn::default()
+        });
+        let out = ledger(&s, &Style::default());
+        assert!(out.contains("cache read"), "present field shows");
+        assert!(!out.contains("fresh"), "absent field stays absent");
+    }
+
+    /// V47/V9: json keeps the KEY and writes `null` -- a different idiom
+    /// from the human view's omitted line, but the same rule. A zero here
+    /// would be indistinguishable from a real measurement of zero.
+    #[test]
+    fn json_writes_null_for_an_absent_field_never_zero() {
+        let mut s = crate::session::Session::default();
+        s.turns.push(crate::session::Turn {
+            input: Some(7),
+            ..crate::session::Turn::default()
+        });
+        let out = json_cache(&s);
+        assert!(out.contains("\"fresh\":7"));
+        assert!(out.contains("\"cache_read\":null"), "absent -> null");
+        assert!(!out.contains("\"cache_read\":0"), "never a zero");
+    }
+
+    /// The cache figures are READ from usage, so they are exact and carry
+    /// no tilde -- unlike the accounted line beside them (V3/V47).
+    #[test]
+    fn cache_figures_are_exact_not_estimated() {
+        let out = run_on("minimal.jsonl", &["-s"]);
+        let line = out
+            .out
+            .lines()
+            .find(|l| l.contains("cache read"))
+            .unwrap_or_default();
+        assert!(!line.contains('~'), "read from usage: no tilde");
     }
 
     /// `stale` counts turns AFTER the last load. The fixture's turns all

@@ -961,7 +961,7 @@ T30c|x|attachment load class: hook output / reminders / injected context counted
 T31|x|`trace` verb: 1 line/load event, chronological, `-n`·`--since`·`--reverse`·json|V46,V9,V59
 T32|x|`top` verb: ranked occupancy, `-h`·`-s`·`--top N`, dup + stale columns, `-- <path>` per-path attribution (⊥ a `blame` verb)|V46,V59
 T33|x|accounted-vs-unaccounted split; method label on every runtime number (`ledger(actual)` ≠ `ledger(bytes/4)`)|V44,V3
-T34|.|cache columns read from `usage` (`cache_creation`/`cache_read`); fields absent ⇒ NO column, ⊥ a zero|V47
+T34|x|cache columns read from `usage` (`cache_creation`/`cache_read`); fields absent ⇒ NO column, ⊥ a zero|V47
 T35|.|fan-out rollup: ledger keyed by session, sidechain/subagent sessions rolled to parent, SUM reported|V60
 T36|.|`calibrate` verb: factor from single-load turns ONLY, discards counted, `n` reported; application opt-in & labelled `×1.12 cal:n=340`|V48,V4
 T37|.|DOGFOOD: run `trace`/`top`/`calibrate` over itok's OWN dev sessions; the measured waste (re-read, stale, cache-bust) sets M6's default thresholds, ⊥ guessed ones|V42,V15

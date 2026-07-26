@@ -230,3 +230,44 @@ impl Session {
         Some(self.window()?.saturating_sub(self.accounted_tokens()))
     }
 }
+
+/// Totals for one `usage` field across every turn, or `None` when NO
+/// turn carried it.
+///
+/// V47: absent must stay distinguishable from zero. A harness that
+/// stopped reporting cache fields would otherwise show `0 cache read`,
+/// which reads as "the cache was never used" -- a measurement, when the
+/// truth is that nothing was measured. Summing `Option`s and returning
+/// `None` for "never present" is what keeps those apart.
+fn total_of(turns: &[Turn], pick: fn(&Turn) -> Option<u64>) -> Option<u64> {
+    let mut seen = false;
+    let mut sum = 0u64;
+    for t in turns {
+        if let Some(v) = pick(t) {
+            seen = true;
+            sum = sum.saturating_add(v);
+        }
+    }
+    seen.then_some(sum)
+}
+
+impl Session {
+    /// Fresh, uncached input across the session (V47: read, not inferred).
+    #[must_use]
+    pub fn fresh_input(&self) -> Option<u64> {
+        total_of(&self.turns, |t| t.input)
+    }
+
+    /// Tokens written INTO the prompt cache.
+    #[must_use]
+    pub fn cache_written(&self) -> Option<u64> {
+        total_of(&self.turns, |t| t.cache_creation)
+    }
+
+    /// Tokens served FROM the prompt cache -- the re-billing of a context
+    /// already sent. Typically the bulk of a long session's input.
+    #[must_use]
+    pub fn cache_read(&self) -> Option<u64> {
+        total_of(&self.turns, |t| t.cache_read)
+    }
+}
