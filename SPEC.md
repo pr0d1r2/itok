@@ -830,6 +830,44 @@ The diagnostic ! name the FILE, the LINE & what was expected. Corollary
 for the reader: `checked:N` is part of the contract (V9) ∵ it is the only
 way a caller can notice that fewer paths were gated than registered —
 B7 was found by that number, ⊥ by the exit code.
+V89: **itok is SAFE TO RUN CONCURRENTLY — many processes, & threads
+within one.** VERIFIED today: the shipped binary WRITES NOTHING (the only
+fs writes are `#[cfg(test)]`, into per-PID temp dirs), mutates no env &
+no cwd, has no `static mut`, forbids `unsafe` crate-wide, & its ONE
+shared item is a `OnceLock` for the tokenizer — `Sync` by construction.
+∴ concurrency safety is currently FREE: a pure function of its inputs
+cannot race. This is a PROPERTY TO PROTECT, ⊥ an accident — `guard`
+(V52) is ONE PROCESS PER HOOK CALL & hooks fire concurrently, so MANY
+itok processes at once is the NORMAL case. Any future write ! be either
+(a) ATOMIC whole-file — write a temp named by PID, then `rename()`,
+atomic on POSIX within a filesystem ∴ a reader sees the OLD or the NEW
+file, never a partial — or (b) APPEND-ONLY w/ SMALL records, where the
+reader already tolerates a torn tail (V43's rule generalizes from the
+harness's file to our OWN). LOCK FILES are ⊥ used: a lock held by a
+KILLED process wedges every other instance, & for a CLI running inside
+git hooks a wedge is worse than a benign race. CONTENT-ADDRESSED keys
+make a write race BENIGN — same key ⇒ same bytes ⇒ last writer wins &
+wins IDENTICALLY — which is a reason to prefer them, ⊥ an aesthetic.
+DELETION races are TOLERATED, ⊥ prevented: a reader hitting ENOENT
+recomputes. Every temp path ! carry the PID (our own tests do; that is
+why the suite is parallel-safe, B5).
+V90: **a cache is justified only by CROSS-INVOCATION repetition over an
+IMMUTABLE key.** Repetition WITHIN one run is MEMOIZATION — no storage,
+no directory, no invalidation, no concurrency question ∴ always try that
+first. A MUTABLE key (path+mtime) is where caches rot; an immutable one
+(git blob SHA, content hash) can never go stale. Both conditions, or no
+cache (V77/B8 is the worked example: 8ms of benefit against a new class
+of ambient state). WHERE, if ever justified: `.git/<tool>/` for
+git-derived data — inside the repo but ⊥ the WORKING TREE ∴ never in
+`git status`, never needs gitignoring, dies with the clone (precedent:
+git-lfs's `.git/lfs`); `~/.itok/` for content-addressed data shared
+ACROSS clones (the dev-tool dot-dir convention — cargo·rustup·npm·ollama
+— ⊥ XDG, which is LINUX's convention & ⊥ macOS's `~/Library/Caches` |
+Windows's `%LOCALAPPDATA%`). NEVER a working-tree `.itok/`: itok runs on
+ARBITRARY repos (V10) ∴ an untracked dir in a clone you do ⊥ own is
+intrusive & surfaces in someone else's `git status`. NEVER both without
+two DISTINCT lifetimes — two caches means two invalidation stories & a
+precedence rule, which is where "which one is stale?" bugs live.
 
 ## §T TASKS
 
@@ -913,6 +951,7 @@ T66|x|CI = nix: `nix develop --command hk check` + `nix build` of all 3 feature 
 T67|x|`nixfmt --check` gates `*.nix`: the flake decides what every other step runs with ∴ drift there is drift everywhere. CHECK mode only|V72
 T68|x|transcript guards BEFORE the capability: `.gitignore` transcript patterns (fixtures exempt) + a CONTENT-signature hygiene test (a rename defeats a filename pattern|V45,V71
 T70|.|scripted bulk compaction: CPU derives (sizes·citation graph·orphans·stale refs·shared n-grams·must-keep fact sets), ONE inference call rewrites the top-N under a byte budget, CPU VERIFIES every citation/number/identifier survived, named `--allow-drop` for deliberate removals. Seeded by T49's measurements|V84,V73,V80
+T71|.|concurrency guard: a test that runs N itok processes at once over the same tree & asserts identical output + zero writes outside `target/`; keeps V89's free property from being lost silently|V89
 T69|.|`.context-limits`/`.context-models`/`.context-policy`: an unparsable row FAILS w/ file+line+expected, ⊥ silent skip (B7); fractional units (`20.5k`) either parse or are rejected LOUDLY|V88,V11
 T49|x|SPEC compaction FIRST PASS + the machine to finish it: 25 done-`§T` rows trimmed to what+cites (method lives in the commit, V26), V62/V22/V70/V71/V31 destaled & tightened, `tests/spec_integrity.rs` guard, `.context-limits` turned into a RATCHET. MEASURED gross -2,781 chars; NET -2.1% only ∵ the pass itself added V88+B7+T69. 5 of 86 invariants touched ∴ the BULK is T70|V84,V15,V26
 T50|x|flake to repo ROOT (`git mv` out of the unit dir) + dev shell PROVIDES `itok` via a `cargo run` shim|V62,V15,V39

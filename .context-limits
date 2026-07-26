@@ -3,7 +3,15 @@
 # is itok checking itself -- the dogfood.
 # A RATCHET (V84): the ceiling tracks the file DOWN, so a compaction gain
 # cannot silently erode. 60k was a ceiling nothing ever approached, which
-# gated nothing -- V69's lesson, one level up. Set ~5% above today's
-# measured 19,542; lower it again after the next compaction pass.
-SPEC.md    20500
+# gated nothing -- V69's lesson, one level up.
+#
+# 19,542 -> 20,500 (T49's first pass) -> 21,500. RAISED ONCE, as a
+# reviewed decision: V89 (concurrency) and V90 (cache siting) are
+# load-bearing rules for work not yet built, and writing them down before
+# the ledger and guard exist is the point. But this is the SECOND growth
+# since the ratchet was set, and V84 says every byte is re-billed on every
+# turn of every session -- so T70's scripted compaction is now the
+# priority, not a someday. Kept tight (~1.5% headroom) so it bites again
+# quickly rather than granting silent room.
+SPEC.md    21500
 README.md  4k
