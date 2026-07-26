@@ -29,6 +29,8 @@ mod models;
 #[cfg(feature = "ollama")]
 mod ollama;
 pub mod render;
+#[cfg(feature = "session")]
+pub mod session;
 mod showcmd;
 #[cfg(test)]
 mod testutil;

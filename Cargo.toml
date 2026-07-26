@@ -42,8 +42,16 @@ path = "src/main.rs"
 # so `--no-default-features` yields the tiny dummy-only tool (V13/V23);
 # default-on because real counts are the point of installing.
 [features]
-default = ["bpe"]
+default = ["bpe", "session"]
 bpe = ["dep:tiktoken-rs"]
+# The runtime axis (V41) parses the harness's own transcript: a FOREIGN,
+# unversioned JSONL schema where a hand-rolled extractor is exactly the
+# wrong risk (V43 wants defensive parsing). serde_json is pure-Rust and
+# networkless, but V4 claims the dummy tier is ZERO-dep, so it is
+# feature-gated like every other tier (V23's shape). Default-on, because
+# the runtime verbs are the point of installing at 0.4; and
+# `--no-default-features` stays genuinely zero-dep, which the gate proves.
+session = ["dep:serde_json"]
 # The exact tier (V4) is a LAN-local backend: ollama's own tokenizer over
 # plain HTTP on :11434 -- keyless, free, on-LAN (V22). Behind its own
 # feature (V23) so the core ships ZERO network deps and runs in a
@@ -54,6 +62,7 @@ ollama = ["dep:ureq"]
 [dependencies]
 tiktoken-rs = { version = "0.6", optional = true }
 ureq = { version = "2", default-features = false, optional = true }
+serde_json = { version = "1", optional = true }
 
 # assert_cmd/predicates are dev-only and already in the workspace lockfile.
 [dev-dependencies]

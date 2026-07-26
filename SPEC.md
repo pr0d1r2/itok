@@ -865,7 +865,7 @@ T26|x|public-clean provenance: scrub SPEC + src comments of origin-repo names & 
 T27|x|bare-rust `.github/workflows/ci.yml`: fmt·clippy·test·`--features ollama`·`llvm-cov --fail-under-lines 98`, `fetch-depth:0`, no nix/uow|V39,V31,V38
 T28|x|assemble README = hand narrative + the `itok docs` reference block + badges|V39,V40,V15
 T29|x|`itok docs` verb: ONE command registry (verb·synopsis·flags·exit) renders `--help` + a markdown reference|V40,V6,V9
-T30|.|session reader module: harness-PLUGGABLE, defensive JSONL parse → load events; unknown fields ignored, malformed records skipped & COUNTED; torn tail tolerated; ⊥ writes to the transcript|V43,V45,V76
+T30|x|session reader module: harness-PLUGGABLE, defensive JSONL parse → load events; unknown fields ignored, malformed records skipped & COUNTED; torn tail tolerated; ⊥ writes to the transcript|V43,V45,V76
 T30a|.|content-addressed snapshot cache (XDG, outside the tree, bounded, idempotent by construction) — the stable view `trace`/`top` read|V77,V19
 T30b|x|synthetic fixtures under `tests/fixtures/session/`|V43,V45,V76,V79
 T30c|.|attachment load class: hook output / reminders / injected context counted beside tool results|V78,V44

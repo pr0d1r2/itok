@@ -5,3 +5,6 @@
 {"type":"attachment","uuid":"h1","parentUuid":"a2","sessionId":"s-weird","timestamp":"2026-01-01T00:00:05.000Z","isSidechain":false,"attachment":{"type":"hook_success","hookName":"SessionStart","output":"0123456789"}}
 not json at all, a whole line of garbage
 {"type":"assistant","uuid":"a3","parentUuid":"h1","sessionId":"s-weird","timestamp":"2026-01-01T00:00:06.000Z","isSidechain":false,"message":{"role":"assistant","content":[{"type":"text","text":"after the garbage"}],"usage":{"input_tokens":9,"output_tokens":10,"cache_creation_input_tokens":0,"cache_read_input_tokens":90}}}
+
+{"type":"user","uuid":"u2","parentUuid":"a3","sessionId":"s-weird","timestamp":"2026-01-01T00:00:07.000Z","isSidechain":false,"message":{"role":"user","content":[]},"toolUseResult":{"shapeWeHaveNeverSeen":true}}
+{"type":"attachment","uuid":"h2","parentUuid":"u2","sessionId":"s-weird","timestamp":"2026-01-01T00:00:08.000Z","isSidechain":false,"attachment":{"type":"queued_command","items":["abc","de"],"count":7,"enabled":true}}
