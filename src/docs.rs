@@ -61,8 +61,8 @@ const COMMANDS: &[Command] = &[
     },
     Command {
         name: "headroom",
-        synopsis: "headroom [<session>] [--model X] [--window N] [-h] [--format human|json] [-C dir]",
-        blurb: "`df` for a context: window, used, avail, use% -- plus the growth rate over the last 10/50/200 TURNS (context grows per turn, so a per-second rate would be meaningless) and `~turns left` at the recent rate. Without `--window` or `--model` there is no capacity, so `avail`/`use%`/`turns left` are reported as absent rather than computed against a guessed window. Report-only.",
+        synopsis: "headroom [<session>] [--model X] [--window N] [--task N] [-h] [--format human|json] [-C dir]",
+        blurb: "`df` for a context: window, used, avail, use% -- plus the growth rate over the last 10/50/200 TURNS (context grows per turn, so a per-second rate would be meaningless) and `~turns left` at the recent rate. Without `--window` or `--model` there is no capacity, so `avail`/`use%`/`turns left` are reported as absent rather than computed against a guessed window. `--task N` adds a `tasks left` column (`avail`/N) -- N is the WINDOW a task occupies, not what it bills. Report-only.",
     },
     Command {
         name: "calibrate",

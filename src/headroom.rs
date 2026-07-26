@@ -44,6 +44,7 @@ struct Raw {
     human: bool,
     format: Format,
     chdir: Option<String>,
+    task: Option<String>,
 }
 
 /// One `df` row: capacity, occupancy, and the rate triple.
@@ -53,6 +54,10 @@ struct Room {
     /// Current occupancy -- exact, from the harness's own usage record.
     used: u64,
     rates: [Option<u64>; 3],
+    /// What one task costs, DECLARED by the caller (T86). `None` until a
+    /// project has enough single-task sessions to derive it -- deriving it
+    /// from two would be V95's anecdote.
+    task: Option<u64>,
 }
 
 pub(crate) fn headroom(rest: &[String]) -> Output {
@@ -63,30 +68,39 @@ pub(crate) fn headroom(rest: &[String]) -> Output {
 }
 
 fn run(raw: &Raw) -> Output {
-    match capacity(raw) {
-        Ok(cap) => report(raw, cap),
-        Err(e) => Output::usage_err(format!("itok: {e}")),
+    match (capacity(raw), task_cost(raw)) {
+        (Ok(cap), Ok(task)) => report(raw, cap, task),
+        (Err(e), _) | (_, Err(e)) => Output::usage_err(format!("itok: {e}")),
     }
 }
 
 /// Nothing to read is not an error (V5), and no usage anywhere means the
 /// whole row is absent rather than zero -- a zero would read as a
 /// measurement of an empty context (V47).
-fn report(raw: &Raw, cap: Option<u64>) -> Output {
+fn report(raw: &Raw, cap: Option<u64>, task: Option<u64>) -> Output {
     let Some(parsed) = session_of(raw) else {
         return Output::ok(String::new());
     };
-    let Some(used) = parsed.window() else {
+    let Some(room) = room_of(&parsed, cap, task) else {
         return Output::ok(String::new());
-    };
-    let room = Room {
-        capacity: cap,
-        used,
-        rates: WINDOWS.map(|n| parsed.rate(n)),
     };
     Output::ok(match raw.format {
         Format::Json => json(&room),
         Format::Human => table(&room, raw.human),
+    })
+}
+
+/// The row, or `None` when no turn reported usage -- absent, not zero (V47).
+fn room_of(
+    parsed: &Session,
+    cap: Option<u64>,
+    task: Option<u64>,
+) -> Option<Room> {
+    Some(Room {
+        capacity: cap,
+        used: parsed.window()?,
+        rates: WINDOWS.map(|n| parsed.rate(n)),
+        task,
     })
 }
 
@@ -97,6 +111,14 @@ fn session_of(raw: &Raw) -> Option<Session> {
     )?;
     let text = std::fs::read_to_string(path).ok()?;
     Some(claude_code::parse(crate::session::complete_prefix(&text)))
+}
+
+/// One task's declared cost, in the one unit grammar (V18).
+fn task_cost(raw: &Raw) -> Result<Option<u64>, String> {
+    match raw.task.as_deref() {
+        Some(t) => crate::units::parse(t).map(Some),
+        None => Ok(None),
+    }
 }
 
 /// Capacity from `--window`, else `--model` via `.context-models`.
@@ -134,6 +156,20 @@ impl Room {
             .iter()
             .zip(self.rates)
             .find_map(|(w, r)| Some((r?, *w)))
+    }
+
+    /// How many more tasks fit: `avail / task`.
+    ///
+    /// The whole can-I-finish question reduces to `>= 1`. Arithmetic only,
+    /// so it stays inside V59's boundary -- the VERDICT ("start fresh
+    /// instead") belongs to `doctor --session`, which V99 binds to V97's two
+    /// honest levers.
+    ///
+    /// `None` without a capacity (V92, no denominator) or without a declared
+    /// cost: a task size guessed on the caller's behalf would make every
+    /// answer a fiction that looks measured.
+    fn tasks_left(&self) -> Option<u64> {
+        self.avail()?.checked_div(self.task?)
     }
 
     /// Turns until full at that rate -- an EXTRAPOLATION (V93), never a
@@ -175,11 +211,33 @@ fn left_cell(room: &Room, h: bool) -> String {
 }
 
 const HEADER: &str =
-    "  window      used     avail  use%   rate 10/50/200      turns left\n";
+    "  window      used     avail  use%   rate 10/50/200      turns left";
+
+/// The `tasks left` column exists only when a cost was DECLARED. An
+/// always-present column reading `-` would invite the reader to supply a
+/// number from nowhere, which is the guess V92 forbids.
+fn task_header(room: &Room) -> &'static str {
+    if room.task.is_some() {
+        "  tasks left\n"
+    } else {
+        "\n"
+    }
+}
+
+/// `tasks left`, tilde'd: it divides an exact remainder by a DECLARED cost,
+/// so it is only as true as the declaration (V3).
+fn tasks_cell(room: &Room, h: bool) -> String {
+    match room.tasks_left() {
+        Some(n) => format!("  {:>10}", format!("~{}", size(n, h))),
+        None if room.task.is_some() => "           -".to_owned(),
+        None => String::new(),
+    }
+}
 
 fn table(room: &Room, h: bool) -> String {
     format!(
-        "{HEADER}{:>8} {:>9} {:>9} {:>5} {:>15} {:>15}\n",
+        "{HEADER}{}{:>8} {:>9} {:>9} {:>5} {:>15} {:>15}{}\n",
+        task_header(room),
         cell(room.capacity, h),
         size(room.used, h),
         cell(room.avail(), h),
@@ -187,6 +245,7 @@ fn table(room: &Room, h: bool) -> String {
             .map_or_else(|| "-".to_owned(), |p| format!("{p}%")),
         triple(&room.rates, h),
         left_cell(room, h),
+        tasks_cell(room, h),
     ) + &notes(room)
 }
 
@@ -207,6 +266,7 @@ fn notes(room: &Room) -> String {
     if let Some((_, w)) = room.turns_left() {
         out.push_str(&format!("  turns left: at the recent {w}-turn rate\n"));
     }
+    out.push_str(&task_note(room));
     if room.capacity.is_none() {
         out.push_str(
             "  window unknown -- pass --model X or --window N for \
@@ -214,6 +274,23 @@ fn notes(room: &Room) -> String {
         );
     }
     out
+}
+
+/// Names WHAT `--task` measures, because the obvious reading is wrong.
+///
+/// `tasks left` divides AVAIL, so the declared cost must be the window a
+/// task OCCUPIES, not what it bills. Measured on this project the two are
+/// ~78k and ~27M -- a factor of 350, because input is re-billed every turn
+/// (V94). Plug the billing figure in and every answer is `~0`, which looks
+/// like a measurement (V3).
+fn task_note(room: &Room) -> String {
+    match room.task {
+        Some(n) => format!(
+            "  tasks left: at {n} itok of WINDOW per task (declared, not \
+             billed cost)\n"
+        ),
+        None => String::new(),
+    }
 }
 
 /// One object (V9). Absent values are `null`, keeping the key: a reader
@@ -240,12 +317,14 @@ fn json_df(room: &Room) -> String {
 fn json_rate(room: &Room) -> String {
     format!(
         "\"rate_10\":{},\"rate_50\":{},\"rate_200\":{},\
-         \"turns_left\":{},\"turns_left_window\":{}",
+         \"turns_left\":{},\"turns_left_window\":{},\"task\":{},\"tasks_left\":{}",
         null_or(room.rates[0]),
         null_or(room.rates[1]),
         null_or(room.rates[2]),
         null_or(room.turns_left().map(|(n, _)| n)),
         null_or(room.turns_left().map(|(_, w)| w as u64)),
+        null_or(room.task),
+        null_or(room.tasks_left()),
     )
 }
 
@@ -292,6 +371,7 @@ fn with_value<'a>(
     match a {
         "--model" => raw.model = Some(value(it, a)?),
         "--window" => raw.window = Some(value(it, a)?),
+        "--task" => raw.task = Some(value(it, a)?),
         "-C" => raw.chdir = Some(value(it, a)?),
         "--format" => raw.format = crate::tracecmd::format_of(&value(it, a)?)?,
         other if other.starts_with('-') => {
@@ -332,13 +412,71 @@ mod tests {
         s
     }
 
+    fn room_with_task(
+        capacity: Option<u64>,
+        windows: &[u64],
+        task: Option<u64>,
+    ) -> Room {
+        let mut r = room(capacity, windows);
+        r.task = task;
+        r
+    }
+
     fn room(capacity: Option<u64>, windows: &[u64]) -> Room {
         let s = session_of(windows);
         Room {
             capacity,
             used: s.window().unwrap_or(0),
             rates: WINDOWS.map(|n| s.rate(n)),
+            task: None,
         }
+    }
+
+    /// T86: `tasks left` is `avail / task`, and the can-I-finish question
+    /// is just `>= 1`.
+    #[test]
+    fn tasks_left_divides_the_remainder_by_a_declared_cost() {
+        let r = room_with_task(Some(1_000), &[400], Some(200));
+        assert_eq!(r.avail(), Some(600));
+        assert_eq!(r.tasks_left(), Some(3));
+        let full = room_with_task(Some(1_000), &[900], Some(200));
+        assert_eq!(full.tasks_left(), Some(0), "no room for another task");
+    }
+
+    /// V92: no capacity means no denominator, so no answer -- and a task
+    /// size is never invented on the caller's behalf.
+    #[test]
+    fn tasks_left_needs_both_a_capacity_and_a_declared_cost() {
+        assert_eq!(room_with_task(None, &[400], Some(200)).tasks_left(), None);
+        assert_eq!(
+            room_with_task(Some(1_000), &[400], None).tasks_left(),
+            None
+        );
+    }
+
+    /// The column and its note appear ONLY when a cost was declared: an
+    /// always-present `-` would invite a number from nowhere.
+    #[test]
+    fn the_column_appears_only_when_a_cost_is_declared() {
+        let without = table(&room(Some(1_000), &[400]), false);
+        assert!(!without.contains("tasks left"), "no column: {without}");
+        let with =
+            table(&room_with_task(Some(1_000), &[400], Some(200)), false);
+        assert!(with.contains("tasks left"), "column present");
+        assert!(with.contains("WINDOW per task"), "the unit is named");
+        assert!(with.contains("not billed cost"), "and the trap is named");
+    }
+
+    /// V3: it divides an exact remainder by a DECLARED cost, so it is only
+    /// as true as the declaration -- hence the tilde.
+    #[test]
+    fn tasks_left_carries_the_tilde() {
+        let out = table(&room_with_task(Some(1_000), &[400], Some(200)), false);
+        let row = out.lines().nth(1).unwrap_or_default();
+        assert!(
+            row.contains("~3"),
+            "tilde on a declared-cost division: {row}"
+        );
     }
 
     /// V91: df's own columns, so the layout needs no teaching.

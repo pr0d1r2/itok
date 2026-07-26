@@ -1140,7 +1140,7 @@ T82|x|name the SKIPPED fleet hosts (B11b): report answered-vs-named ∴ a partia
 T83|x|a DIRECTORY arg is REFUSED w/ its reason, ⊥ counted as 0 (B11d); `fit` never emits an unmeasured path|V47,V8
 T84|x|a feature-gated flag is KNOWN, ⊥ unknown (B11e): the diagnostic names the FEATURE + how to get it, & the docs registry marks gated tiers ∴ `--help` ⊥ advertises what this build lacks|V71,V23,V40
 T85|x|`--model` comma-list per the §I clause|V6,V24
-T86|.|`headroom --task N` -> `tasks left`; arithmetic only|V91,V93,V59
+T86|x|`headroom --task N` -> `tasks left`; arithmetic only|V91,V93,V59
 T87|x|`total` estimator per V102: fit fixed-overhead + scale from transcript deltas, report band + `n`, refuse a verdict inside the band; SUPERSEDES T36's clean-sample factor|V102,V48,V44
 T88|.|`partition`: pack a fileset into N bins under `--window`, coupling graph read from STDIN (⊥ derived here — V24's compose-don't-scan), cut-set REPORTED loudly (V81); synthetic fixtures w/ KNOWN size+coupling ∵ real code gives no ground truth. Reopens V20's DECLINED `pack` scope (⊥ V21's knapsack trigger — a different problem): itok itself needs ~3 bins at a realistic 48k budget, & fan-out is one of only 2 cheap levers|V20,V60,V97
 T89|x|`--ollama` fleet probed in PARALLEL: one `std::thread` per host (⊥ an async runtime, V23; the host list is explicit ∴ no pool, V24), results merged in FLEET ORDER so list-order precedence & determinism are unchanged (V5). MEASURED: one dead host cost +3.05s serially (4.07s vs 1.02s on this fleet). Cost accepted: a model on 2 hosts is now probed twice ∵ per-host INDEPENDENCE is what makes them parallelizable. Per-model `/api/show` stays serial -- separable, measure first|V89,V5,V23,V24
