@@ -32,7 +32,7 @@ const DIR: &str = env!("CARGO_MANIFEST_DIR");
 // ---------------------------------------------------------------- derive
 //
 // DELETED, not moved: sizes, the citation graph and orphan detection are
-// `cavespec derive`, and this file held a second implementation of all
+// `mth derive`, and this file held a second implementation of all
 // three. `derive_report` below runs the owner instead (V64).
 //
 // The one thing that did NOT move is the WORKING-PRINCIPLE reading. V80-V87
@@ -49,7 +49,7 @@ const DIR: &str = env!("CARGO_MANIFEST_DIR");
 /// Every `<prefix><digits>` token, e.g. every `V42` / `T30` / `B7`.
 ///
 /// Kept while the derivation went: this serves `must_keep`, which is the
-/// COMPACTION VERIFIER rather than a format rule. cavespec answers "is this
+/// COMPACTION VERIFIER rather than a format rule. microlith answers "is this
 /// spec well formed"; this answers "did a rewrite silently drop a fact",
 /// which is a claim about two texts and belongs to whoever is rewriting.
 fn ids_in(text: &str, prefix: char) -> Vec<String> {
@@ -209,7 +209,7 @@ fn spec_at(git_ref: &str) -> String {
 
 /// The derivation report: what to cut, biggest first.
 ///
-/// Runs `cavespec derive`, the owner. This used to be a ported copy of the
+/// Runs `mth derive`, the owner. This used to be a ported copy of the
 /// same three derivations, which is the duplication the extraction exists
 /// to end (V64): sizes, the citation graph and orphans are one
 /// implementation now, and itok reads its output instead of computing a
@@ -227,15 +227,15 @@ fn spec_at(git_ref: &str) -> String {
 #[test]
 #[ignore = "derivation report; run with --ignored --nocapture"]
 fn derive_report() {
-    let out = Command::new("cavespec")
+    let out = Command::new("mth")
         .args(["derive", "--verbose"])
         .arg(std::path::Path::new(DIR).join("SPEC.md"))
         .output();
     let Ok(out) = out else {
-        // The gate hard-fails without cavespec (hk.pkl), so reaching this
+        // The gate hard-fails without mth (hk.pkl), so reaching this
         // by hand means the dev shell was not entered. Say which, rather
         // than printing an empty report that reads like a clean spec.
-        println!("cavespec: not on PATH -- enter the dev shell with ../cavespec beside this repo");
+        println!("mth: not on PATH -- enter the dev shell with ../microlith beside this repo");
         return;
     };
     print!("{}", String::from_utf8_lossy(&out.stdout));
@@ -284,7 +284,7 @@ mod tests {
     // The three derivation units that stood here are gone with the
     // derivation itself: sizing across continuation lines, a declaration
     // not citing itself, and the working-principle split. The first two are
-    // cavespec's rules and it tests them; the third was only ever needed to
+    // microlith's rules and it tests them; the third was only ever needed to
     // support the local orphan filter, which is now a printed caveat.
 
     /// V80's rule mechanised: a dropped fact is CAUGHT, because a rewrite

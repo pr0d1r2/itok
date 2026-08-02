@@ -22,9 +22,11 @@ Every step is a plain cargo command. If `hk` is not installed, read the
 command out of `hk.pkl` and run it directly -- the gate never depends on
 `hk` to be reproducible.
 
-One step needs a binary that is not cargo: `cavespec`, which owns this
-spec's format and is the only thing checking `SPEC.md`'s structure. The dev
-shell provides it from a sibling `../cavespec` checkout, so
+One step needs a binary that is not cargo: `mth`, the binary of the
+`microlith` package, which owns this spec's format and is the only thing
+checking `SPEC.md`'s structure. Package and binary are named differently
+on purpose -- `../microlith` is the checkout, `mth` is what you run. The
+dev shell provides it from a sibling `../microlith` checkout, so
 `direnv allow` or `nix develop` is enough. It fails hard rather than
 skipping when absent -- a skipped structural check reads exactly like a
 passing one, and this repo has already paid for that once (`B12`).
@@ -38,8 +40,8 @@ passing one, and this repo has already paid for that once (`B12`).
 | `test` | a test failed | Read the assertion. If it is a race, fix the race -- do not serialise the suite (see `B5`). |
 | `doctest` | a doc example failed | Doc examples are compiled. Mark non-code blocks ` ```text `. |
 | `itok` | a registered path exceeded its `.context-limits` ceiling | Compact the file. Raising the ceiling is a reviewed decision, not the default move. |
-| `cavespec` | `SPEC.md` is not formatted: a hard-wrapped statement, or a line over the cap | `cavespec fmt SPEC.md` joins the wraps. An over-long line is not fixed by the formatter -- split the statement. Raising the cap is a reviewed decision. |
-| `cavespec-check` | `SPEC.md` broke a structural rule | Each line names the rule, the line, why it matters, and ranked fixes. A `mechanical` direction is deterministic and safe to apply unattended; a `judgment` one accepts a regression or changes intent, so stop and decide rather than applying it to make the gate green. |
+| `mth` | `SPEC.md` is not formatted: a hard-wrapped statement, or a line over the cap | `mth fmt SPEC.md` joins the wraps. An over-long line is not fixed by the formatter -- split the statement. Raising the cap is a reviewed decision. |
+| `mth-check` | `SPEC.md` broke a structural rule | Each line names the rule, the line, why it matters, and ranked fixes. A `mechanical` direction is deterministic and safe to apply unattended; a `judgment` one accepts a regression or changes intent, so stop and decide rather than applying it to make the gate green. |
 | `ollama` | the cassette-replayed network path broke | The cassette is a *recording*: do not edit `tests/fixtures/` to make a test pass. Re-record deliberately if the protocol really changed. |
 | `no-default-features` | the zero-dependency core stopped building | Something outside a `cfg` gate reached for an optional dependency. Feature-gate it. |
 | `package` | the published `.crate` would contain the wrong files | Usually an untracked-but-unignored path. Add it to `.gitignore` or `Cargo.toml`'s `exclude`. |
