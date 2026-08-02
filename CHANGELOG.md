@@ -15,13 +15,80 @@ you can rely on at that tag:
 | `0.2.0` | cannot regress locally -- the gate runs in git hooks |
 | `0.4.0` | knows what a context costs (runtime telemetry) |
 | `0.6.0` | can act on it (reduction, policy, fuse) |
-| `0.7.0` | **first public release**; featureset frozen, CI unproven |
+| `0.7.0` | featureset frozen |
 | `0.8.0` | public gate trustworthy |
 | `1.0.0` | contract frozen -- CLI surface and JSON output |
 
 Odd minors (`0.3`, `0.5`, `0.9`) are reserved for fix releases between
 milestones. Before `1.0.0` a minor bump may change behaviour: each rung is
 a behaviour change, and saying so is the honest reading of SemVer 0.x.
+
+**Publication is not a rung.** This table used to mark `0.7.0` as the first
+public release, which welded *who can install it* onto *what it guarantees*.
+Those move independently, and fusing them left only two options: wait, or
+overstate maturity in order to ship. So `itok` is public from `0.3.0-rc.1`,
+at the rung that is actually true -- `0.4.0`'s telemetry is still open, and
+the version number says so.
+
+## [0.3.0-rc.1] - 2026-08-03
+
+**First public release.** An odd minor, which is a fix release between
+milestones -- no milestone moved. Published early on purpose: the tool is
+operable, and real use finds defects that another pass over our own tree
+does not. The last two here were found by a user and by a reader, not by the
+gate.
+
+### Security
+
+- **`--ollama` now supports TLS.** `ureq 3` with `rustls`, so
+  `--ollama=https://host` works. This matters more than it sounds: an exact
+  count means handing the file's text to the tokenizer, and the tokenizer is
+  on the other host -- so the exact tier transmits **file contents**, over
+  `http://` in cleartext, to a host taken from `OLLAMA_HOST`,
+  `.context-hosts` or the command line. Nothing constrained that to a LAN.
+- Fixed a promise the build could not keep: `https://` was accepted by the
+  parser and preserved in the method label, while TLS was compiled out --
+  so it opened a TCP session and *then* failed. No test covered the path,
+  because the cassette replay serves plain HTTP.
+- `docs/SECURITY.md` corrected. It had listed "no TLS stack" as a hardening
+  property beside `forbid(unsafe_code)` -- a missing mitigation in the
+  strengths column -- and declared plaintext transport out of scope for
+  reports.
+- `http://` remains the default and is still supported; a LAN box you own
+  does not want a certificate.
+
+### Added
+
+- Public documentation: `docs/SECURITY.md`, `docs/CODE_OF_CONDUCT.md`,
+  `docs/THIRD-PARTY-NOTICES.md`, `docs/INTEGRATION.md`, and
+  `CONTRIBUTING.md` moved in beside them.
+- Generated README badges -- nineteen, every number read from the file that
+  owns it, so a badge cannot drift from the manifest, the flake or the
+  coverage floor.
+- Eight gate steps: `ripsecrets`, `semver`, `links`, `smart-quotes`,
+  `readme-badges`, `integration-doc`, plus `package` now checking the
+  tarball's *contents* rather than only that one can be built.
+- `hk run refresh` to update the coverage cache and the badges.
+
+### Changed
+
+- MSRV `1.82` -> `1.96`, matched to the toolchain the gate actually runs.
+  The old number was never compiled against.
+- The `SPEC.md` format checker is a pinned flake input (`microlith 0.5.0`)
+  rather than a sibling checkout, so a fresh clone can build and commit.
+- The `ollama` tier went from 60 dependencies to **44**, and its 19
+  `Unicode-3.0` licences to zero. Adding TLS made it smaller: `ureq 2`
+  pulled `url` -> `idna` -> the whole ICU stack.
+
+### Fixed
+
+- `tests/ci.rs` shipped in the `.crate` while reading `hk.pkl`, which is
+  excluded -- three of its eight tests failed on the published tarball while
+  staying green in the repo. Found by measuring the tarball, not by the
+  suite.
+- README documented a `crates/itok` install path that cannot exist in a
+  clone, and an example output with numbers stale by half.
+- Removed hardcoded LAN addresses from help text, tests and the spec.
 
 ## [0.2.0] - 2026-07-25
 
@@ -72,5 +139,6 @@ release.
   inference on every verb.
 
 [hk]: https://hk.jdx.dev
+[0.3.0-rc.1]: https://github.com/pr0d1r2/itok/releases/tag/v0.3.0-rc.1
 [0.2.0]: https://github.com/pr0d1r2/itok/releases/tag/v0.2.0
 [0.1.0]: https://github.com/pr0d1r2/itok/releases/tag/v0.1.0

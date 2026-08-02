@@ -5,10 +5,20 @@
 # way file-config baselines do.
 [package]
 name = "itok"
-# The ladder (V70): each minor is a level of GUARANTEE, not a feature
-# count. 0.2.0 = builds reproducibly anywhere (0.1.0) and cannot regress
-# locally (the gate runs in git hooks). 1.0 = contract frozen.
-version = "0.2.0"
+# The ladder (V70): each minor is a level of GUARANTEE, not a feature count.
+# 0.3.0 is an ODD minor, which the ladder reserves for a fix release between
+# milestones -- and that is exactly what this is: TLS on the exact tier, a
+# raised MSRV, the public docs, and eight new gate steps. No milestone moved.
+#
+# It is also the FIRST PUBLIC release, which used to be welded to 0.7.0.
+# V107 separated those: publication is a distribution decision, maturity is a
+# rung, and they move independently. So this ships at the rung that is TRUE
+# -- 0.4's telemetry is still open, and the number says so out loud.
+#
+# `-rc.1` because crates.io is immutable and cargo will not select a
+# pre-release by default: the pipeline gets proven before a permanent number
+# is spent.
+version = "0.3.0-rc.1"
 edition = "2021"
 # MSRV, matched to `microlith` and to the toolchain this gate actually runs
 # (`flake.lock` pins rustc 1.96.1). Both halves of that matter.
