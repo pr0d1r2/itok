@@ -51,10 +51,10 @@ the machine it ran on.
 | `mth-check` | `SPEC.md` broke a structural rule | Each line names the rule, the line, why it matters, and ranked fixes. A `mechanical` direction is deterministic and safe to apply unattended; a `judgment` one accepts a regression or changes intent, so stop and decide rather than applying it to make the gate green. |
 | `ollama` | the cassette-replayed network path broke | The cassette is a *recording*: do not edit `tests/fixtures/` to make a test pass. Re-record deliberately if the protocol really changed. |
 | `no-default-features` | the zero-dependency core stopped building | Something outside a `cfg` gate reached for an optional dependency. Feature-gate it. |
-| `package` | the published `.crate` would contain the wrong files | Usually an untracked-but-unignored path. Add it to `.gitignore` or `Cargo.toml`'s `exclude`. |
+| `package` | the published `.crate` would contain the wrong files, or would be MISSING a required one | An extra file is usually an untracked-but-unignored path -- add it to `.gitignore` or `exclude`. A missing one is named by path: it is on `must-package` because a shipped test reads it, so fix `exclude`, or drop it from the list and say why it is no longer needed. This failure cannot reproduce by running the suite here -- the repo still has the file. |
 | `rustdoc` | a doc comment breaks docs.rs | Usually `<angle>` text read as an HTML tag. Fence it as ` ```text `. |
 | `coverage` | below the 98% floor | Cover the gap. Lowering the floor needs a reason recorded in `SPEC.md`. |
-| hygiene steps | whitespace, line endings, BOM, merge markers, private keys, large files, case conflicts, broken symlinks | The fixable ones fix themselves on commit. A private-key hit is never cosmetic -- stop and check what you are about to commit. |
+| hygiene steps | whitespace, line endings, BOM, merge markers, private keys, large files, case conflicts, broken symlinks, smart quotes | The fixable ones fix themselves on commit. A smart quote matters because these docs carry commands meant to be pasted, and the wrong quote fails in the reader's shell rather than here. A private-key hit is never cosmetic -- stop and check what you are about to commit. |
 
 ## After fixing
 

@@ -93,6 +93,23 @@ local fast = new Mapping<String, Step> {
     check_diff = "hk util mixed-line-ending --diff {{files}}"
     fix = "hk util mixed-line-ending --fix {{files}}"
   }
+  // A smart quote inside a command is a DIFFERENT CHARACTER than the one
+  // the shell parses, and it looks identical in a terminal. README.md,
+  // AGENTS.md and CONTRIBUTING.md all carry commands meant to be copied,
+  // so the failure lands on whoever pasted it -- and reads as their
+  // mistake, not as a typo in our docs.
+  //
+  // MEASURED before landing, the same way microlith measured it: zero hits
+  // across every tracked file of our own, one hit in `pkl/Config.pkl`.
+  // That file is upstream's, excluded from every other fixer here for the
+  // same reason, and is precisely the file that proves this can find
+  // something rather than passing vacuously.
+  ["smart-quotes"] {
+    glob = List("**/*")
+    exclude = List("pkl/**")
+    check_diff = "hk util fix-smart-quotes --diff {{files}}"
+    fix = "hk util fix-smart-quotes {{files}}"
+  }
   ["no-bom"] {
     glob = List("**/*")
     check = "hk util check-byte-order-marker {{files}}"
@@ -223,10 +240,43 @@ local all = (fast) {
   // untracked-but-unignored directory silently lands in it -- that is
   // exactly how `.direnv/` (5.5MB of nixpkgs source) got in, and it was
   // found by hand rather than by the gate.
+  //
+  // That was only half the question, and the cheaper half. This step ran
+  // `--list` and threw the list away, so it proved the manifest can BUILD
+  // a tarball and said nothing about what is IN one. The other half is
+  // what ships MISSING, and it is invisible here BY CONSTRUCTION: the
+  // repo still has the file, so the repo's own suite stays green.
+  //
+  // MEASURED on the real tarball, unpacked, before this was written:
+  // three of eight tests in `tests/ci.rs` FAILED, because it reads
+  // `hk.pkl` and `hk.pkl` is excluded. `read()` there is
+  // `unwrap_or_default()`, so a missing file becomes an empty string and
+  // the assertion reports `hk.pkl missing 'cargo fmt --check'` -- naming
+  // a missing LINE in a file that is not there at all, which is B8's
+  // shape exactly. Fixed by excluding that test rather than shipping the
+  // gate: a test whose subject is dev machinery belongs with the dev
+  // machinery. The other 15 failures on the tarball are the KNOWN no-git
+  // case (V37/B3) that `doCheck = false` already documents -- a different
+  // cause, and not this step's business.
+  //
+  // The required paths live in `package.metadata.itok`, NOT in this
+  // script: the list and the `exclude` it guards are two halves of one
+  // decision, and splitting them across two files is how they drift.
+  //
+  // Glob is `**/*` because DELETING a required file must trip this, and a
+  // deleted file never appears in `{{files}}`. `--list` is metadata only,
+  // so it stays cheap enough to keep that glob.
   ["package"] {
-    glob = List("**/*.rs", "Cargo.toml", ".gitignore")
+    glob = List("**/*")
     depends = List("no-default-features")
-    check = "cargo package --list --allow-dirty > /dev/null || { echo 'hk: the published .crate would hold the wrong files -- usually an untracked-but-unignored path. See AGENTS.md' >&2; exit 1; }"
+    check = """
+      list=$(cargo package --list --allow-dirty 2>/dev/null) || { echo 'hk: `cargo package --list` failed -- the manifest cannot produce a tarball at all. Fix Cargo.toml before worrying about its contents.' >&2; exit 1; }
+      missing=""
+      for p in $(taplo get -f Cargo.toml 'package.metadata.itok.must-package[*]'); do
+        echo "$list" | grep -qxF "$p" || missing="$missing $p"
+      done
+      [ -z "$missing" ] || { echo "hk: the published .crate would ship WITHOUT:$missing -- and this repo's tests would stay GREEN, because the repo still has them. Either fix the exclude list in Cargo.toml, or drop the path from must-package and say why it is no longer needed. See AGENTS.md" >&2; exit 1; }
+      """
   }
   // The docs.rs badge is a promise; broken intra-doc links break it
   // there, not here, unless this runs.

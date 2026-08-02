@@ -30,6 +30,50 @@ exclude = [
   "coverage-baseline.json",
   "lexicon.txt",
   ".context-limits",
+  # Its whole subject is `hk.pkl`, which the line above excludes. Shipping
+  # a test that reads an excluded file is how three assertions failed on
+  # the tarball while staying green here -- see the `package` step in
+  # hk.pkl. A consumer has no gate for it to be right about.
+  "tests/ci.rs",
+]
+
+# What the published .crate MUST contain, checked by hk's `package` step.
+#
+# The file set that ships is DERIVED -- git-tracked, minus `exclude` --
+# so it is a second set that nothing here examined. Every path below is
+# read by a test that DOES ship, which means dropping one turns green in
+# this repo into a failure for a consumer, and crates.io is immutable.
+#
+# The `.jsonl` fixtures are the sharp case: they are tracked only because
+# `.gitignore` negates its own `*.jsonl` rule for this directory. Delete
+# that one negation and five fixtures leave the tarball with no other
+# signal at all.
+#
+# Only files something READS. Padding this with everything that happens to
+# ship would make it a wish-list rather than a runner (V17).
+#
+# PROVEN by planting each class as an `exclude` entry: `LICENSE` and a
+# `.jsonl` fixture are both caught by name. `README.md` is NOT -- the
+# `readme = "README.md"` field above makes cargo ship it whatever `exclude`
+# says. Its entry is kept as a backstop for the day that field changes, but
+# it is not what guards the file today, and calling it a live check would
+# be the vacuous-pass problem this list exists to avoid.
+[package.metadata.itok]
+must-package = [
+  # src/docs.rs freezes the generated command block against it
+  "README.md",
+  # read by cli, hygiene, concurrency and spec_compact
+  "SPEC.md",
+  # the `license = "MIT"` field is a claim ABOUT this file
+  "LICENSE",
+  # tests/cli.rs replays the recorded ollama interaction
+  "tests/fixtures/ollama.json",
+  # session_read + session_fixtures; tracked only via .gitignore's negation
+  "tests/fixtures/session/minimal.jsonl",
+  "tests/fixtures/session/tool-shapes.jsonl",
+  "tests/fixtures/session/torn-tail.jsonl",
+  "tests/fixtures/session/truncated.jsonl",
+  "tests/fixtures/session/weird.jsonl",
 ]
 
 [[bin]]
