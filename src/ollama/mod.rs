@@ -19,7 +19,8 @@ pub(crate) mod pick;
 const DEFAULT_PORT: &str = "11434";
 
 /// Normalize one `[scheme://]host[:port]` into a full base URL: default
-/// scheme `http` (plain, no TLS -- ollama is not cloud), default port
+/// scheme `http` (the LAN default; `https://` is honoured and works),
+/// default port
 /// 11434 (V25, the port lives in the host, never a `--ollama-port` flag).
 /// Host RESOLUTION (list / stdin / `.context-hosts` / env) is `hosts`.
 pub(crate) fn base(host: &str) -> String {
@@ -110,19 +111,29 @@ fn number_after(s: &str, key: &str) -> Option<u64> {
 
 /// A blocking agent with a short connect timeout, so an absent host fails
 /// fast to exit 7 rather than hanging.
+///
+/// TLS is COMPILED IN (rustls), which it was not before. `--ollama` sends
+/// the FILE'S TEXT to `/api/generate`, so the exact tier puts your source on
+/// the wire; over `http://` that is cleartext. V25 has always said the
+/// `scheme://` slot carries TLS for a proxied server, and until now the
+/// build could not honour it -- `https://` parsed, rendered, and then failed
+/// at connect with `no TLS backend is configured`, after the socket was
+/// already open. Now it works.
 fn agent() -> ureq::Agent {
-    ureq::builder()
-        .timeout_connect(Duration::from_secs(3))
+    ureq::Agent::config_builder()
+        .timeout_connect(Some(Duration::from_secs(3)))
         .build()
+        .into()
 }
 
 fn post(url: &str, body: &str) -> Result<String, String> {
     agent()
         .post(url)
-        .set("content-type", "application/json")
-        .send_string(body)
+        .content_type("application/json")
+        .send(body)
         .map_err(|e| format!("ollama POST {url}: {e}"))?
-        .into_string()
+        .body_mut()
+        .read_to_string()
         .map_err(|e| format!("ollama read {url}: {e}"))
 }
 
@@ -131,7 +142,8 @@ fn get(url: &str) -> Result<String, String> {
         .get(url)
         .call()
         .map_err(|e| format!("ollama GET {url}: {e}"))?
-        .into_string()
+        .body_mut()
+        .read_to_string()
         .map_err(|e| format!("ollama read {url}: {e}"))
 }
 

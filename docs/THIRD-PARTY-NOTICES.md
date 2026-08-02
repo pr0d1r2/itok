@@ -14,7 +14,7 @@ in anything you run.
 |---|---|---|
 | `--no-default-features` | **0** | none — nothing to acknowledge |
 | default (`bpe` + `session`) | 25 | 5 permissive expressions |
-| `--all-features` (adds `ollama`) | 60 | the above plus `Unicode-3.0` |
+| `--all-features` (adds `ollama`) | 44 | the above plus ISC, BSD-3-Clause, CDLA-Permissive-2.0 |
 
 ### The zero tier is genuinely zero
 
@@ -44,29 +44,26 @@ Every package resolves to a permissive licence, in these expressions:
 Where an expression offers a choice, `itok` is distributed under MIT and takes
 the MIT option.
 
-### The `ollama` tier — 60 packages
+### The `ollama` tier — 44 packages
 
-Worth calling out plainly, because the jump is larger than the feature
-suggests: **enabling `ollama` more than doubles the dependency count**, adding
-34 packages, and introduces a licence family the other tiers do not carry.
+Enabling `ollama` adds 19 packages over the default tier, and brings three
+licences the other tiers do not carry. `ureq` is taken with `rustls`, so this
+tier includes a TLS implementation and a root certificate bundle:
 
-The cause is a chain, not the backend itself. `ureq` depends on `url`, `url`
-depends on `idna`, and `idna` pulls the ICU stack — `icu_collections`,
-`icu_normalizer`, `icu_properties`, `zerovec`, `yoke` and their derives. All
-**19 `Unicode-3.0`** packages arrive this way.
+- **ISC** — `untrusted` and `rustls-webpki`.
+- **Apache-2.0 AND ISC** — `ring`, the cryptographic primitives behind
+  `rustls`. Note this one contains assembly and C, unlike everything else
+  here; if "pure Rust throughout" matters to you, this is where it stops.
+- **BSD-3-Clause** — `subtle`, constant-time primitives.
+- **CDLA-Permissive-2.0** — `webpki-roots`, which is the Mozilla CA
+  certificate set rather than code. Copyright © the Mozilla Foundation.
 
-- **Unicode-3.0** — the Unicode licence, applying to the ICU crates and their
-  embedded data tables. Permissive; requires the notice be retained.
-- Copyright © Unicode, Inc. See <https://www.unicode.org/license.txt>.
-
-This is a fact about the cost of a URL parser, not an argument against the
-feature. It is recorded here because `SPEC.md` `§V23` makes claims about
-`itok`'s dependency shape, and the honest version of that claim is
-tier-dependent.
-
-Note that `ureq` is taken with `default-features = false`, so **no TLS stack is
-present** — no `ring`, no `openssl`, no certificate chain. `ollama` speaks plain
-HTTP to a LAN host by design.
+**This tier used to be larger.** It was 60 packages and carried 19
+`Unicode-3.0` licences, none of which came from the backend — `ureq 2`
+depended on `url`, `url` on `idna`, and `idna` pulled the whole ICU stack.
+Moving to `ureq 3` dropped that chain, so adding a TLS implementation made
+the tier **smaller**: 60 to 44, and the `Unicode-3.0` obligation went to
+zero. Worth recording because the intuition runs the other way.
 
 ## Reproducing these numbers
 

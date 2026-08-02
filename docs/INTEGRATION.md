@@ -215,7 +215,7 @@ Stated rather than left to be discovered:
 - **No platform matrix.** CI is `ubuntu-latest` only. macOS and an MSRV axis
   are planned (`§T60`).
 - **`cargo-deny` is not wired.** The dependency tree is not checked for bans,
-  licences or advisories. `§V23`'s "no async runtime, no TLS stack" is
+  licences or advisories. `§V23`'s "no async runtime" is
   currently enforced only by `no-default-features` compiling, which does not
   see what the `ollama` tier pulls in.
 

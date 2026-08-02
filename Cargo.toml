@@ -126,13 +126,21 @@ session = ["dep:serde_json"]
 # The exact tier (V4) is a LAN-local backend: ollama's own tokenizer over
 # plain HTTP on :11434 -- keyless, free, on-LAN (V22). Behind its own
 # feature (V23) so the core ships ZERO network deps and runs in a
-# networkless sandbox (V34). ureq with default-features off = no TLS stack
-# (ollama is plain http, no cloud, no cert chain, no ring/openssl).
+# networkless sandbox (V34). ureq takes `rustls` and nothing else, so
+# `--ollama=https://host` works. It has to: the exact tier sends FILE CONTENT
+# to the endpoint, and over http:// that is cleartext.
+#
+# Going 2 -> 3 to GAIN tls made this tier SMALLER -- 60 packages to 44, and
+# the 19 Unicode-3.0 licences went to zero -- because ureq 2 dragged in
+# url -> idna -> the whole ICU stack. The intuition runs the other way, which
+# is why it is written down.
 ollama = ["dep:ureq"]
 
 [dependencies]
 tiktoken-rs = { version = "0.6", optional = true }
-ureq = { version = "2", default-features = false, optional = true }
+ureq = { version = "3", default-features = false, features = [
+  "rustls",
+], optional = true }
 serde_json = { version = "1", optional = true }
 
 # assert_cmd/predicates are dev-only and already in the workspace lockfile.

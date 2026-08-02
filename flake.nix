@@ -142,7 +142,7 @@
         default = itokPkg pkgs null;
         # The zero-dependency core alone -- proves V23/V13 build clean.
         itok-minimal = itokPkg pkgs [ ];
-        # Adds the LAN-exact rung (V22); still no TLS stack (V23).
+        # Adds the LAN-exact rung (V22), with TLS (V23/V25).
         itok-ollama = itokPkg pkgs [
           "bpe"
           "ollama"

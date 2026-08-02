@@ -47,10 +47,15 @@ cov=$(awk '/^lines /{print $2}' .coverage)
 # whichever node happens to sort first.
 nixpkgs=$(awk '/"nixpkgs": [{]/{f=1} f&&/"rev":/{gsub(/[",]/,"");print $2;exit}' flake.lock | cut -c1-7)
 
-# Direct dependencies. `!/^#/` matters: without it a comment inside the
-# section is counted as a dependency, which is what microlith's version does
-# -- invisible there because the count is zero.
-deps=$(awk '/^[[]dependencies[]]/{f=1;next} /^[[]/{f=0} f&&NF&&!/^#/' Cargo.toml | wc -l | tr -d ' ')
+# Direct dependencies, PARSED rather than counted by line.
+#
+# Counting lines in the `[dependencies]` block is wrong twice over, and this
+# repo hit both inside one week. microlith's version counts COMMENT lines, so
+# it reported 4 for three dependencies. Fixing that left a second bug: taplo
+# wraps a long entry across lines, so the moment `ureq` grew a `features`
+# array the count jumped to 5. A dependency is a KEY, not a line, and only a
+# parser knows the difference. taplo is already in this gate.
+deps=$(taplo get -f Cargo.toml 'dependencies' -o json | grep -cE '^  "')
 
 # One badge per platform the flake actually builds, so adding a system to
 # `flake.nix` adds its badge and nothing has to remember to.
