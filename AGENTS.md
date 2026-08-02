@@ -68,5 +68,7 @@ Re-run the gate. Then check whether the failure was worth recording:
   from the `§B` row. This is the point of the spec: the same mistake
   should not be available twice.
 
-`CONTRIBUTING.md` has the development loop; `SPEC.md` `§V` is the law and
-explains why each rule exists.
+[`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md) has the development loop;
+[`docs/INTEGRATION.md`](docs/INTEGRATION.md) explains how the gate is wired
+and what each set contains; `SPEC.md` `§V` is the law and explains why each
+rule exists.

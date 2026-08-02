@@ -14,10 +14,10 @@ Honest by design: the default is an *estimate* and says so out loud.
 
 ```text
 $ itok estimate -h --top 3
-   ~38k itok  SPEC.md
-    ~4k itok  crates/itok/SPEC.md
-    ~4k itok  Cargo.lock
-   ~47k itok  total (bytes/4)
+       ~25k itok  SPEC.md
+        ~9k itok  src/topcmd.rs
+        ~8k itok  pkl/Config.pkl
+       ~43k itok  total (bytes/4)
 ```
 
 - `itok` = **input tokens** -- what a file costs fed *into* a model
@@ -250,6 +250,32 @@ test fails if this block drifts from the code. Edit the registry in
 
 See [CHANGELOG.md](CHANGELOG.md).
 
+## Contributing
+
+`itok` is built spec-first: `SPEC.md` is both the design and the build
+queue, and a contribution means taking the next task from it and making it
+pass the gate.
+
+- [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) — setup, the loop, and what
+  gets a patch turned down
+- [docs/INTEGRATION.md](docs/INTEGRATION.md) — how the gate is wired, and
+  how to reproduce any verdict without `hk`
+- [docs/CODE_OF_CONDUCT.md](docs/CODE_OF_CONDUCT.md) — how discussion here
+  is expected to go
+- [AGENTS.md](AGENTS.md) — what to do when a specific step fails
+
+## Security
+
+Report privately rather than in a public issue — see
+[docs/SECURITY.md](docs/SECURITY.md), which also states plainly what the
+attack surface is and is not.
+
+If you are reporting something involving session transcripts, do not attach
+a real one: they contain actual conversation content.
+
 ## License
 
-MIT. See `LICENSE`.
+MIT. See [LICENSE](LICENSE).
+
+Third-party dependencies vary by feature tier — the minimal build has none
+at all. See [docs/THIRD-PARTY-NOTICES.md](docs/THIRD-PARTY-NOTICES.md).

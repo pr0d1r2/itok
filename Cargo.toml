@@ -49,8 +49,9 @@ exclude = [
 # that one negation and five fixtures leave the tarball with no other
 # signal at all.
 #
-# Only files something READS. Padding this with everything that happens to
-# ship would make it a wish-list rather than a runner (V17).
+# Only files something READS, with ONE deliberate exception noted below.
+# Padding this with everything that happens to ship would make it a
+# wish-list rather than a runner (V17).
 #
 # PROVEN by planting each class as an `exclude` entry: `LICENSE` and a
 # `.jsonl` fixture are both caught by name. `README.md` is NOT -- the
@@ -66,6 +67,11 @@ must-package = [
   "SPEC.md",
   # the `license = "MIT"` field is a claim ABOUT this file
   "LICENSE",
+  # THE EXCEPTION: nothing reads this, and it is here anyway. A licence
+  # notice that fails to ship fails its entire purpose, and it fails
+  # invisibly -- exactly like the test-file case, but with legal weight
+  # instead of a red suite. Different grounds, same blind spot.
+  "docs/THIRD-PARTY-NOTICES.md",
   # tests/cli.rs replays the recorded ollama interaction
   "tests/fixtures/ollama.json",
   # session_read + session_fixtures; tracked only via .gitignore's negation
