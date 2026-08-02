@@ -108,12 +108,12 @@ fn fetches_full_history() {
 
 /// V75 amends V31: nix is now this crate's OWN toolchain rather than a
 /// host dependency, so CI uses the dev shell. What survives from V31 is
-/// the part that still matters -- no host guard bin travels with the
-/// crate, and no tool gets a second, drifting install path.
+/// the part that still matters -- no tool gets a second, drifting install
+/// path. That the runner is hk, reached through the shell, is asserted
+/// positively by `the_workflow_delegates_to_the_gate`.
 #[test]
-fn no_host_runner_and_no_second_install_path() {
+fn no_second_install_path() {
     let y = workflow();
-    assert!(!y.contains("uow run"), "no host runner");
     for tool in ["install-action", "install hk", "actionlint_"] {
         assert!(
             !y.contains(tool),

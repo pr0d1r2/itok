@@ -1,12 +1,10 @@
 {
   # itok's pinned toolchain. Lives at the repo ROOT: this is a standalone
   # crate headed for opensource, so it carries an ordinary root flake like
-  # any Rust project -- a unit-of-work declaration belongs to the monorepo
-  # home, not here (V31's two-tier split). Pinned to the same nixpkgs
-  # revision as the monorepo, so the toolchain is identical whether itok is
-  # built in-repo or standalone. Standard-only (V31): the rust toolchain
-  # plus nextest and llvm-cov -- the cargo-native gate. No host guard bins,
-  # because those do not travel.
+  # any Rust project. The gate it serves is `hk.pkl`, run by hk (V64) --
+  # one definition, reached the same way from a laptop and from CI.
+  # Standard-only (V31): the rust toolchain plus nextest and llvm-cov --
+  # the cargo-native gate. No host guard bins, because those do not travel.
   description = "itok -- context-cost estimator (dev shell)";
 
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/241313f4e8e508cb9b13278c2b0fa25b9ca27163";
