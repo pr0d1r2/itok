@@ -17,7 +17,7 @@ const COMMANDS: &[Command] = &[
     Command {
         name: "estimate",
         synopsis: "estimate [-s] [-h] [--top N] [--budget N] [--bpe] [--ollama[=HOSTS]] [--format human|json] [-C dir] [paths...]",
-        blurb: "Token cost of files, git-tracked by default. `--bpe` swaps bytes/4 for a real tokenizer (o200k); `--ollama` gets an exact count from a local model's own tokenizer; a bare host needs the `=` form (`--ollama=192.168.0.181`). `--budget N` turns it into a gate.",
+        blurb: "Token cost of files, git-tracked by default. `--bpe` swaps bytes/4 for a real tokenizer (o200k); `--ollama` gets an exact count from a local model's own tokenizer; a bare host needs the `=` form (`--ollama=$OLLAMA_HOST`). `--budget N` turns it into a gate.",
     },
     Command {
         name: "doctor",

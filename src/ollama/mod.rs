@@ -142,8 +142,10 @@ mod tests {
     #[test]
     fn base_adds_scheme_and_default_port() {
         // V25: default scheme http, default port 11434; both kept if given.
-        assert_eq!(base("box1"), "http://box1:11434");
-        assert_eq!(base("192.168.0.23:11434"), "http://192.168.0.23:11434");
+        let name = crate::testutil::HOST_NAME;
+        let ip = crate::testutil::HOST_IP_ALT;
+        assert_eq!(base(name), format!("http://{name}:11434"));
+        assert_eq!(base(&format!("{ip}:11434")), format!("http://{ip}:11434"));
         assert_eq!(base("http://box:1234"), "http://box:1234");
         assert_eq!(base("https://proxy"), "https://proxy:11434");
     }

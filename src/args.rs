@@ -316,7 +316,9 @@ mod tests {
     #[cfg(feature = "ollama")]
     #[test]
     fn an_equals_form_carries_a_bare_host() {
-        for host in ["192.168.0.181", "box1", "http://192.168.0.181"] {
+        let ip = crate::testutil::HOST_IP;
+        let with_scheme = format!("http://{ip}");
+        for host in [ip, crate::testutil::HOST_NAME, with_scheme.as_str()] {
             let o = parse(&v(&[&format!("--ollama={host}"), "SPEC.md"]))
                 .ok()
                 .unwrap_or_default();

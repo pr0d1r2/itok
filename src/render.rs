@@ -191,8 +191,9 @@ mod tests {
     #[cfg(feature = "ollama")]
     #[test]
     fn the_exact_label_names_its_endpoint() {
-        let m = exact_via("gpt-oss:20b", "http://192.168.0.181:11434");
-        assert_eq!(m.label(), "exact via gpt-oss:20b@192.168.0.181:11434");
+        let ip = crate::testutil::HOST_IP;
+        let m = exact_via("gpt-oss:20b", &format!("http://{ip}:11434"));
+        assert_eq!(m.label(), format!("exact via gpt-oss:20b@{ip}:11434"));
         assert!(!m.approximate, "a true count keeps no tilde (V3)");
     }
 
@@ -201,9 +202,10 @@ mod tests {
     #[cfg(feature = "ollama")]
     #[test]
     fn two_endpoints_render_differently() {
-        let a = exact_via("gpt-oss:20b", "http://192.168.0.181:11434");
+        let base = format!("http://{}:11434", crate::testutil::HOST_IP);
+        let a = exact_via("gpt-oss:20b", &base);
         let b = exact_via("gpt-oss:20b", "http://localhost:11434");
-        let c = exact_via("devstral:latest", "http://192.168.0.181:11434");
+        let c = exact_via("devstral:latest", &base);
         assert_ne!(a.label(), b.label(), "a different HOST must be visible");
         assert_ne!(a.label(), c.label(), "a different MODEL must be visible");
     }
