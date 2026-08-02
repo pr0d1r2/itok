@@ -25,11 +25,18 @@ command out of `hk.pkl` and run it directly -- the gate never depends on
 One step needs a binary that is not cargo: `mth`, the binary of the
 `microlith` package, which owns this spec's format and is the only thing
 checking `SPEC.md`'s structure. Package and binary are named differently
-on purpose -- `../microlith` is the checkout, `mth` is what you run. The
-dev shell provides it from a sibling `../microlith` checkout, so
-`direnv allow` or `nix develop` is enough. It fails hard rather than
-skipping when absent -- a skipped structural check reads exactly like a
-passing one, and this repo has already paid for that once (`B12`).
+on purpose -- `microlith` is what you depend on, `mth` is what you run.
+The dev shell provides it from a flake input pinned to a released tag, so
+`direnv allow` or `nix develop` is enough and nothing has to sit beside
+this repo. It fails hard rather than skipping when absent -- a skipped
+structural check reads exactly like a passing one, and this repo has
+already paid for that once (`B12`).
+
+To try an untagged format change against this spec, point
+`MICROLITH_MANIFEST` at a sibling checkout's `Cargo.toml` and `mth` runs
+that instead. It is opt-in on purpose: a sibling that outranked the pin
+just by existing would make the gate's verdict depend on the layout of
+the machine it ran on.
 
 ## What each failure means
 

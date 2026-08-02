@@ -9,8 +9,15 @@
 
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/241313f4e8e508cb9b13278c2b0fa25b9ca27163";
 
+  # The FORMAT owner, pinned to a released TAG rather than a branch: the
+  # rules this spec is held to should change when the pin changes and at no
+  # other time. `follows` because microlith pins its own nixpkgs, and two
+  # nixpkgs in one closure is two toolchains to download for no benefit.
+  inputs.microlith.url = "github:pr0d1r2/microlith/v0.5.0";
+  inputs.microlith.inputs.nixpkgs.follows = "nixpkgs";
+
   outputs =
-    { nixpkgs, ... }:
+    { nixpkgs, microlith, ... }:
     let
       # Same tier-1 systems as the host.
       systems = [
@@ -54,32 +61,39 @@
       # are two names on purpose, so keep them apart: paths and manifests
       # take `microlith`, anything invoked takes `mth`.
       #
-      # A SHIM over a sibling checkout, not a flake input, because the two
-      # crates are being polished together before a joint release: an input
-      # would have to name a URL that does not exist yet, and naming a local
-      # absolute path in a file headed for crates.io is the private
-      # reference V39 forbids shipping. `../microlith` is RELATIVE and the
-      # dev shell is dev machinery, excluded from the packaged crate -- so
-      # this travels no further than the working tree. At release it becomes
-      # an ordinary `inputs.microlith` pinned to a public rev, and nothing
-      # else about the wiring changes: `hk.pkl` names the binary, never a
-      # path.
+      # This WAS a shim over a sibling `../microlith` checkout, because
+      # before the release there was no public URL to name and an absolute
+      # local path is the private reference V39 forbids shipping. There is
+      # a URL now, so the pin is an ordinary flake input and the sibling
+      # stops being required: a fresh public clone can enter this shell and
+      # commit, which is the whole point -- the `mth` gate step hard-fails
+      # when the binary is absent (nothing else checks SPEC.md structure,
+      # so degrading would read as a pass). `hk.pkl` did not change, and
+      # could not have: it names the binary, never a path.
       #
-      # Same shape as `itokShim` above, and for the same reason a package in
-      # the shell's closure would be wrong: microlith would have to COMPILE
-      # before this shell could open, so one error over there locks you out
-      # of the shell you need to fix it.
-      mthShim =
+      # The wrapper exists for the HATCH, not the default. Default is the
+      # pinned build, so the rules are whatever the tag says. Setting
+      # MICROLITH_MANIFEST to a sibling checkout runs THAT instead, which
+      # is how a format change gets tried against a real spec before it is
+      # tagged. Deliberately opt-in: an auto-detected sibling would silently
+      # outrank the pin whenever the directory happened to exist, and then
+      # the gate's verdict would depend on the layout of the machine.
+      mthWrapper =
         pkgs:
+        let
+          pinned = microlith.packages.${pkgs.stdenv.hostPlatform.system}.default;
+        in
         pkgs.writeShellScriptBin "mth" ''
           set -eu
           manifest="''${MICROLITH_MANIFEST:-}"
-          if [ -z "$manifest" ] || [ ! -f "$manifest" ]; then
-            echo "mth(shim): no sibling checkout -- expected ../microlith/Cargo.toml beside this repo" >&2
-            echo "mth(shim): clone it there, then re-enter the dev shell" >&2
-            exit 2
+          if [ -n "$manifest" ]; then
+            if [ ! -f "$manifest" ]; then
+              echo "mth: MICROLITH_MANIFEST=$manifest does not exist -- unset it to use the pinned ${pinned.version}" >&2
+              exit 2
+            fi
+            exec cargo run --quiet --manifest-path "$manifest" --bin mth -- "$@"
           fi
-          exec cargo run --quiet --manifest-path "$manifest" --bin mth -- "$@"
+          exec ${pinned}/bin/mth "$@"
         '';
       # The reproducible build (V62). Possible only because the flake sits
       # at the repo root and can therefore see `Cargo.toml`/`src/`, and
@@ -139,7 +153,7 @@
         default = pkgs.mkShell {
           packages = [
             (itokShim pkgs)
-            (mthShim pkgs)
+            (mthWrapper pkgs)
             pkgs.rustc
             pkgs.cargo
             pkgs.clippy
@@ -178,13 +192,10 @@
             else
               echo "itok(shell): no Cargo.toml in $PWD -- \`itok\` shim disabled" >&2
             fi
-            # Derived the same way and for the same reason (V37): a sibling
-            # of THIS directory, so it resolves in-repo and extracted alike.
-            # Quiet when absent -- the gate step is where the failure has to
-            # be loud, because that is where it costs something.
-            if [ -f "$PWD/../microlith/Cargo.toml" ]; then
-              export MICROLITH_MANIFEST="$PWD/../microlith/Cargo.toml"
-            fi
+            # MICROLITH_MANIFEST is deliberately NOT exported here. `mth`
+            # comes from the pinned input, and the sibling checkout is an
+            # override a person chooses, not one the filesystem chooses for
+            # them -- see the wrapper above.
             # Entering the shell installs the hooks, so a contributor
             # cannot forget to (V71: a gate you must remember to enable is
             # not a gate). Silent and idempotent -- Unix philosophy.

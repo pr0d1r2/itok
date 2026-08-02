@@ -1,5 +1,26 @@
 {
   "nodes": {
+    "microlith": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1785700564,
+        "narHash": "sha256-2hifrdMwfHrZ7F3qX8lObvqgIksTOWpSxUKUhLqsU0Q=",
+        "owner": "pr0d1r2",
+        "repo": "microlith",
+        "rev": "307e6d9ec1de5803d2e0122986224731ee638b0e",
+        "type": "github"
+      },
+      "original": {
+        "owner": "pr0d1r2",
+        "ref": "v0.5.0",
+        "repo": "microlith",
+        "type": "github"
+      }
+    },
     "nixpkgs": {
       "locked": {
         "lastModified": 1784497964,
@@ -18,6 +39,7 @@
     },
     "root": {
       "inputs": {
+        "microlith": "microlith",
         "nixpkgs": "nixpkgs"
       }
     }
