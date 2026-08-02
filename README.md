@@ -3,7 +3,7 @@
 [![CI](https://github.com/pr0d1r2/itok/actions/workflows/ci.yml/badge.svg)](https://github.com/pr0d1r2/itok/actions/workflows/ci.yml)
 [![crates.io](https://img.shields.io/crates/v/itok.svg)](https://crates.io/crates/itok)
 [![docs.rs](https://docs.rs/itok/badge.svg)](https://docs.rs/itok)
-![MSRV 1.82](https://img.shields.io/badge/MSRV-1.82-blue)
+[![MSRV 1.96](https://img.shields.io/badge/MSRV-1.96-000000?logo=rust&logoColor=white)](Cargo.toml)
 
 Estimate the token / context cost of files and changes, from the command
 line. `git`- and `du`-shaped, so if you know those tools you already know

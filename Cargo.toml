@@ -10,8 +10,25 @@ name = "itok"
 # locally (the gate runs in git hooks). 1.0 = contract frozen.
 version = "0.2.0"
 edition = "2021"
-# MSRV: `Option::is_none_or` (diffcmd) is stable since 1.82.
-rust-version = "1.82"
+# MSRV, matched to `microlith` and to the toolchain this gate actually runs
+# (`flake.lock` pins rustc 1.96.1). Both halves of that matter.
+#
+# It was `1.82`, derived from the oldest release carrying a feature the code
+# uses (`Option::is_none_or`). That is a defensible way to pick a number and
+# a poor way to KEEP one: nothing here ever compiled against 1.82. There is
+# no MSRV axis in CI (a listed gap, T60), so the claim was unverified in the
+# only sense that counts -- a consumer on 1.82 would have been the one to
+# find out, and pre-publication is the moment that costs nothing to fix.
+#
+# Set to the pinned toolchain instead, so the claim is EVIDENCED by every
+# gate run rather than asserted beside them. When T60 adds the MSRV axis it
+# will confirm this rather than discover a gap. Matching microlith keeps one
+# number across both repos, which is also why the dev shells agree.
+#
+# Raising an MSRV is a compatibility decision. It is free right now --
+# nothing is published, so no consumer exists to strand (V70's ladder has
+# not started). It will not be free after T59.
+rust-version = "1.96"
 license = "MIT"
 description = "context-cost estimator: token and window budgets for files and changes"
 repository = "https://github.com/pr0d1r2/itok"

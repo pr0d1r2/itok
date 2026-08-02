@@ -227,7 +227,7 @@ T56|x|fix the cassette stub's request drain (B5): read to `Content-Length` befor
 T57|x|drop `.file-limits`: no standalone runner reads it ∴ hand-maintained ceilings gating nothing|V69,V28
 T58|x|`packages.default`/`itok-minimal`/`itok-ollama` via `buildRustPackage`+`cargoLock.lockFile`|V62,V23
 T59|.|public exposure: create the GitHub repo, publish `0.7.0-rc.1` FIRST (immutability -- prove the pipeline before spending a permanent number), install it from crates.io, then `0.7.0`|V70,V39
-T60|.|CI hardening: platform matrix (ubuntu + macos-arm), MSRV `1.82` axis, release automation, a green streak before `0.8.0`|V70,V39
+T60|.|CI hardening: platform matrix (ubuntu + macos-arm), MSRV `1.96` axis, release automation, a green streak before `0.8.0`|V70,V39
 T61|.|closure: fold public feedback, freeze the CLI surface & the json contract, `1.0.0`|V70,V9
 T62|x|gate UX: silent on success (`HK_HIDE_WHEN_DONE`), explicit `fail_fast` locally & `--no-fail-fast` in CI, per-step remediation hints on the non-obvious failures, `AGENTS.md` playbook + CONTRIBUTING pointer|V71,V65
 T63|x|external-tool lints: `typos`·`actionlint`·`taplo`·`shellcheck` pinned in the dev shell + at pinned versions in CI|V72,V73
