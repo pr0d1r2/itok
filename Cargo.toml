@@ -138,9 +138,7 @@ ollama = ["dep:ureq"]
 
 [dependencies]
 tiktoken-rs = { version = "0.6", optional = true }
-ureq = { version = "3", default-features = false, features = [
-  "rustls",
-], optional = true }
+ureq = { version = "3", default-features = false, features = ["rustls"], optional = true }
 serde_json = { version = "1", optional = true }
 
 # assert_cmd/predicates are dev-only and already in the workspace lockfile.

@@ -1,0 +1,29 @@
+# TOML formatting, for files that are read by TOOLS as much as by people.
+#
+# `Cargo.toml` is an agentic file: the gate parses it, `scripts/badges.sh`
+# reads dependency and metadata values out of it, and an agent edits it. A
+# formatter that reflows one logical entry across several lines is optimising
+# for a column count nobody here is enforcing, at the cost of the property
+# that actually matters -- one entry, one line.
+#
+# This is not hypothetical. taplo wrapped
+#
+#     ureq = { version = "3", default-features = false, features = ["rustls"], optional = true }
+#
+# across three lines the moment it grew a `features` array, and the README
+# dependency badge -- which counted lines in the `[dependencies]` block --
+# went from 3 to 5. That counter now parses with taplo instead of counting
+# lines, so it is robust either way; this file removes the cause rather than
+# just the symptom.
+#
+# A CONFIG FILE, not `-o` flags on the gate's invocation. `hk.pkl` is one
+# definition of the gate, but `docs/INTEGRATION.md` tells contributors they
+# can reproduce any verdict by hand, and `taplo format Cargo.toml` has to
+# mean the same thing when they do. Flags on the hook would format one way in
+# CI and another way on a laptop -- the drift V7 exists to prevent, in the
+# tool whose whole job is agreeing on a layout.
+[formatting]
+# Do not explode an inline table or array just because it passed a width.
+# Arrays that are ALREADY multi-line stay that way -- `exclude` and
+# `must-package` carry a comment per entry, and a comment pins them open.
+array_auto_expand = false
