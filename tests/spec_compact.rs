@@ -219,6 +219,15 @@ fn spec_at(git_ref: &str) -> String {
 /// findings, because an uncited invariant might be a dead rule or a missing
 /// citation and only a reader can say which. A gate would answer by fiat.
 ///
+/// Printed when `mth` is absent. It names the DEV SHELL, not a sibling
+/// checkout: since the release the shell wraps a pinned flake input
+/// (`github:pr0d1r2/microlith/v0.5.0`), so nothing has to sit beside this
+/// repo. Naming the wrong cause sends the reader to fix a layout that is
+/// no longer part of the design.
+const NO_MTH: &str = "mth: not on PATH -- enter the dev shell (`nix develop`, or \
+                      `direnv reload`). It provides mth from a pinned flake input, \
+                      so nothing needs to sit beside this repo.";
+
 /// `#[ignore]` because it is a tool, not an assertion -- the gate compiles
 /// it so it cannot rot, and a human runs it when paying down the debt
 /// (V38's shape, from `live_ollama_smoke`).
@@ -235,7 +244,7 @@ fn derive_report() {
         // The gate hard-fails without mth (hk.pkl), so reaching this
         // by hand means the dev shell was not entered. Say which, rather
         // than printing an empty report that reads like a clean spec.
-        println!("mth: not on PATH -- enter the dev shell with ../microlith beside this repo");
+        println!("{NO_MTH}");
         return;
     };
     print!("{}", String::from_utf8_lossy(&out.stdout));

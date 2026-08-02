@@ -295,9 +295,12 @@ local fast = new Mapping<String, Step> {
   //
   // The binary is `mth`, from the package `microlith` -- two names, kept
   // apart deliberately: the path below is the PACKAGE, the command is the
-  // BINARY. It comes from the dev shell, which shims a sibling
-  // `../microlith` checkout. At release that becomes a pinned flake input
-  // and this step does not change: it names the binary, never a path.
+  // BINARY. It comes from the dev shell, which now wraps a PINNED FLAKE
+  // INPUT (`github:pr0d1r2/microlith/v0.5.0`) rather than the sibling
+  // `../microlith` checkout it shimmed before the release. This step did
+  // not change across that swap and could not have: it names the binary,
+  // never a path -- which is why the swap was a one-line flake edit and
+  // not a gate rewrite.
   ["mth"] {
     glob = List("SPEC.md", ".spec-records")
     depends = List("itok")
