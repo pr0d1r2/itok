@@ -97,8 +97,8 @@ spawning the binary. To add a verb:
 ## What the gate checks
 
 All of it is defined in `hk.pkl` and reached three ways from that one
-definition: the `pre-commit` hook (the `fast` set, 25 steps), the
-`pre-push` hook and `hk check` in CI (the `all` set, 31 steps).
+definition: the `pre-commit` hook (the `fast` set, 26 steps), the
+`pre-push` hook and `hk check` in CI (the `all` set, 32 steps).
 
 The ones you will meet most:
 

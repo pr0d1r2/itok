@@ -180,6 +180,44 @@ local fast = new Mapping<String, Step> {
     glob = List(".github/workflows/*.yml", ".github/workflows/*.yaml")
     check = "actionlint {{files}}"
   }
+  // The README badge block is GENERATED, like the `itok docs` command block
+  // below it. Every number is read from the file that OWNS it -- edition and
+  // MSRV from Cargo.toml, the floor from this file, coverage from the
+  // `.coverage` cache, one badge per platform the flake actually builds.
+  // Hand-maintaining them is a dozen chances to be wrong, and this repo has
+  // already proved it: the MSRV badge said 1.82 for as long as the manifest
+  // did, and a README example carried a monorepo path for months after the
+  // extraction. A badge is a CLAIM, and V17 applies to claims in images too.
+  //
+  // CHEAP ON PURPOSE, so it can live in `fast` and run on every commit. The
+  // one expensive input, coverage, is read from `.coverage`, which the
+  // `coverage` step writes and verifies. `depends` orders the two when both
+  // are in the set and is ignored in `fast`, where coverage is absent -- so
+  // pre-commit regenerates from the cache and pre-push checks the cache
+  // against a fresh measurement.
+  //
+  // TWO DEPENDENCY BADGES, not microlith's one, because itok's answer is not
+  // a single number: the minimal tier resolves to ZERO and is gate-proven by
+  // `no-default-features`, while the full tier is 60. A badge naming only one
+  // of those would be true and misleading. Both link to
+  // `docs/THIRD-PARTY-NOTICES.md`, which is where the tier ladder is spelt
+  // out -- V3's rule that a number names its method, applied to a badge.
+  //
+  // NO BACKSLASHES IN THIS SCRIPT. Pkl reads `\(` inside a multi-line string
+  // as INTERPOLATION, so microlith's `sed 's/^edition = "\(.*\)"/\1/p'`
+  // cannot be copied verbatim. `[[]` matches a bracket with no escape, and
+  // `sed 's/^edition = //p' | tr -d` replaces the capture group entirely.
+  //
+  // Also corrected in transit: microlith's dependency count is
+  // `awk '...' f&&NF`, which counts COMMENT lines too. It returns 4 for
+  // itok's 3 dependencies. The bug is invisible at zero dependencies, which
+  // is the only place it has run.
+  ["readme-badges"] {
+    glob = List("README.md", ".coverage", "Cargo.toml", "flake.nix", "flake.lock", "hk.pkl")
+    depends = List("coverage")
+    check = "sh scripts/badges.sh --check"
+    fix = "sh scripts/badges.sh --write"
+  }
   // OFFLINE ONLY. `--offline` checks relative paths and skips every http
   // link, which is the half that breaks when a file moves and the half no
   // other step can see. External URLs are deliberately NOT checked here:
@@ -379,10 +417,35 @@ local all = (fast) {
   }
   // The floor is itok's OWN standalone coverage, not a workspace
   // aggregate (B4). It lives here and nowhere else.
+  // Now does TWO jobs: enforce the floor, and keep `.coverage` honest.
+  //
+  // The cache exists so `readme-badges` can render a coverage number on
+  // every commit without paying for an instrumented test run. That only
+  // works if something eventually checks the cached number against a real
+  // measurement -- otherwise the badge is a number nobody verifies, which is
+  // worse than no badge. This is that something, and it runs on push.
+  //
+  // So the pair is: pre-commit RENDERS from the cache, pre-push MEASURES and
+  // rejects a cache that disagrees. `hk run refresh` is how you update both.
   ["coverage"] {
-    glob = List("**/*.rs")
+    glob = List("**/*.rs", "SPEC.md", "tests/fixtures/**", ".coverage")
     depends = List("rustdoc")
-    check = "cargo llvm-cov nextest --features ollama --fail-under-lines 98 || { echo 'hk: below the coverage floor. Cover the gap; lowering the floor needs a reason in SPEC.md. See AGENTS.md' >&2; exit 1; }"
+    check = """
+      mkdir -p target
+      cargo llvm-cov nextest --features ollama --fail-under-lines 98 --summary-only > target/coverage.txt || { cat target/coverage.txt >&2; echo 'hk: below the coverage floor. Cover the gap; lowering the floor needs a reason in SPEC.md. See AGENTS.md' >&2; exit 1; }
+      cat target/coverage.txt
+      measured=$(awk '/^TOTAL/{gsub("%","",$10); print $10}' target/coverage.txt)
+      cached=$(awk '/^lines /{print $2}' .coverage)
+      [ "$measured" = "$cached" ] || { echo "hk: .coverage says $cached% but the measurement is $measured%, so the README badge is rendering a stale number. Run 'hk run refresh' to update the cache and the badge, then amend." >&2; exit 1; }
+      """
+    fix = """
+      mkdir -p target
+      cargo llvm-cov nextest --features ollama --fail-under-lines 98 --summary-only > target/coverage.txt || { cat target/coverage.txt >&2; exit 1; }
+      measured=$(awk '/^TOTAL/{gsub("%","",$10); print $10}' target/coverage.txt)
+      key=$(git ls-files -s -- '*.rs' SPEC.md tests/fixtures | git hash-object --stdin)
+      awk -v k="$key" -v m="$measured" '/^key /{print "key " k; next} /^lines /{print "lines " m; next} {print}' .coverage > target/.coverage.new
+      mv target/.coverage.new .coverage
+      """
   }
   // THE VERSION LADDER, MECHANICALLY. V70 makes each minor a level of
   // GUARANTEE rather than a feature count, and V39 requires SemVer to tell
@@ -442,5 +505,18 @@ hooks {
   ["fix"] {
     fix = true
     steps = fast
+  }
+  /// `hk run refresh` -- the only way to update `.coverage` and, through it,
+  /// the README coverage badge. `fix` over the SLOW set, because the number
+  /// it caches costs a full instrumented run; the ordinary `fix` hook stays
+  /// on `fast` so a commit never pays for one.
+  ///
+  /// Needed as its own entry point precisely BECAUSE the cache is cheap to
+  /// read: nothing in the commit path can notice the number has moved, so
+  /// updating it has to be a thing you ask for. `coverage` on push is what
+  /// tells you to.
+  ["refresh"] {
+    fix = true
+    steps = all
   }
 }

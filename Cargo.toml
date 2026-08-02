@@ -47,6 +47,10 @@ exclude = [
   "coverage-baseline.json",
   "lexicon.txt",
   ".context-limits",
+  # The coverage cache and the badge generator that reads it. Both are gate
+  # machinery for THIS repo -- a consumer has no README of ours to render.
+  ".coverage",
+  "scripts",
   # Its whole subject is `hk.pkl`, which the line above excludes. Shipping
   # a test that reads an excluded file is how three assertions failed on
   # the tarball while staying green here -- see the `package` step in

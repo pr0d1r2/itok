@@ -1,9 +1,30 @@
 # itok
 
+<!-- BEGIN badges -->
 [![CI](https://github.com/pr0d1r2/itok/actions/workflows/ci.yml/badge.svg)](https://github.com/pr0d1r2/itok/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![crates.io](https://img.shields.io/crates/v/itok.svg)](https://crates.io/crates/itok)
 [![docs.rs](https://docs.rs/itok/badge.svg)](https://docs.rs/itok)
+[![edition 2021](https://img.shields.io/badge/edition-2021-000000?logo=rust&logoColor=white)](Cargo.toml)
 [![MSRV 1.96](https://img.shields.io/badge/MSRV-1.96-000000?logo=rust&logoColor=white)](Cargo.toml)
+[![direct dependencies 3](https://img.shields.io/badge/direct_dependencies-3-brightgreen)](docs/THIRD-PARTY-NOTICES.md)
+[![minimal tier 0 dependencies](https://img.shields.io/badge/minimal_tier-0_dependencies-brightgreen)](docs/THIRD-PARTY-NOTICES.md)
+[![unsafe forbidden](https://img.shields.io/badge/unsafe-forbidden-brightgreen)](Cargo.toml)
+[![gate hk](https://img.shields.io/badge/gate-hk-6E4AFF)](hk.pkl)
+[![coverage 98.05%](https://img.shields.io/badge/coverage-98.05%25-brightgreen)](hk.pkl)
+[![floor 98%](https://img.shields.io/badge/floor-%E2%89%A598%25-brightgreen)](hk.pkl)
+
+[![nix flake](https://img.shields.io/badge/nix-flake-5277C3?logo=nixos&logoColor=white)](flake.nix)
+[![nixpkgs 241313f](https://img.shields.io/badge/nixpkgs-241313f-5277C3?logo=nixos&logoColor=white)](flake.lock)
+[![intel linux](https://img.shields.io/badge/linux-5277C3?logo=intel&logoColor=white)](flake.nix)
+[![amd linux](https://img.shields.io/badge/linux-5277C3?logo=amd&logoColor=white)](flake.nix)
+[![arm linux](https://img.shields.io/badge/linux-5277C3?logo=arm&logoColor=white)](flake.nix)
+[![arm macos](https://img.shields.io/badge/macos-5277C3?logo=arm&logoColor=white)](flake.nix)
+
+[![built with Claude Code](https://img.shields.io/badge/built_with-Claude_Code-D97757)](https://claude.com/claude-code)
+[![built with Opus 5](https://img.shields.io/badge/built_with-Opus_5-D97757)](https://www.anthropic.com/claude)
+[![built with SDD](https://img.shields.io/badge/built_with-spec--driven_development-D97757)](SPEC.md)
+<!-- END badges -->
 
 Estimate the token / context cost of files and changes, from the command
 line. `git`- and `du`-shaped, so if you know those tools you already know

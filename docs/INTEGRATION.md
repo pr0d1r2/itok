@@ -14,9 +14,9 @@ things run it, and none of them restates it.
 
 | caller | set | when |
 |---|---|---|
-| `pre-commit` hook | `fast` — **25 steps** | every commit |
-| `pre-push` hook | `all` — **31 steps** | every push |
-| `hk check --all` in CI | `all` — **31 steps** | every push and PR |
+| `pre-commit` hook | `fast` — **26 steps** | every commit |
+| `pre-push` hook | `all` — **32 steps** | every push |
+| `hk check --all` in CI | `all` — **32 steps** | every push and PR |
 
 `all` is `fast` plus six: `ollama`, `no-default-features`, `package`,
 `rustdoc`, `coverage`, `semver`. Those six either compile a second
@@ -46,12 +46,12 @@ want the first one, fast.
 
 ```mermaid
 flowchart TD
-    A["edit"] --> B["pre-commit — fast (25)"]
+    A["edit"] --> B["pre-commit — fast (26)"]
     B -->|fixable| B2["fixed in place, restaged"]
     B2 --> B
     B -->|fails| A
     B -->|passes| C["commit"]
-    C --> D["pre-push — all (31)"]
+    C --> D["pre-push — all (32)"]
     D -->|fails| A
     D -->|passes| E["push"]
     E --> F["CI — hk check --all + 3 nix builds"]
@@ -82,7 +82,7 @@ being a copy.
 
 ## The steps that guard claims, not code
 
-Most of the 31 are ordinary: a formatter, a linter, a test runner, hygiene.
+Most of the 32 are ordinary: a formatter, a linter, a test runner, hygiene.
 Six exist because this repository makes a *claim* somewhere, and a claim with
 no runner is just a sentence (`§V17`).
 
@@ -96,6 +96,8 @@ no runner is just a sentence (`§V17`).
 | `semver` | "the version number tells maturity true" — vacuous until the first `v*` tag, and it says so on stderr rather than passing quietly |
 | `ripsecrets` | "no credential is going into a public history" — reads the working tree, so it says nothing about history; history was scanned once, separately |
 | `integration-doc` | "this document still describes the gate" — the arithmetic only, because whether a paragraph is still true is a judgement and a mechanical check should not pretend to make one |
+| `readme-badges` | "every number on the README badges is true" — each read from the file that owns it, so a badge cannot drift from the manifest, the flake or the floor |
+| `links` | "every relative link resolves" — offline only; external URLs are someone else's uptime |
 
 ## Why the steps are chained
 
@@ -169,6 +171,24 @@ mth check --records .spec-records SPEC.md
 If `hk` is unavailable, read the command out of `hk.pkl` and run it. The gate
 never depends on `hk` to be reproducible — that is the point of keeping every
 step a single shell command.
+
+## Refreshing the coverage cache
+
+The README's coverage badge is rendered on every commit but measured only on
+push. That works because the number lives in `.coverage`, a cache:
+
+```bash
+hk run refresh     # measure, update .coverage, regenerate the badges
+```
+
+`readme-badges` is cheap because it reads that file; `coverage` is what keeps
+the file honest, comparing it against a real instrumented run and failing if
+they disagree. So a moved coverage number surfaces on push, not silently.
+
+`.coverage` also carries a `key` — a git hash over the files that can move
+coverage. It is stamped by `refresh` and is there so a human can tell whether
+the cached number is current without paying for a measurement. Nothing gates
+on it; the measurement on push is the gate.
 
 ## Two rules that shape all of this
 
