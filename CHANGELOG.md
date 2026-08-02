@@ -30,7 +30,7 @@ overstate maturity in order to ship. So `itok` is public from `0.3.0-rc.1`,
 at the rung that is actually true -- `0.4.0`'s telemetry is still open, and
 the version number says so.
 
-## [0.3.0-rc.1] - 2026-08-03
+## [0.3.0-rc.1] - 2026-08-08
 
 **First public release.** An odd minor, which is a fix release between
 milestones -- no milestone moved. Published early on purpose: the tool is
