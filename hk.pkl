@@ -179,22 +179,22 @@ local fast = new Mapping<String, Step> {
   // unchecked SPEC.md through while reading exactly like a pass -- V69's
   // defect, in the one place this repo already paid for it.
   //
-  // The binary comes from the dev shell, which shims a sibling `../nanokit`
+  // The binary comes from the dev shell, which shims a sibling `../cavespec`
   // checkout. At release that becomes a pinned flake input and this step
   // does not change: it names the binary, never a path.
-  ["nanokit"] {
+  ["cavespec"] {
     glob = List("SPEC.md", ".spec-records")
     depends = List("itok")
-    check = "command -v nanokit >/dev/null 2>&1 || { echo 'hk: nanokit is not on PATH and nothing else checks SPEC.md structure. Enter the dev shell (direnv/nix develop) with a ../nanokit checkout beside this repo. See AGENTS.md' >&2; exit 1; }; nanokit fmt --check SPEC.md || { echo 'hk: SPEC.md is not formatted -- one line per statement, and no line over the cap. Run `nanokit fmt SPEC.md`; splitting an over-long statement is the fix, raising the cap is a reviewed decision. See AGENTS.md' >&2; exit 1; }"
+    check = "command -v cavespec >/dev/null 2>&1 || { echo 'hk: cavespec is not on PATH and nothing else checks SPEC.md structure. Enter the dev shell (direnv/nix develop) with a ../cavespec checkout beside this repo. See AGENTS.md' >&2; exit 1; }; cavespec fmt --check SPEC.md || { echo 'hk: SPEC.md is not formatted -- one line per statement, and no line over the cap. Run `cavespec fmt SPEC.md`; splitting an over-long statement is the fix, raising the cap is a reviewed decision. See AGENTS.md' >&2; exit 1; }"
   }
   // Split from the step above so a formatting failure and a structural one
   // are told apart by WHICH step went red, not by reading the message --
   // and `depends` means a misformatted file is fixed before its structure
   // is judged, which is the order the diagnostics make sense in.
-  ["nanokit-check"] {
+  ["cavespec-check"] {
     glob = List("SPEC.md", ".spec-records")
-    depends = List("nanokit")
-    check = "nanokit check --records .spec-records SPEC.md || { echo 'hk: SPEC.md failed its structural rules. Each line above names the rule, the line, why it matters, and a ranked fix -- a `mechanical` direction is safe to apply unattended, a `judgment` one is not. See AGENTS.md' >&2; exit 1; }"
+    depends = List("cavespec")
+    check = "cavespec check --records .spec-records SPEC.md || { echo 'hk: SPEC.md failed its structural rules. Each line above names the rule, the line, why it matters, and a ranked fix -- a `mechanical` direction is safe to apply unattended, a `judgment` one is not. See AGENTS.md' >&2; exit 1; }"
   }
 }
 

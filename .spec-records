@@ -1,5 +1,5 @@
 # The considered-and-CLOSED records that must SURVIVE an edit: an option
-# REJECTED, or DEFERRED under a stated trigger. Baseline for `nanokit check
+# REJECTED, or DEFERRED under a stated trigger. Baseline for `cavespec check
 # --records .spec-records SPEC.md`.
 #
 # `<id>` then whitespace then the marker, which runs to end of line and may

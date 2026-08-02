@@ -49,7 +49,7 @@
             --manifest-path "$manifest" --bin itok \
             ''${ITOK_FEATURES:+--features "$ITOK_FEATURES"} -- "$@"
         '';
-      # The FORMAT owner (V7 of nanokit): this spec's structural rules live
+      # The FORMAT owner (V7 of cavespec): this spec's structural rules live
       # in one implementation, and itok CALLS it rather than porting it --
       # the ported copy is what drifted while both gates stayed green.
       #
@@ -57,27 +57,27 @@
       # crates are being polished together before a joint release: an input
       # would have to name a URL that does not exist yet, and naming a local
       # absolute path in a file headed for crates.io is the private
-      # reference V39 forbids shipping. `../nanokit` is RELATIVE and the dev
+      # reference V39 forbids shipping. `../cavespec` is RELATIVE and the dev
       # shell is dev machinery, excluded from the packaged crate -- so this
       # travels no further than the working tree. At release it becomes an
-      # ordinary `inputs.nanokit` pinned to a public rev, and nothing else
+      # ordinary `inputs.cavespec` pinned to a public rev, and nothing else
       # about the wiring changes: `hk.pkl` names the binary, never a path.
       #
       # Same shape as `itokShim` above, and for the same reason a package in
-      # the shell's closure would be wrong: nanokit would have to COMPILE
+      # the shell's closure would be wrong: cavespec would have to COMPILE
       # before this shell could open, so one error over there locks you out
       # of the shell you need to fix it.
-      nanokitShim =
+      cavespecShim =
         pkgs:
-        pkgs.writeShellScriptBin "nanokit" ''
+        pkgs.writeShellScriptBin "cavespec" ''
           set -eu
-          manifest="''${NANOKIT_MANIFEST:-}"
+          manifest="''${CAVESPEC_MANIFEST:-}"
           if [ -z "$manifest" ] || [ ! -f "$manifest" ]; then
-            echo "nanokit(shim): no sibling checkout -- expected ../nanokit/Cargo.toml beside this repo" >&2
-            echo "nanokit(shim): clone it there, then re-enter the dev shell" >&2
+            echo "cavespec(shim): no sibling checkout -- expected ../cavespec/Cargo.toml beside this repo" >&2
+            echo "cavespec(shim): clone it there, then re-enter the dev shell" >&2
             exit 2
           fi
-          exec cargo run --quiet --manifest-path "$manifest" --bin nanokit -- "$@"
+          exec cargo run --quiet --manifest-path "$manifest" --bin cavespec -- "$@"
         '';
       # The reproducible build (V62). Possible only because the flake sits
       # at the repo root and can therefore see `Cargo.toml`/`src/`, and
@@ -137,7 +137,7 @@
         default = pkgs.mkShell {
           packages = [
             (itokShim pkgs)
-            (nanokitShim pkgs)
+            (cavespecShim pkgs)
             pkgs.rustc
             pkgs.cargo
             pkgs.clippy
@@ -180,8 +180,8 @@
             # of THIS directory, so it resolves in-repo and extracted alike.
             # Quiet when absent -- the gate step is where the failure has to
             # be loud, because that is where it costs something.
-            if [ -f "$PWD/../nanokit/Cargo.toml" ]; then
-              export NANOKIT_MANIFEST="$PWD/../nanokit/Cargo.toml"
+            if [ -f "$PWD/../cavespec/Cargo.toml" ]; then
+              export CAVESPEC_MANIFEST="$PWD/../cavespec/Cargo.toml"
             fi
             # Entering the shell installs the hooks, so a contributor
             # cannot forget to (V71: a gate you must remember to enable is
