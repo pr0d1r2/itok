@@ -177,6 +177,10 @@
             pkgs.shellcheck
             # V72 again: `nixfmt --check` gates this very file.
             pkgs.nixfmt
+            # Relative-link resolution across the docs set. Offline only --
+            # it never touches the network, so it cannot fail on someone
+            # else's 404.
+            pkgs.lychee
             # Secret shapes `no-private-key` does not match. Here rather
             # than nowhere because a leaked token in a PUBLIC history is
             # irreversible, and this repo is headed for one.

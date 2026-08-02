@@ -14,9 +14,9 @@ things run it, and none of them restates it.
 
 | caller | set | when |
 |---|---|---|
-| `pre-commit` hook | `fast` — **24 steps** | every commit |
-| `pre-push` hook | `all` — **30 steps** | every push |
-| `hk check --all` in CI | `all` — **30 steps** | every push and PR |
+| `pre-commit` hook | `fast` — **25 steps** | every commit |
+| `pre-push` hook | `all` — **31 steps** | every push |
+| `hk check --all` in CI | `all` — **31 steps** | every push and PR |
 
 `all` is `fast` plus six: `ollama`, `no-default-features`, `package`,
 `rustdoc`, `coverage`, `semver`. Those six either compile a second
@@ -46,12 +46,12 @@ want the first one, fast.
 
 ```mermaid
 flowchart TD
-    A["edit"] --> B["pre-commit — fast (24)"]
+    A["edit"] --> B["pre-commit — fast (25)"]
     B -->|fixable| B2["fixed in place, restaged"]
     B2 --> B
     B -->|fails| A
     B -->|passes| C["commit"]
-    C --> D["pre-push — all (30)"]
+    C --> D["pre-push — all (31)"]
     D -->|fails| A
     D -->|passes| E["push"]
     E --> F["CI — hk check --all + 3 nix builds"]
@@ -82,7 +82,7 @@ being a copy.
 
 ## The steps that guard claims, not code
 
-Most of the 30 are ordinary: a formatter, a linter, a test runner, hygiene.
+Most of the 31 are ordinary: a formatter, a linter, a test runner, hygiene.
 Six exist because this repository makes a *claim* somewhere, and a claim with
 no runner is just a sentence (`§V17`).
 
