@@ -141,6 +141,30 @@ local fast = new Mapping<String, Step> {
   // Steps below need a real binary, unlike the `hk util` family (V72).
   // Pinned in the dev shell and installed in CI so both run the same
   // versions.
+  //
+  // A leaked token in git history is IRREVERSIBLE, and this repo is about
+  // to be published -- so now is the last moment the check is cheap.
+  // Runs BESIDE `no-private-key`, not instead of it: that step matches PEM
+  // blocks, this matches the token shapes it does not.
+  //
+  // MEASURED before landing, both halves: zero findings across the tracked
+  // tree, and zero across the full history (`git log -p --all`, 35543
+  // lines, every ref). The second number is the one that mattered, because
+  // this step CANNOT see history -- it reads the files in front of it. The
+  // pending history rewrite is for private path names, not secrets, and
+  // that is now a measurement rather than an assumption.
+  ["ripsecrets"] {
+    glob = List("**/*")
+    exclude = List("pkl/**")
+    // `||` alone would report a LEAK when the tool is merely missing --
+    // `command not found` is also a non-zero exit. A check that names the
+    // wrong cause is worse than one that misses (B8), so absence is
+    // distinguished from a finding before either is announced.
+    check = """
+      command -v ripsecrets >/dev/null 2>&1 || { echo 'hk: ripsecrets is not on PATH -- re-enter the dev shell (`nix develop`, or `direnv reload`). This is a MISSING TOOL, not a finding.' >&2; exit 1; }
+      ripsecrets {{files}} || { echo 'hk: a possible secret is staged. If it is real it must never be committed -- a token in git history outlives its deletion, and this repo is headed for a public remote. If it is a false positive, add it to .secretsignore.' >&2; exit 1; }
+      """
+  }
   ["typos"] {
     glob = List("**/*")
     // --force-exclude: `.typos.toml`'s excludes are ignored for paths
@@ -292,6 +316,41 @@ local all = (fast) {
     glob = List("**/*.rs")
     depends = List("rustdoc")
     check = "cargo llvm-cov nextest --features ollama --fail-under-lines 98 || { echo 'hk: below the coverage floor. Cover the gap; lowering the floor needs a reason in SPEC.md. See AGENTS.md' >&2; exit 1; }"
+  }
+  // THE VERSION LADDER, MECHANICALLY. V70 makes each minor a level of
+  // GUARANTEE rather than a feature count, and V39 requires SemVer to tell
+  // maturity true. Both describe a PROMISE about what a version number
+  // means, and the only thing between a breaking change and a minor bump
+  // has been somebody remembering to look -- stated in two places,
+  // enforced in none (V17).
+  //
+  // BASELINE IS A GIT TAG, not the crates.io index, on purpose:
+  //   * offline, like everything else in this gate
+  //   * it works at `0.7.0-rc.1` (T59), before the registry has anything
+  //     to compare against -- which is exactly when the first real check
+  //     is wanted
+  //   * a tag is ours; the index requires the crate to already exist, and
+  //     itok is not published
+  // The accepted cost is DRIFT: publishing from an untagged tree makes the
+  // baseline a lie, and green against the wrong baseline is worse than no
+  // check at all. T59's release procedure tags, and that is what keeps
+  // this honest.
+  //
+  // VACUOUS TODAY, AND IT SAYS SO. This repo has no tags at all, so there
+  // is no prior API to diff against and the step reports that on stderr
+  // every run rather than passing quietly. A vacuous pass ANNOUNCED is a
+  // different thing from a vacuous pass HIDDEN. It arms itself at the
+  // first `v*` tag -- which is T59, the same commit that first makes a
+  // version number permanent.
+  ["semver"] {
+    glob = List("src/**/*.rs", "Cargo.toml")
+    depends = List("coverage")
+    check = """
+      cargo semver-checks --version >/dev/null 2>&1 || { echo 'hk: cargo-semver-checks is not on PATH -- re-enter the dev shell (`nix develop`, or `direnv reload`). This is a MISSING TOOL, not a finding.' >&2; exit 1; }
+      baseline=$(git tag --list 'v*' --sort=-v:refname | head -1)
+      [ -n "$baseline" ] || { echo 'hk: semver: NO BASELINE -- no release tag exists yet, so there is no prior API to diff against. This step arms itself at the first `v*` tag; it is reporting that it examined nothing, not that it found nothing.' >&2; exit 0; }
+      cargo semver-checks check-release --baseline-rev "$baseline" || { echo "hk: the pub API broke against $baseline. Either restore it, or take the version bump semver requires -- V70's ladder is a promise to consumers, and crates.io is immutable, so a wrong rung cannot be corrected. See AGENTS.md" >&2; exit 1; }
+      """
   }
 }
 

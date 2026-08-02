@@ -177,6 +177,13 @@
             pkgs.shellcheck
             # V72 again: `nixfmt --check` gates this very file.
             pkgs.nixfmt
+            # Secret shapes `no-private-key` does not match. Here rather
+            # than nowhere because a leaked token in a PUBLIC history is
+            # irreversible, and this repo is headed for one.
+            pkgs.ripsecrets
+            # The version ladder (V70), checked instead of remembered.
+            # Vacuous until the first `v*` tag, and it says so.
+            pkgs.cargo-semver-checks
           ];
           # Pin locale so tool output is deterministic across machines.
           LANG = "C.UTF-8";
