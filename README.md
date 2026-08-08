@@ -59,6 +59,23 @@ $ itok estimate -h --top 3
 - `(bytes/4)` names the **method**, so the number always says how it was
   reached.
 
+## Why
+
+A context window is a budget, and most tools spend it silently. You discover
+what a file cost after it is already resident — re-billed on every turn,
+crowding out the reasoning you were trying to buy.
+
+`itok` makes that cost visible *before* you pay it, with the grammar you
+already use for the other resource you count: `du` for what is big, `git
+diff` for what changed. Point it at a tree and it tells you what entering
+costs; point it at a commit and it tells you what the change added.
+
+The design rule underneath is that a number must name its own method. An
+estimate says it is one and marks itself with `~`; a real tokenizer count
+drops the tilde; an exact count from a model's own tokenizer names the
+endpoint that produced it. A confident figure the tool cannot justify is the
+defect this tool exists to avoid.
+
 ## Install
 
 ```bash
