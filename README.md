@@ -296,6 +296,29 @@ The command reference above is **generated**: `itok docs` prints it, and a
 test fails if this block drifts from the code. Edit the registry in
 `src/docs.rs`, never the block by hand.
 
+## Guarantees
+
+Each of these is checked by something, not asserted here:
+
+- **A number names its method.** Every figure carries the tier that produced
+  it — `bytes/4`, `o200k`, or `exact via <model>@<host>` — and `~` marks a
+  crude estimate. `itok` never claims a measurement it cannot make.
+- **Deterministic.** The same input yields the same count. `check` pins its
+  tier so a gate's verdict cannot drift with a flag.
+- **Offline by default.** The default build needs no network at all. The
+  exact tier is feature-gated and opt-in, and its tests replay a recorded
+  cassette rather than reaching a server.
+- **The minimal tier is genuinely zero-dependency** — `--no-default-features`
+  resolves to nothing, and that is a *build* in CI (`nix build
+  .#itok-minimal`), not a promise in prose.
+- **The JSON contract is stable.** One object per file, so a caller parses
+  rather than guesses.
+- **Reporting and gating are separate.** Report-only verbs never fail;
+  gating is an explicit act — `--budget`, `check`, `guard` — so nothing
+  starts refusing your commits because you asked it a question.
+- **No `unsafe`.** `unsafe_code = "forbid"`, so it cannot be reintroduced in
+  a local module.
+
 ## Changelog
 
 See [CHANGELOG.md](CHANGELOG.md).
