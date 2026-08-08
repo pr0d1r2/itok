@@ -32,7 +32,7 @@
 >
 > **The method is spec-driven development.** [`SPEC.md`](SPEC.md) is the law rather than a description written afterwards: the invariants that must stay true, the tasks that remain, and every bug found so far paired with the rule that now catches it. A rule and its checker land in the same commit, because a rule with no runner gates nothing (§V17).
 >
-> **The guardrails are git hooks that also run on CI.** Entering the dev shell (`nix develop`, or `direnv allow`) installs `pre-commit` and `pre-push`, which run [hk](https://github.com/jdx/hk) against one definition of the gate in [`hk.pkl`](hk.pkl) — 26 steps on commit, 32 on push. The slow half adds what is too costly every time: the cassette-replayed network axis, a zero-dependency build proving the minimal tier, the published tarball's contents, `cargo llvm-cov` against a 98% line floor, and `cargo semver-checks` against the last release tag. The badges above are generated from those runs rather than typed here, because a number typed into prose is true the day it is written and quietly wrong after. [`ci.yml`](.github/workflows/ci.yml) calls that same definition, so a laptop and a runner cannot disagree.
+> **The guardrails are git hooks that also run on CI.** Entering the dev shell (`nix develop`, or `direnv allow`) installs `pre-commit` and `pre-push`, which run [hk](https://github.com/jdx/hk) against one definition of the gate in [`hk.pkl`](hk.pkl) — 26 steps on commit, 32 on push, the slow half adding coverage, the tarball's contents and the network axis. [`ci.yml`](.github/workflows/ci.yml) calls that same definition, so a laptop and a runner cannot disagree. The badges above are generated from those runs rather than typed here, because a number typed into prose is true the day it is written and quietly wrong after.
 >
 > **The record is deliberately unflattering.** `§B` logs what got through: `B16` records that the spec promised TLS the build could not perform, and that no test covered the path — found by a reader, not by the gate.
 >
@@ -70,11 +70,10 @@ already use for the other resource you count: `du` for what is big, `git
 diff` for what changed. Point it at a tree and it tells you what entering
 costs; point it at a commit and it tells you what the change added.
 
-The design rule underneath is that a number must name its own method. An
-estimate says it is one and marks itself with `~`; a real tokenizer count
-drops the tilde; an exact count from a model's own tokenizer names the
+The design rule underneath is that a number must name its own method: `~`
+marks an estimate, a real tokenizer count drops it, an exact count names the
 endpoint that produced it. A confident figure the tool cannot justify is the
-defect this tool exists to avoid.
+defect this one exists to avoid.
 
 ## Install
 
@@ -338,6 +337,24 @@ Each of these is checked by something, not asserted here:
   starts refusing your commits because you asked it a question.
 - **No `unsafe`.** `unsafe_code = "forbid"`, so it cannot be reintroduced in
   a local module.
+
+## Status
+
+`0.3.0-rc.1` — the first public release. A minor here is a level of
+**guarantee**, not a feature count, and `0.3` is an *odd* minor, which the
+ladder reserves for a fix release between milestones (§V70). It says what is
+not done: `0.4` means "knows what a context costs", and that is still open.
+
+Publication is deliberately **not** a rung (§V107). The ladder once made
+`0.7` the first public release, welding who-can-install-it onto
+what-it-guarantees — leaving only two moves, wait or overstate. This ships at
+the rung that is true, early, because real use finds what another pass over
+our own tree does not. It is a release candidate because crates.io is
+immutable and cargo will not pick a pre-release by default.
+
+Fourteen verbs are built. The reduction ladder (`cap --strip` and friends)
+and `doctor --session` are specced and **not** built — `SPEC.md` `§I` marks
+them so, and the binary rejects them rather than pretending.
 
 ## Changelog
 
