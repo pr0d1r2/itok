@@ -37,5 +37,19 @@
 # 31,000 against 27,724 is ~12% slack, per the rule above. The previous
 # ceiling had drifted to 242, which is not a ceiling: it fires on the next
 # legitimate sentence and trains the reflex it exists to catch (V71).
+#
+# README 4k -> 5k, ONE reviewed raise covering a documented set, not six
+# reflexive bumps as each section lands. What it buys, measured: the
+# LLM-provenance block (494), then `Why`, `Guarantees`, `Status`, `Use it as
+# a library` and `The name` -- the sections a first visitor actually reads,
+# and the ones this README lacked while going public. `Status` in particular
+# is where V107's publication-is-not-a-rung reasoning reaches someone who
+# will never open the spec.
+#
+# This is the ceiling working as designed (V84): it fired, the addition was
+# justified item by item, and the number moved once with the reason in the
+# commit rather than here (V26). A README that grows because the project went
+# public is the project growing; a README that grows every week is not, and
+# the next raise should be asked to prove which it is.
 SPEC.md    31000
-README.md  4k
+README.md  5k
