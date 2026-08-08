@@ -296,6 +296,26 @@ The command reference above is **generated**: `itok docs` prints it, and a
 test fails if this block drifts from the code. Edit the registry in
 `src/docs.rs`, never the block by hand.
 
+## Use it as a library
+
+The CLI is a thin shell over a pure function, so a caller gets the same
+verdict without spawning a process:
+
+```rust
+use itok::cli;
+let out = cli::run(&["estimate".into(), "--format".into(), "json".into()]);
+assert_eq!(out.code, 0);
+```
+
+`Output` carries stdout, stderr and the exit code the binary would have
+used. The pieces are public too — `estimate`, `bpe`, `session`, `walk`,
+`render`, `json` — so a consumer can take the measurement without the
+grammar around it.
+
+This is not hypothetical: [`blackbox`](https://github.com/pr0d1r2/blackbox)
+depends on `itok` with `features = ["bpe"]` to size the slices it feeds to a
+model.
+
 ## Guarantees
 
 Each of these is checked by something, not asserted here:
