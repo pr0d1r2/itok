@@ -72,15 +72,25 @@ fn the_workflow_delegates_to_the_gate() {
 
 /// V23/V13's zero-dependency core is only a claim until something builds
 /// it; CI building all three feature configurations is what makes it one.
+///
+/// The three used to appear as three literal `nix build` lines, and this
+/// test looked for those strings. They are one matrix job now, so the
+/// literals are gone and the packages live in the matrix list instead --
+/// the CLAIM is unchanged, only where it is written down. Checking the
+/// matrix entries plus the templated command keeps the guard pointed at
+/// the claim rather than at a formatting choice.
 #[test]
 fn the_workflow_builds_every_feature_configuration() {
     let y = workflow();
-    for pkg in [
-        "nix build .#default",
-        "nix build .#itok-minimal",
-        "nix build .#itok-ollama",
-    ] {
-        assert!(y.contains(pkg), "ci.yml missing `{pkg}`");
+    assert!(
+        y.contains("nix build .#${{ matrix.package }}"),
+        "ci.yml no longer builds from the package matrix"
+    );
+    for pkg in ["default", "itok-minimal", "itok-ollama"] {
+        assert!(
+            y.contains(pkg),
+            "ci.yml's package matrix is missing `{pkg}`"
+        );
     }
 }
 
