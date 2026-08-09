@@ -69,6 +69,14 @@ gate.
   `readme-badges`, `integration-doc`, plus `package` now checking the
   tarball's *contents* rather than only that one can be built.
 - `hk run refresh` to update the coverage cache and the badges.
+- CI caches the nix store and the cargo target directory, runs the three
+  `nix build`s as a concurrent job, and carries a `timeout-minutes` bound.
+  Nothing was cached before, so every run refetched the whole dev shell --
+  156 paths, 961 MiB down, 3.2 GiB unpacked -- and rebuilt `microlith` and
+  `mth` from source before compiling anything of ours. The bound is a
+  diagnostic, not hygiene: GitHub serves no logs for an in-progress job and
+  defaults to 360 minutes, so a hang was six hours of silence with nothing
+  to read at the end.
 
 ### Changed
 

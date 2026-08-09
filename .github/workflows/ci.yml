@@ -15,11 +15,10 @@ name: ci
 # design predated the crate carrying its own root flake; now that it does,
 # nix is this crate's own toolchain rather than a host dependency.
 #
-# PENDING -- listed rather than silently absent, because none of it can be
-# validated until the repo is public:
+# PENDING -- listed rather than silently absent:
 #   * platform matrix (macos-arm beside ubuntu)      T60 / 0.8.0
 #   * MSRV 1.96 axis                                 T60 / 0.8.0
-#   * build caching (nix store + cargo target)       T60 / 0.8.0
+#   * cargo target caching, measured                 T60 / 0.8.0
 #   * actions pinned to SHAs rather than tags        T60 / 0.8.0
 #   * release automation and publish                 T59 / 0.7.0
 
@@ -28,9 +27,23 @@ on:
     branches: [main]
   pull_request:
 
+# A second push to the same branch makes the first run's answer worthless.
+# Without this they both run to completion and compete for the same cache.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
+  # The gate. Everything hk defines, in hk's own order.
   gate:
     runs-on: ubuntu-latest
+    # A bound, not hygiene. GitHub serves NO logs for an in-progress job and
+    # defaults to 360 minutes, so an unbounded hang is six hours of silence
+    # followed by nothing to read. The first run measured here sat >50 min
+    # in this step with no way to see inside; that is the failure mode this
+    # number exists to convert into a readable log. Raise it if a legitimate
+    # cold run ever approaches it -- do not remove it.
+    timeout-minutes: 45
     steps:
       # fetch-depth: 0 -- the diff/show/log tests read HEAD~n; a shallow
       # clone has no history and would fail them (V37/B3 class).
@@ -38,6 +51,46 @@ jobs:
         with:
           fetch-depth: 0
       - uses: cachix/install-nix-action@v31
+
+      # MEASURED, on this flake: the dev shell is 156 paths, 961.5 MiB to
+      # download and 3.2 GiB unpacked, plus 5 derivations built from source
+      # -- two of which (`microlith`, `mth`) are Rust crates compiled in the
+      # sandbox. All of it was being paid on EVERY run, because nothing
+      # cached it. `install-nix-action` itself takes 4 seconds; the cost is
+      # entirely inside `nix develop`, which is why this sits between them.
+      #
+      # Keyed on the two files that can change the closure. The prefix
+      # restore means a flake.lock bump warms from the previous closure
+      # instead of starting cold.
+      - uses: nix-community/cache-nix-action@v7
+        with:
+          primary-key: nix-${{ runner.os }}-${{ hashFiles('flake.nix', 'flake.lock') }}
+          restore-prefixes-first-match: nix-${{ runner.os }}-
+          # The repo-wide Actions cache budget is 10 GB and it is SHARED
+          # with the cargo cache below. Capping the store keeps one job from
+          # evicting the other's entry and turning a cache into a coin flip.
+          gc-max-store-size-linux: 4G
+
+      # Nine full compiles of the dependency graph happen per run, and they
+      # cannot share: cargo keys artifacts by feature set, so `--all-features`
+      # (clippy), the default set (test), `ollama`, `--no-default-features`
+      # and the llvm-cov instrumented build are five distinct trees, and the
+      # three `nix build`s below are sandboxed on top of that.
+      #
+      # `actions/cache` rather than `Swatinem/rust-cache`: that action keys on
+      # `rustc -vV` and rustc only exists INSIDE the dev shell, so it would
+      # need the shell's PATH exported into the job first. Keying on
+      # `flake.lock` says the same thing -- the toolchain is pinned there --
+      # without a second way to name the compiler.
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            target
+          key: cargo-${{ runner.os }}-${{ hashFiles('Cargo.lock', 'flake.lock') }}
+          restore-keys: cargo-${{ runner.os }}-
 
       # --check, because `hk check` defaults to running FIX commands; CI
       # must report, never rewrite. --all, because CI has no staged set.
@@ -49,9 +102,35 @@ jobs:
       # problem in one pass.
       - run: nix develop --command hk check --all --check --no-fail-fast
 
-      # All three feature configurations must build reproducibly. The
-      # minimal one is load-bearing: it is what proves the
-      # zero-dependency core actually builds (V23/V13).
-      - run: nix build .#default
-      - run: nix build .#itok-minimal
-      - run: nix build .#itok-ollama
+  # All three feature configurations must build reproducibly. The minimal
+  # one is load-bearing: it is what proves the zero-dependency core actually
+  # builds (V23/V13).
+  #
+  # A SEPARATE job, and a matrix, because these three shared nothing with
+  # the gate except wall-clock. They are sandboxed builds -- no cargo
+  # artifact crosses into them -- so running them after the gate only added
+  # their cost to its cost. Concurrent, the run is the SLOWEST of the four
+  # rather than the sum.
+  nix-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      # One package failing is a fact about that package. Cancelling the
+      # other two would hide whether they share the defect.
+      fail-fast: false
+      matrix:
+        package: [default, itok-minimal, itok-ollama]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v31
+
+      # RESTORE ONLY. Four jobs each saving a multi-gigabyte store would
+      # blow the 10 GB budget in a single run and evict each other; `gate`
+      # is the one writer, and these read what it wrote. On a cold repo they
+      # miss and pay full price once, which is the correct trade.
+      - uses: nix-community/cache-nix-action/restore@v7
+        with:
+          primary-key: nix-${{ runner.os }}-${{ hashFiles('flake.nix', 'flake.lock') }}
+          restore-prefixes-first-match: nix-${{ runner.os }}-
+
+      - run: nix build .#${{ matrix.package }}

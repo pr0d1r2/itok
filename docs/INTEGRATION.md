@@ -54,8 +54,13 @@ flowchart TD
     C --> D["pre-push — all (32)"]
     D -->|fails| A
     D -->|passes| E["push"]
-    E --> F["CI — hk check --all + 3 nix builds"]
+    E --> F["CI — gate: hk check --all"]
+    E --> G["CI — nix-build: default · minimal · ollama"]
 ```
+
+The two CI jobs run **concurrently**. They share no cargo artifacts — the
+`nix build`s are sandboxed — so running them in sequence only added one
+cost to the other.
 
 The fixable hygiene steps repair the file and restage it rather than failing:
 whitespace, final newlines, line endings, smart quotes, TOML formatting. You do
@@ -214,6 +219,12 @@ Stated rather than left to be discovered:
   under the floor does not fail.
 - **No platform matrix.** CI is `ubuntu-latest` only. macOS and an MSRV axis
   are planned (`§T60`).
+- **The cargo cache is unmeasured.** The nix store cache has a number behind
+  it — 961 MiB fetched and 3.2 GiB unpacked per run, gone. The cargo one is
+  reasoning, not measurement: nine dependency-graph compiles that cannot
+  share, because cargo keys artifacts by feature set. Both draw on the same
+  10 GB repository budget, so if they start evicting each other the cargo
+  entry is the one to shrink first (`§T60`).
 - **`cargo-deny` is not wired.** The dependency tree is not checked for bans,
   licences or advisories. `§V23`'s "no async runtime" is
   currently enforced only by `no-default-features` compiling, which does not
