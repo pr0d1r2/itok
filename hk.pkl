@@ -22,9 +22,15 @@ amends "pkl/Config.pkl"
 /// `fail_fast` is the default, set here explicitly because it is a
 /// decision, not an accident: locally the loop is cheap, so the FIRST
 /// failure is the most useful thing to surface, and the steps are ordered
-/// cheapest-first via `depends` so it arrives fast. CI inverts this
-/// (`--no-fail-fast`): there the round-trip is expensive, so a complete
-/// list beats an early one.
+/// cheapest-first via `depends` so it arrives fast.
+///
+/// CI used to invert it with `--no-fail-fast`, on the reasoning that an
+/// expensive round-trip deserves a complete list. It does not any more, and
+/// the reason is worth recording HERE rather than only in the workflow:
+/// under that flag hk emits NOTHING once a `depends`-chained step fails --
+/// measured twice, 74 and 43 minutes of silence, both ended by a kill
+/// rather than a verdict. The `depends` graph and `--no-fail-fast` do not
+/// currently compose.
 fail_fast = true
 
 env {
