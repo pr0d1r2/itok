@@ -15,43 +15,175 @@ name: ci
 # design predated the crate carrying its own root flake; now that it does,
 # nix is this crate's own toolchain rather than a host dependency.
 #
-# PENDING -- listed rather than silently absent, because none of it can be
-# validated until the repo is public:
-#   * platform matrix (macos-arm beside ubuntu)      T60 / 0.8.0
-#   * MSRV 1.96 axis                                 T60 / 0.8.0
-#   * build caching (nix store + cargo target)       T60 / 0.8.0
-#   * actions pinned to SHAs rather than tags        T60 / 0.8.0
-#   * release automation and publish                 T59 / 0.7.0
+# PENDING -- listed rather than silently absent:
+#   * platform matrix (ubuntu-arm + macos beside x86)   T60 / 0.8.0
+#   * MSRV 1.96 axis                                    T60 / 0.8.0
+#   * cargo target caching, measured                    T60 / 0.8.0
+#   * release automation and publish                    T59 / 0.7.0
 
 on:
   push:
     branches: [main]
   pull_request:
+  # Re-run the gate without inventing a commit. Propagated from microlith,
+  # where it exists for the same reason (V84).
+  workflow_dispatch:
+
+# A second push to the same branch makes the first run's answer worthless.
+# Without this they both run to completion and compete for the same cache.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
+  # The gate. Everything hk defines, in hk's own order.
   gate:
     runs-on: ubuntu-latest
+    # A bound, not hygiene, and it EARNED ITS KEEP within an hour of being
+    # added. GitHub serves no logs for an in-progress job and defaults to
+    # 360 minutes, so an unbounded hang is six hours of silence followed by
+    # nothing to read. This bound fired at 45m16s and produced the log that
+    # identified the hk deadlock -- a diagnosis no amount of staring at the
+    # Actions page could reach, because the page had nothing to show.
+    #
+    # 45 is generous on purpose: the gate's honest cost is about 90 seconds,
+    # so anything near this number is a hang, not a slow run.
+    timeout-minutes: 45
     steps:
+      # Pinned to commit SHAs, not tags. A tag is mutable: whoever controls
+      # the action can move `v4` to different code, and every workflow that
+      # trusts the tag runs it on the next push. The tag stays in the
+      # comment because a SHA alone tells a reader nothing about which
+      # version they are on, or whether it is behind. Same choice as
+      # microlith, and the same two SHAs where the action is shared (V84).
+      #
       # fetch-depth: 0 -- the diff/show/log tests read HEAD~n; a shallow
-      # clone has no history and would fail them (V37/B3 class).
-      - uses: actions/checkout@v4
+      # clone has no history and would fail them (V37/B3 class). This is
+      # the one place itok's workflow must differ from microlith's, whose
+      # tests read no history at all.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      - uses: cachix/install-nix-action@v31
+      - uses: cachix/install-nix-action@630ae543ea3a38a9a4166f03376c02c50f408342 # v31.11.0
+
+      # A MODEST saving, and the honest number is here because the first
+      # version of this comment claimed a large one.
+      #
+      # The dev shell is 156 paths, 961.5 MiB to download and 3.2 GiB
+      # unpacked, with 5 derivations built from source. Those figures are
+      # measured and they LOOK expensive. Timed on a real cold run, the whole
+      # thing materialises in 26 SECONDS -- GitHub's link to cache.nixos.org
+      # is fast, and closure size turned out to be a poor proxy for wall
+      # clock. The gate reaches its first test 79 seconds after the step
+      # starts, cold.
+      #
+      # So this cache is worth roughly half a minute per run. Keep it -- half
+      # a minute times every push is real, and a lock bump warms from the
+      # previous closure rather than starting cold -- but the hour-long runs
+      # that prompted it were the hk deadlock below, not this.
+      #
+      # Keyed on `runner.os`-AND-`runner.arch`, not `runner.os` alone. When
+      # the platform matrix lands (T60), `ubuntu-latest` and
+      # `ubuntu-24.04-arm` both report `Linux` -- one key, two different
+      # closures, each evicting the other on every run. Cheaper to be right
+      # now than to debug a cache that silently never hits.
+      #
+      # The prefix restore means a flake.lock bump warms from the previous
+      # closure instead of starting cold.
+      - uses: nix-community/cache-nix-action@7df957e333c1e5da7721f60227dbba6d06080569 # v7
+        with:
+          primary-key: nix-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('flake.nix', 'flake.lock') }}
+          restore-prefixes-first-match: nix-${{ runner.os }}-${{ runner.arch }}-
+          # The repo-wide Actions cache budget is 10 GB and it is SHARED
+          # with the cargo cache below -- and a platform matrix multiplies
+          # both. Capping the store keeps one job from evicting another's
+          # entry and turning a cache into a coin flip.
+          gc-max-store-size-linux: 4G
+          gc-max-store-size-macos: 4G
+
+      # Nine compiles of the dependency graph happen per run and cannot
+      # share: cargo keys artifacts by feature set, so `--all-features`
+      # (clippy), the default set (test), `ollama`, `--no-default-features`
+      # and the llvm-cov instrumented build are five distinct trees, with the
+      # three sandboxed `nix build`s on top.
+      #
+      # The count is a structural fact; its COST here is not measured, and
+      # the one figure we do have argues for modesty -- clippy, a full
+      # dependency download and 160 tests took 53 seconds from cold. Kept
+      # because it cannot hurt and the key rotates on `Cargo.lock`, not
+      # because a number justifies it. If the caches ever compete for the
+      # 10 GB budget, this is the one to drop first.
+      #
+      # `actions/cache` rather than `Swatinem/rust-cache`: that action keys on
+      # `rustc -vV` and rustc only exists INSIDE the dev shell, so it would
+      # need the shell's PATH exported into the job first. Keying on
+      # `flake.lock` says the same thing -- the toolchain is pinned there --
+      # without a second way to name the compiler.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            target
+          key: cargo-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock', 'flake.lock') }}
+          restore-keys: cargo-${{ runner.os }}-${{ runner.arch }}-
 
       # --check, because `hk check` defaults to running FIX commands; CI
       # must report, never rewrite. --all, because CI has no staged set.
       #
-      # --no-fail-fast inverts the local default on purpose. Locally the
-      # loop is cheap, so the FIRST failure is the most useful thing to
-      # surface. Here a round-trip costs minutes, so a complete list beats
-      # an early one -- whoever, or whatever, fixes this should get every
-      # problem in one pass.
-      - run: nix develop --command hk check --all --check --no-fail-fast
+      # `--no-fail-fast` REMOVED, and this is the change that actually fixed
+      # CI. It used to be here for a good reason -- a round-trip costs
+      # minutes, so a complete list beats an early one -- but MEASURED, hk
+      # goes SILENT the instant a `depends`-chained step fails under it. Two
+      # independent reproductions, both immediately after the same test
+      # failure:
+      #
+      #   PR #1  fail at 05:36:54  ->  74m17s of no output  -> cancelled
+      #   PR #2  fail at 06:02:35  ->  43m26s of no output  -> timed out
+      #
+      # A complete failure list is worth nothing from a run that never
+      # reports one. Fail-fast returns the FIRST failure in about ninety
+      # seconds, which is the whole gate's honest cost.
+      #
+      # Restore the flag when hk no longer deadlocks; the timeout above stays
+      # either way, because it is what made this visible at all.
+      - run: nix develop --command hk check --all --check
 
-      # All three feature configurations must build reproducibly. The
-      # minimal one is load-bearing: it is what proves the
-      # zero-dependency core actually builds (V23/V13).
-      - run: nix build .#default
-      - run: nix build .#itok-minimal
-      - run: nix build .#itok-ollama
+  # All three feature configurations must build reproducibly. The minimal
+  # one is load-bearing: it is what proves the zero-dependency core actually
+  # builds (V23/V13).
+  #
+  # A SEPARATE job, and a matrix, because these three shared nothing with
+  # the gate except wall-clock. They are sandboxed builds -- no cargo
+  # artifact crosses into them -- so running them after the gate only added
+  # their cost to its cost.
+  #
+  # MEASURED once split: 33s, 59s and 68s, concurrent, on a COLD cache --
+  # 68 seconds of wall clock for all three. They were never the expensive
+  # part, which is worth writing down, because the obvious reading of a
+  # 50-minute run is that everything in it is slow.
+  nix-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      # One package failing is a fact about that package. Cancelling the
+      # other two would hide whether they share the defect.
+      fail-fast: false
+      matrix:
+        package: [default, itok-minimal, itok-ollama]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: cachix/install-nix-action@630ae543ea3a38a9a4166f03376c02c50f408342 # v31.11.0
+
+      # RESTORE ONLY. Four jobs each saving a multi-gigabyte store would
+      # blow the 10 GB budget in a single run and evict each other; `gate`
+      # is the one writer, and these read what it wrote. On a cold repo they
+      # miss and pay full price once -- measured above at about a minute,
+      # which is why this is the correct trade rather than merely a cheap one.
+      - uses: nix-community/cache-nix-action/restore@7df957e333c1e5da7721f60227dbba6d06080569 # v7
+        with:
+          primary-key: nix-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('flake.nix', 'flake.lock') }}
+          restore-prefixes-first-match: nix-${{ runner.os }}-${{ runner.arch }}-
+
+      - run: nix build .#${{ matrix.package }}

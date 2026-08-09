@@ -69,6 +69,28 @@ gate.
   `readme-badges`, `integration-doc`, plus `package` now checking the
   tarball's *contents* rather than only that one can be built.
 - `hk run refresh` to update the coverage cache and the badges.
+- CI caches the nix store and the cargo target directory, runs the three
+  `nix build`s as a concurrent job, and carries a `timeout-minutes` bound.
+
+  The caches are a modest win and this entry says so, because the first
+  draft of it did not. CI was never slow: measured cold, the dev shell
+  materialises in **26 seconds** and the gate reaches its first test in
+  **79**. The hour-long runs were a hang, not a cost.
+
+  The bound is the part that mattered, and it was added as a diagnostic
+  rather than hygiene: GitHub serves no logs for an in-progress job and
+  defaults to 360 minutes, so a hang was six hours of silence with nothing
+  to read. It fired at 45m16s and produced the log that found the hang.
+- **CI no longer passes `--no-fail-fast`.** hk stops producing output
+  entirely once a `depends`-chained step fails under that flag — measured
+  twice, 74 and 43 minutes of complete silence, both ended by a kill rather
+  than a verdict. A complete failure list is worth nothing from a run that
+  never reports one, so CI now returns its first failure in about ninety
+  seconds. Restore the flag when hk no longer deadlocks.
+- CI actions are pinned to commit SHAs rather than tags, with the tag kept
+  in a comment. A tag is mutable, so trusting one hands whoever controls
+  the action a push into this repository's CI. `workflow_dispatch` too --
+  both propagated from `microlith`, which already made these choices.
 
 ### Changed
 

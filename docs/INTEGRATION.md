@@ -27,20 +27,24 @@ cost real time and are not worth paying on every commit.
 dev shell and delegates:
 
 ```yaml
-- run: nix develop --command hk check --all --check --no-fail-fast
-- run: nix build .#default
-- run: nix build .#itok-minimal
-- run: nix build .#itok-ollama
+# job: gate
+- run: nix develop --command hk check --all --check
+# job: nix-build, a matrix, concurrent with the above
+- run: nix build .#${{ matrix.package }}
 ```
 
-That is the whole gate job. The three `nix build`s are separate because they
-prove something the test suite cannot: that each feature configuration builds
-as a sealed, reproducible artefact. `itok-minimal` in particular is how the
-zero-dependency claim stays true rather than remembered.
+The three `nix build`s are a separate, concurrent job because they prove
+something the test suite cannot: that each feature configuration builds as a
+sealed, reproducible artefact. `itok-minimal` in particular is how the
+zero-dependency claim stays true rather than remembered. Measured cold, all
+three finish inside 70 seconds.
 
-`--no-fail-fast` in CI, ordinary fail-fast locally. CI has no cheapest-first
-gradient worth optimising for — you want every failure in one run. Locally you
-want the first one, fast.
+Fail-fast **both** in CI and locally. CI used to pass `--no-fail-fast`, on the
+reasoning that an expensive round-trip deserves every failure in one pass.
+That reasoning was sound and the flag was still wrong: hk stops producing
+output entirely once a `depends`-chained step fails under it, so the run
+reported nothing at all until it was killed. A complete list from a run that
+never finishes is worth less than one failure in ninety seconds.
 
 ## The path a change takes
 
@@ -54,8 +58,13 @@ flowchart TD
     C --> D["pre-push — all (32)"]
     D -->|fails| A
     D -->|passes| E["push"]
-    E --> F["CI — hk check --all + 3 nix builds"]
+    E --> F["CI — gate: hk check --all"]
+    E --> G["CI — nix-build: default · minimal · ollama"]
 ```
+
+The two CI jobs run **concurrently**. They share no cargo artifacts — the
+`nix build`s are sandboxed — so running them in sequence only added one
+cost to the other.
 
 The fixable hygiene steps repair the file and restage it rather than failing:
 whitespace, final newlines, line endings, smart quotes, TOML formatting. You do
@@ -214,6 +223,19 @@ Stated rather than left to be discovered:
   under the floor does not fail.
 - **No platform matrix.** CI is `ubuntu-latest` only. macOS and an MSRV axis
   are planned (`§T60`).
+- **The caches are a modest win, not the fix.** They were added believing CI
+  was slow. It was not: the gate reaches its first test **79 seconds** after
+  the step starts, cold, and the 3.2 GiB dev shell materialises in **26** of
+  those. The hour-long runs were hk going silent after a chained step failed
+  under `--no-fail-fast` — 74 minutes of no output on one run, 43 on another.
+  The caches save roughly half a minute and are kept on that basis. The cargo
+  one is reasoning rather than measurement, and if the two ever compete for
+  the 10 GB repository budget it is the one to shrink first (`§T60`).
+- **`--no-fail-fast` is off in CI**, so a red run reports its *first* failure
+  rather than every failure. That is a downgrade taken deliberately: under
+  the flag, hk produced no output at all after a failure, and a complete list
+  from a run that never reports one is worth nothing. Restore it when hk
+  stops deadlocking.
 - **`cargo-deny` is not wired.** The dependency tree is not checked for bans,
   licences or advisories. `§V23`'s "no async runtime" is
   currently enforced only by `no-default-features` compiling, which does not
