@@ -15,8 +15,8 @@ things run it, and none of them restates it.
 | caller | set | when |
 |---|---|---|
 | `pre-commit` hook | `fast` — **26 steps** | every commit |
-| `pre-push` hook | `all` — **32 steps** | every push |
-| `hk check --all` in CI | `all` — **32 steps** | every push and PR |
+| `pre-push` hook | `all` — **33 steps** | every push |
+| `hk check --all` in CI | `all` — **33 steps** | every push and PR |
 
 `all` is `fast` plus six: `ollama`, `no-default-features`, `package`,
 `rustdoc`, `coverage`, `semver`. Those six either compile a second
@@ -80,6 +80,8 @@ Most steps take `{{files}}` — only what changed. Three deliberately do not:
 
 - **`package`** globs `**/*` because *deleting* a required file must trip it,
   and a deleted file never appears in the changed set.
+- **`package-suite`** globs `**/*` for the same reason, one layer along: it
+  tests the tarball, and any file can change what the tarball does.
 - **`itok`** checks registered paths against `.context-limits`, which is about
   the file's total size, not the diff.
 - **`mth-check`** reads `SPEC.md` whole; a structural rule is about the
@@ -91,9 +93,11 @@ being a copy.
 
 ## The steps that guard claims, not code
 
-Most of the 32 are ordinary: a formatter, a linter, a test runner, hygiene.
-Six exist because this repository makes a *claim* somewhere, and a claim with
-no runner is just a sentence (`§V17`).
+Most of the 33 are ordinary: a formatter, a linter, a test runner, hygiene.
+Eleven exist because this repository makes a *claim* somewhere, and a claim with
+no runner is just a sentence (`§V17`). The count said six while the table
+listed ten, which is the drift `integration-doc` checks for and cannot see:
+it does the arithmetic on the step totals, not on the prose around them.
 
 | step | the claim it makes true |
 |---|---|
@@ -101,6 +105,7 @@ no runner is just a sentence (`§V17`).
 | `mth` / `mth-check` | "`SPEC.md` obeys the format it is written in" — enforced by `microlith`, the format's owner, rather than by a second implementation here |
 | `no-default-features` | "the minimal tier is genuinely zero-dependency" |
 | `package` | "the published `.crate` carries what a consumer needs" — the one failure that *cannot* reproduce by running the suite here, because the repo still has the file |
+| `package-suite` | "and what it carries *works*" — the `.crate` unpacked outside this worktree and put through its own tests, with `ITOK_DOGFOOD` unset, which is the consumer's situation exactly. `cargo package --verify` only compiles; fifteen tests read this repo's git history and failed on the tarball while staying green here (`§B17`) |
 | `coverage` | "98% line coverage, on this crate alone" — not a workspace aggregate, which would be inflated by siblings |
 | `semver` | "the version number tells maturity true" — vacuous until the first `v*` tag, and it says so on stderr rather than passing quietly |
 | `ripsecrets` | "no credential is going into a public history" — reads the working tree, so it says nothing about history; history was scanned once, separately |

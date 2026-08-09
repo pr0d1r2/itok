@@ -228,12 +228,18 @@ mod tests {
 
     #[test]
     fn exit_code_is_one_when_there_is_a_delta() {
+        if !crate::testutil::dogfood() {
+            return;
+        }
         let o = diff(&args(&["-C", &root(), "--exit-code", "HEAD~1", "HEAD"]));
         assert_eq!(o.code, 1);
     }
 
     #[test]
     fn budget_breaches_when_the_change_adds_too_much() {
+        if !crate::testutil::dogfood() {
+            return;
+        }
         // The empty tree -> HEAD adds the ENTIRE repo, so budget 1 always
         // breaches -- STATE-independent (V37). `HEAD~1..HEAD` couples to
         // the last commit's size: a near-zero-delta commit as HEAD (a

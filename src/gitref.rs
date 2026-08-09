@@ -246,6 +246,9 @@ mod tests {
 
     #[test]
     fn blob_reads_a_file_at_head() {
+        if !crate::testutil::dogfood() {
+            return;
+        }
         // itok's OWN Cargo.toml, by its repo-relative path -- it carries
         // `[package]` (the workspace manifest, absent once extracted, would
         // carry `[workspace]`). Name-independent so it survives a rename &
@@ -262,6 +265,9 @@ mod tests {
 
     #[test]
     fn count_at_head_is_positive() {
+        if !crate::testutil::dogfood() {
+            return;
+        }
         assert!(
             count_at(&repo(), "HEAD", "Cargo.toml", false).unwrap_or(0) > 0
         );
@@ -274,6 +280,9 @@ mod tests {
 
     #[test]
     fn a_commit_changed_some_files() {
+        if !crate::testutil::dogfood() {
+            return;
+        }
         assert!(!changed_in(&repo(), "HEAD").is_empty());
     }
 
@@ -425,12 +434,18 @@ mod tests {
 
     #[test]
     fn a_range_lists_changed_files() {
+        if !crate::testutil::dogfood() {
+            return;
+        }
         // HEAD~1..HEAD changed at least the files of the last commit.
         assert!(!changed_between(&repo(), "HEAD~1", "HEAD").is_empty());
     }
 
     #[test]
     fn commits_lists_history() {
+        if !crate::testutil::dogfood() {
+            return;
+        }
         let c = commits(&repo(), &["-n".to_owned(), "3".to_owned()]);
         assert!(!c.is_empty());
         assert!(c.iter().all(|(h, d, s)| {
@@ -447,6 +462,9 @@ mod tests {
 
     #[test]
     fn subject_has_a_hash_and_text() {
+        if !crate::testutil::dogfood() {
+            return;
+        }
         let s = subject(&repo(), "HEAD").unwrap_or_default();
         assert!(s.contains(' '), "hash + subject: {s:?}");
     }
@@ -454,6 +472,9 @@ mod tests {
     #[cfg(feature = "bpe")]
     #[test]
     fn bpe_tier_counts_a_blob() {
+        if !crate::testutil::dogfood() {
+            return;
+        }
         assert!(count_at(&repo(), "HEAD", "Cargo.toml", true).unwrap_or(0) > 0);
     }
 }

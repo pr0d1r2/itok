@@ -388,8 +388,17 @@ mod tests {
 
     /// The baseline really comes from git, so the pass compares against
     /// what is COMMITTED rather than whatever is in the working tree.
+    ///
+    /// Reads THIS repo's history, so it is gated like the dogfood tests in
+    /// `src/testutil.rs` -- the published .crate ships `SPEC.md` but no
+    /// `.git` to read it out of. Spelled out here rather than shared,
+    /// because `testutil` is a private `cfg(test)` module of the lib and an
+    /// integration test cannot see it.
     #[test]
     fn the_baseline_is_read_from_git() {
+        if std::env::var_os("ITOK_DOGFOOD").is_none() {
+            return;
+        }
         let old = spec_at("HEAD");
         assert!(old.contains("INVARIANTS"), "HEAD:SPEC.md is readable");
         assert!(!must_keep(&old).is_empty(), "and yields a must-keep set");

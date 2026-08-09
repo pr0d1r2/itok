@@ -195,6 +195,9 @@ mod tests {
 
     #[test]
     fn a_paths_history_has_costs() {
+        if !crate::testutil::dogfood() {
+            return;
+        }
         let o = log(&args(&["-C", &root(), &path("Cargo.toml")]));
         assert_eq!(o.code, 0);
         assert!(o.out.contains("itok"));
@@ -229,6 +232,9 @@ mod tests {
 
     #[test]
     fn json_carries_the_commits() {
+        if !crate::testutil::dogfood() {
+            return;
+        }
         let o = log(&args(&[
             "-C",
             &root(),
