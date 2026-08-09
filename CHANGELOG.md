@@ -77,6 +77,10 @@ gate.
   diagnostic, not hygiene: GitHub serves no logs for an in-progress job and
   defaults to 360 minutes, so a hang was six hours of silence with nothing
   to read at the end.
+- CI actions are pinned to commit SHAs rather than tags, with the tag kept
+  in a comment. A tag is mutable, so trusting one hands whoever controls
+  the action a push into this repository's CI. `workflow_dispatch` too --
+  both propagated from `microlith`, which already made these choices.
 
 ### Changed
 
