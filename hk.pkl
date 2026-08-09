@@ -430,6 +430,22 @@ local all = (fast) {
   //
   // So the pair is: pre-commit RENDERS from the cache, pre-push MEASURES and
   // rejects a cache that disagrees. `hk run refresh` is how you update both.
+  // ONE DECIMAL, TRUNCATED, both sides -- a correctness fix, not a loosened
+  // check. Coverage is PLATFORM-DEPENDENT: the identical source measured
+  // 98.04 on macOS and 98.06 on ubuntu, so the exact-string comparison this
+  // used to do could not be satisfied on both at once. Committing either
+  // number broke the other machine, and the platform matrix (T60) would
+  // have made it three. A figure no single machine can reproduce is not a
+  // measurement, and a badge should not print one (B20).
+  //
+  // TRUNCATED rather than rounded, and the distinction is the whole fix:
+  // `%.1f` ROUNDS 98.04 to 98.0 and 98.06 to 98.1, so the two measurements
+  // straddle the boundary and the check still fails. `int(x*10)/10` sends
+  // both to 98.0. It also FLOORS, so the badge can only ever understate --
+  // the safe direction for a published claim.
+  //
+  // The floor keeps its full precision: `--fail-under-lines 98` is a
+  // threshold, not a displayed claim, so sub-decimal jitter cannot move it.
   ["coverage"] {
     glob = List("**/*.rs", "SPEC.md", "tests/fixtures/**", ".coverage")
     depends = List("rustdoc")
@@ -437,14 +453,14 @@ local all = (fast) {
       mkdir -p target
       cargo llvm-cov nextest --features ollama --fail-under-lines 98 --summary-only > target/coverage.txt || { cat target/coverage.txt >&2; echo 'hk: below the coverage floor. Cover the gap; lowering the floor needs a reason in SPEC.md. See AGENTS.md' >&2; exit 1; }
       cat target/coverage.txt
-      measured=$(awk '/^TOTAL/{gsub("%","",$10); print $10}' target/coverage.txt)
-      cached=$(awk '/^lines /{print $2}' .coverage)
+      measured=$(awk '/^TOTAL/{gsub("%","",$10); printf "%.1f", int($10*10)/10}' target/coverage.txt)
+      cached=$(awk '/^lines /{printf "%.1f", int($2*10)/10}' .coverage)
       [ "$measured" = "$cached" ] || { echo "hk: .coverage says $cached% but the measurement is $measured%, so the README badge is rendering a stale number. Run 'hk run refresh' to update the cache and the badge, then amend." >&2; exit 1; }
       """
     fix = """
       mkdir -p target
       cargo llvm-cov nextest --features ollama --fail-under-lines 98 --summary-only > target/coverage.txt || { cat target/coverage.txt >&2; exit 1; }
-      measured=$(awk '/^TOTAL/{gsub("%","",$10); print $10}' target/coverage.txt)
+      measured=$(awk '/^TOTAL/{gsub("%","",$10); printf "%.1f", int($10*10)/10}' target/coverage.txt)
       key=$(git ls-files -s -- '*.rs' SPEC.md tests/fixtures | git hash-object --stdin)
       awk -v k="$key" -v m="$measured" '/^key /{print "key " k; next} /^lines /{print "lines " m; next} {print}' .coverage > target/.coverage.new
       mv target/.coverage.new .coverage

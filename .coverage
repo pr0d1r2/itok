@@ -17,5 +17,12 @@
 # If the key still matches, the number below is current by construction and
 # no measurement is needed. If it does not, pre-push says so rather than
 # trusting it.
-key fd07e187ad1b0f2b91662cb23cc0fb70c2c77fdf
-lines 98.05
+#
+# ONE DECIMAL, TRUNCATED, deliberately. Coverage is platform-dependent --
+# this very source measured 98.04 on macOS and 98.06 on ubuntu -- so a second
+# decimal is a digit no single machine can reproduce, and the check that
+# compared it exactly could not pass on both (B20). Truncated, not rounded:
+# rounding puts 98.04 and 98.06 on OPPOSITE sides of 98.05. The floor in
+# hk.pkl keeps full precision; only the DISPLAYED figure is truncated.
+key b8b8ff7d9f583a3f5bdea1495404d926ad370475
+lines 98.04

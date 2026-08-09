@@ -114,6 +114,17 @@ gate.
   one constructor that clears the nine `GIT_*` variables. Verified by running
   the entire suite with a decoy `GIT_DIR` set: 426 of 426, with it and
   without.
+- **The coverage badge printed a number no machine could reproduce.** Line
+  coverage is platform-dependent -- the identical source measures `98.04` on
+  macOS and `98.06` on ubuntu -- and the gate compared cached against
+  measured as exact strings. That cannot pass on both at once: the CI number
+  fails your `pre-push`, and your number fails CI. The badge and the cache
+  now carry one decimal, **truncated**. Truncated rather than rounded because
+  `98.04` and `98.06` straddle `.05`, so rounding would have sent them to
+  `98.0` and `98.1` and changed nothing; truncation sends both to `98.0` and
+  floors, so the badge understates rather than overstates. The
+  `--fail-under-lines 98` floor keeps full precision -- it is a threshold,
+  not a published claim.
 - Removed hardcoded LAN addresses from help text, tests and the spec.
 
 ## [0.2.0] - 2026-07-25
