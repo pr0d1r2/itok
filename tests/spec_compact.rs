@@ -193,16 +193,48 @@ fn spec_now() -> String {
 }
 
 /// `SPEC.md` as of a git ref -- the baseline a rewrite is checked against.
+///
+/// The `GIT_*` scrub is not decoration. `-C` sets the working DIRECTORY,
+/// while `GIT_DIR` and friends set the git DIRECTORY and WIN over it -- and
+/// git exports them into every hook it runs, which is how this suite
+/// executes on `pre-commit`. Unscrubbed, this reads whatever repository
+/// invoked the gate (B19). The list is duplicated from `src/gitref.rs`
+/// because an integration test cannot see a crate-private helper, and a
+/// second copy that drifts is better than a test that silently reads the
+/// wrong repo.
 fn spec_at(git_ref: &str) -> String {
     let path = format!("{git_ref}:./SPEC.md");
-    Command::new("git")
-        .arg("-C")
-        .arg(DIR)
+    scrubbed_git()
         .args(["show", &path])
         .output()
         .ok()
         .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
         .unwrap_or_default()
+}
+
+/// Every variable through which the invoking repository reaches a child
+/// `git`. Duplicated from `src/gitref.rs` because an integration test cannot
+/// see a crate-private helper, and a second copy that might drift beats a
+/// test that silently reads the wrong repo.
+const GIT_ENV: &[&str] = &[
+    "GIT_DIR",
+    "GIT_WORK_TREE",
+    "GIT_INDEX_FILE",
+    "GIT_OBJECT_DIRECTORY",
+    "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+    "GIT_COMMON_DIR",
+    "GIT_CEILING_DIRECTORIES",
+    "GIT_NAMESPACE",
+    "GIT_PREFIX",
+];
+
+fn scrubbed_git() -> Command {
+    let mut cmd = Command::new("git");
+    cmd.arg("-C").arg(DIR);
+    for key in GIT_ENV {
+        cmd.env_remove(key);
+    }
+    cmd
 }
 
 // ----------------------------------------------------------- by-hand use

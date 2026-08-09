@@ -8,11 +8,11 @@ use std::path::Path;
 /// filesystem walk. Empty if `root` is not a git repo (git errored).
 #[must_use]
 pub fn tracked(root: &Path) -> Vec<String> {
-    let Ok(out) = std::process::Command::new("git")
-        .arg("-C")
-        .arg(root)
-        .args(["ls-files", "-z"])
-        .output()
+    // The scrubbed constructor, not a bare `Command`: `-C` does not override
+    // an inherited GIT_DIR, and `itok check` runs from `pre-commit` in this
+    // repo's own gate, where git has exported one (B19). Unscrubbed, the
+    // "tracked set" is the INVOKING repo's, silently.
+    let Ok(out) = crate::gitref::git(root).args(["ls-files", "-z"]).output()
     else {
         return Vec::new();
     };

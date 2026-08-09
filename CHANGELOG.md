@@ -88,6 +88,43 @@ gate.
   suite.
 - README documented a `crates/itok` install path that cannot exist in a
   clone, and an example output with numbers stale by half.
+- **`itok show <merge-commit>` reported zero.** `git diff-tree` answers
+  empty for a merge -- it declines to pick a side -- and for the root
+  commit, where there is no side. Both came back as exit 0 with no
+  diagnostic, so the tool gave a confident zero-cost answer for a commit
+  that changed plenty. Merges now read against their first parent, which is
+  the commit `show` was already computing its per-file deltas against; the
+  root commit uses `diff-tree --root`.
+
+  Worth saying why it shipped: this repository's history is linear, and
+  branch protection now requires it to stay that way, so the commit shape
+  the tool most needs to handle is the one its own repo can never contain.
+  It surfaced within a minute of the first pull request ever opened here,
+  because GitHub checks out an ephemeral merge commit for `pull_request`.
+- **Every verb could answer about the wrong repository.** `git -C <root>`
+  sets the working directory; `GIT_DIR`, `GIT_WORK_TREE` and `GIT_INDEX_FILE`
+  set the *git* directory, and the environment wins. Git exports those into
+  anything it runs, and `itok` runs from hooks by design -- this repo's own
+  gate calls `itok check` from `pre-commit`, and `guard` is a harness hook.
+  So `itok -C /other/repo show HEAD`, invoked from a hook, read the repo that
+  invoked it and said nothing about the substitution. It looked correct here
+  only because the two paths coincide.
+
+  Every git call in `gitref`, `walk` and the test helpers now goes through
+  one constructor that clears the nine `GIT_*` variables. Verified by running
+  the entire suite with a decoy `GIT_DIR` set: 426 of 426, with it and
+  without.
+- **The coverage badge printed a number no machine could reproduce.** Line
+  coverage is platform-dependent -- the identical source measures `98.04` on
+  macOS and `98.06` on ubuntu -- and the gate compared cached against
+  measured as exact strings. That cannot pass on both at once: the CI number
+  fails your `pre-push`, and your number fails CI. The badge and the cache
+  now carry one decimal, **truncated**. Truncated rather than rounded because
+  `98.04` and `98.06` straddle `.05`, so rounding would have sent them to
+  `98.0` and `98.1` and changed nothing; truncation sends both to `98.0` and
+  floors, so the badge understates rather than overstates. The
+  `--fail-under-lines 98` floor keeps full precision -- it is a threshold,
+  not a published claim.
 - Removed hardcoded LAN addresses from help text, tests and the spec.
 
 ## [0.2.0] - 2026-07-25

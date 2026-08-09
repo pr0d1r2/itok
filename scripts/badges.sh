@@ -35,7 +35,17 @@ esac
 ed=$(sed -n 's/^edition = //p' Cargo.toml | tr -d '"')
 msrv=$(sed -n 's/^rust-version = //p' Cargo.toml | tr -d '"')
 floor=$(grep -oE 'fail-under-lines [0-9]+' hk.pkl | head -1 | grep -oE '[0-9]+')
-cov=$(awk '/^lines /{print $2}' .coverage)
+# ONE decimal, TRUNCATED -- normalised here as well as in hk.pkl's `coverage`
+# step, so a cache written before this rule still renders the badge it will be
+# checked against. Coverage is PLATFORM-DEPENDENT: the same source measured
+# 98.04 on macOS and 98.06 on ubuntu, so a two-decimal badge is a number no
+# single machine can reproduce, and the exact-string check guarding it could
+# not pass on both at once (B20).
+#
+# `int(x*10)/10`, not `%.1f`: rounding sends 98.04 to 98.0 and 98.06 to 98.1,
+# which straddles the boundary and defeats the point. Truncation sends both
+# to 98.0 and floors, so the badge understates rather than overstates.
+cov=$(awk '/^lines /{printf "%.1f", int($2*10)/10}' .coverage)
 # The PINNED REV, not a release number. This flake pins nixpkgs by rev, so
 # there is no `26.11` anywhere in the lock to read -- microlith's badge
 # hardcodes that string inside its generated block, which is precisely the

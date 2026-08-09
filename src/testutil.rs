@@ -5,8 +5,6 @@
 //! the root or a `crates/itok/...` pathspec couples a test to the monorepo
 //! layout and breaks the extraction rehearsal (B2/T11).
 
-use std::process::Command;
-
 const DIR: &str = env!("CARGO_MANIFEST_DIR");
 
 /// A host for tests that need one, defined ONCE so no test carries a real
@@ -46,10 +44,12 @@ pub(crate) fn crate_path(rel: &str) -> String {
     format!("{}{rel}", git(&["rev-parse", "--show-prefix"]))
 }
 
+/// The tool's own scrubbed constructor, not a bare `Command`: `-C` loses to
+/// an inherited `GIT_DIR`, and this suite runs from `pre-commit`, where git
+/// has exported one (B19). Unscrubbed, `repo_root` answers with the
+/// INVOKING repository and every caller inherits the wrong answer.
 fn git(args: &[&str]) -> String {
-    Command::new("git")
-        .arg("-C")
-        .arg(DIR)
+    crate::gitref::git(std::path::Path::new(DIR))
         .args(args)
         .output()
         .ok()
