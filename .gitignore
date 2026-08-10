@@ -12,3 +12,12 @@ hk.local.pkl
 # are hand-written, synthetic, and the tests need them.
 *.jsonl
 !tests/fixtures/**/*.jsonl
+
+# Agent worktrees. `EnterWorktree` puts isolated checkouts under
+# `.claude/worktrees/`, INSIDE this repo, so each one is a git repository
+# nested in a git repository. A `git add -A` from the root stages them as
+# embedded repos -- twice, while this file was being written -- and an
+# embedded repo committed by accident is a clone that silently lacks its
+# own contents. The tracked half of `.claude/` (settings, agents) stays
+# tracked; only the checkouts are ignored.
+.claude/worktrees/

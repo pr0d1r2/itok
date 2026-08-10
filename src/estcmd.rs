@@ -294,4 +294,80 @@ mod tests {
         assert!(o.out.contains("\"estimated\":false"));
         assert!(o.out.contains("\"method\":\"o200k\""));
     }
+
+    // ------------------------------------------------- `--model` resolution
+    //
+    // B11a is the reason these exist: `estimate --ollama --model gpt-oss`
+    // posted the LITERAL name and 404'd, while `doctor` resolved the same
+    // string, because the resolution lived in one caller and was never
+    // carried to the other (V6/V64). `resolved` is that shared call, and
+    // until now nothing exercised it from this side -- the fix was believed
+    // rather than gated.
+    //
+    // Tested at the FUNCTION, not through the CLI, deliberately: reaching it
+    // end-to-end needs a live host, and V34 keeps the suite networkless. The
+    // fleet is a literal, so each branch is chosen rather than whatever a
+    // machine happens to serve (B3's ambient-state rule).
+
+    #[cfg(feature = "ollama")]
+    const FLEET: [&str; 3] =
+        ["gpt-oss:20b", "gpt-oss:120b", "qwen2.5-coder:7b"];
+
+    /// A fully spelled name wins outright -- the rung that is not inference.
+    #[cfg(feature = "ollama")]
+    #[test]
+    fn an_exact_model_name_resolves_to_itself() {
+        let got = resolved("qwen2.5-coder:7b", &FLEET);
+        assert_eq!(got.ok(), Some("qwen2.5-coder:7b".to_owned()));
+    }
+
+    /// A prefix matching ONE served model resolves; this is the case B11a
+    /// reported as a 404.
+    #[cfg(feature = "ollama")]
+    #[test]
+    fn a_unique_prefix_resolves() {
+        let got = resolved("qwen", &FLEET);
+        assert_eq!(got.ok(), Some("qwen2.5-coder:7b".to_owned()));
+    }
+
+    /// A prefix matching TWO is an ERROR listing both, never a silent pick:
+    /// counting with the wrong tokenizer yields a confident wrong number
+    /// (V6's no-silent-pick rule, V101's reason).
+    #[cfg(feature = "ollama")]
+    #[test]
+    fn an_ambiguous_prefix_errors_and_names_the_candidates() {
+        let f = resolved("gpt-oss", &FLEET).err().unwrap_or_else(|| Fail {
+            msg: "resolved cleanly, but two models share this prefix"
+                .to_owned(),
+            code: 0,
+        });
+        assert_eq!(f.code, 2, "{}", f.msg);
+        assert!(f.msg.contains("gpt-oss:20b"), "msg: {}", f.msg);
+        assert!(f.msg.contains("gpt-oss:120b"), "msg: {}", f.msg);
+    }
+
+    /// A name nothing serves is an error naming what WAS served, so the
+    /// reader can see the difference rather than guess it (V104).
+    #[cfg(feature = "ollama")]
+    #[test]
+    fn a_missing_model_errors_and_names_what_is_served() {
+        let f = resolved("llama", &FLEET).err().unwrap_or_else(|| Fail {
+            msg: "resolved cleanly, but this fleet serves no llama".to_owned(),
+            code: 0,
+        });
+        assert_eq!(f.code, 2, "{}", f.msg);
+        assert!(f.msg.contains("gpt-oss:20b"), "msg: {}", f.msg);
+    }
+
+    /// A bare `String` becomes a HOST failure (7), not a usage error (2).
+    /// The two exit codes mean different things -- "you asked wrongly" vs
+    /// "the host let us down" -- and `From` is where that distinction is
+    /// assigned, so it is pinned rather than assumed.
+    #[cfg(feature = "ollama")]
+    #[test]
+    fn a_plain_message_becomes_a_host_failure() {
+        let f = Fail::from("ollama host serves no models".to_owned());
+        assert_eq!(f.code, 7);
+        assert_eq!(f.msg, "ollama host serves no models");
+    }
 }
