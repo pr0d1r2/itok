@@ -148,6 +148,23 @@ gate.
   one constructor that clears the nine `GIT_*` variables. Verified by running
   the entire suite with a decoy `GIT_DIR` set: 426 of 426, with it and
   without.
+- **A test that checked nothing on half the machines it ran on.**
+  `a_stale_harness_id_falls_back_instead_of_failing` asserted inside an
+  `if let Ok(..)` against the ambient home and working directory, so on a
+  machine with no transcript directory for the current cwd it took the
+  `Err` path, verified nothing, and still reported green.
+
+  The two halves of that turned out to be one defect. Because the branch ran
+  on Linux and not on macOS, the suite's line coverage differed by exactly
+  one line between platforms — 98.01% against 97.99% — with the 98% floor
+  sitting precisely between them. `main` was simultaneously green on Linux
+  and red on macOS, and nothing could see it because CI was Linux-only. It
+  surfaced while adding the platform matrix, before that change merged.
+
+  The test now plants its own transcript under a throwaway `HOME`, sets a
+  stale `ITOK_SESSION_ID`, and asserts unconditionally that resolution falls
+  back to newest-by-mtime. Coverage is 98.02% on both platforms — the same
+  number, which is the point.
 - **The coverage badge printed a number no machine could reproduce.** Line
   coverage is platform-dependent -- the identical source measures `98.04` on
   macOS and `98.06` on ubuntu -- and the gate compared cached against
