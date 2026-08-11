@@ -65,9 +65,11 @@ gate.
 - Generated README badges -- nineteen, every number read from the file that
   owns it, so a badge cannot drift from the manifest, the flake or the
   coverage floor.
-- Eight gate steps: `ripsecrets`, `semver`, `links`, `smart-quotes`,
+- Nine gate steps: `ripsecrets`, `semver`, `links`, `smart-quotes`,
   `readme-badges`, `integration-doc`, plus `package` now checking the
-  tarball's *contents* rather than only that one can be built.
+  tarball's *contents* rather than only that one can be built, and
+  `package-suite`, which unpacks the `.crate` outside the worktree and runs
+  its own tests the way a consumer would.
 - `hk run refresh` to update the coverage cache and the badges.
 - CI caches the nix store and the cargo target directory, runs the three
   `nix build`s as a concurrent job, and carries a `timeout-minutes` bound.
@@ -108,6 +110,16 @@ gate.
   excluded -- three of its eight tests failed on the published tarball while
   staying green in the repo. Found by measuring the tarball, not by the
   suite.
+- Fifteen tests failed on the published tarball -- the same class as the
+  line above, one layer deeper. They read *itok's own git history*, and
+  registry source has no `.git`, so anyone vendoring, auditing or packaging
+  the crate would have run `cargo test` and got fifteen reds. Nothing here
+  could see it: `cargo package --verify` only **compiles** the tarball, and
+  the `package` step checks which files ship, not that they work. They are
+  now gated on `ITOK_DOGFOOD`, which this repo's gate and dev shell set --
+  an explicit opt-in rather than a "am I in a repo?" probe, which would have
+  gone green here for the wrong reason and still fired for a vendorer inside
+  their own repo. `package-suite` is the runner that would have caught it.
 - README documented a `crates/itok` install path that cannot exist in a
   clone, and an example output with numbers stale by half.
 - **`itok show <merge-commit>` reported zero.** `git diff-tree` answers

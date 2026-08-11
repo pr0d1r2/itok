@@ -273,6 +273,9 @@ mod tests {
 
     #[test]
     fn no_paths_uses_the_tracked_set() {
+        if !crate::testutil::dogfood() {
+            return;
+        }
         // V8: default candidates are the git-tracked files.
         let o = fit(&args(&["--window", "100M", "-C", DIR]));
         assert_eq!(o.code, 0);

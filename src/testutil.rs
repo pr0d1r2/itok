@@ -30,6 +30,27 @@ pub(crate) const HOST_IP_ALT: &str = "192.0.2.20";
 /// reserved by RFC 2606 and can never resolve.
 pub(crate) const HOST_NAME: &str = "tokhost.invalid";
 
+/// Whether the DOGFOOD tests may run: the ones that read THIS repo's own
+/// git history -- tracked set, blobs at HEAD, `HEAD~1..HEAD` -- rather than
+/// a fixture. They need a git repo WITH history at `CARGO_MANIFEST_DIR`,
+/// and the published `.crate` is neither: a consumer's registry source dir
+/// has no `.git` at all. `cargo package --verify` never caught it because
+/// it only COMPILES the tarball, so the miss survived to a dry run (B17).
+///
+/// An ENV gate, not a silent `is this a repo` probe, and the difference is
+/// the whole point. Auto-skipping would go green in the repo too, the day
+/// something breaks git detection -- a suite that reports success for the
+/// reason it should have reported failure. Requiring the variable makes
+/// the skip a DECISION someone made: unset means "not the dogfood
+/// environment", and the repo's own gate sets it (`hk.pkl`, `flake.nix`).
+///
+/// Vendorers are why the gate cannot key off repo presence either: a
+/// consumer who vendors this source INTO their git repo would satisfy any
+/// such probe and then fail on our history. They will never set this.
+pub(crate) fn dogfood() -> bool {
+    std::env::var_os("ITOK_DOGFOOD").is_some()
+}
+
 /// The enclosing git repo's root (`git rev-parse --show-toplevel`): the
 /// monorepo root in-tree, the crate dir once extracted.
 pub(crate) fn repo_root() -> String {
@@ -55,4 +76,31 @@ fn git(args: &[&str]) -> String {
         .ok()
         .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_owned())
         .unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The gate's own guard, in the direction that cannot misfire.
+    ///
+    /// It asserts the CONVERSE of what the dogfood tests assume: if someone
+    /// asked for them, the environment must actually be able to run them.
+    /// So a gate set in a tree with no git history fails LOUDLY here once,
+    /// instead of fourteen times with fourteen unrelated messages.
+    ///
+    /// Checking the other direction -- "in a repo, therefore the gate must
+    /// be set" -- is the version that breaks a vendorer, who is inside
+    /// THEIR repo and has set nothing. That asymmetry is the reason this
+    /// test only has one arm.
+    #[test]
+    fn asking_for_dogfood_requires_a_repo() {
+        if !dogfood() {
+            return;
+        }
+        assert!(
+            !repo_root().is_empty(),
+            "ITOK_DOGFOOD is set but {DIR} is not in a git repo"
+        );
+    }
 }

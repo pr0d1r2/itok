@@ -191,6 +191,12 @@
           ];
           # Pin locale so tool output is deterministic across machines.
           LANG = "C.UTF-8";
+          # Opts a bare `cargo test` in the dev shell in to the dogfood
+          # tests, matching hk. Without it a contributor's local run silently
+          # skips fourteen tests that CI runs, and "green here, red in the
+          # gate" is the confusion this repo spends real effort avoiding.
+          # See src/testutil.rs for why the gate is an env var.
+          ITOK_DOGFOOD = "1";
           LLVM_COV = "${pkgs.llvmPackages.llvm}/bin/llvm-cov";
           LLVM_PROFDATA = "${pkgs.llvmPackages.llvm}/bin/llvm-profdata";
           # Resolved at ENTRY, not baked in: `.envrc` sits beside

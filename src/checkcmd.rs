@@ -296,6 +296,9 @@ mod tests {
 
     #[test]
     fn check_on_itok_passes_its_own_policy() {
+        if !crate::testutil::dogfood() {
+            return;
+        }
         // Dogfood (V14): crates/itok/.context-limits keeps itok within budget,
         // and the pass is NON-vacuous -- the registry actually gates SPEC.md,
         // not an empty registry that trivially passes (V10).

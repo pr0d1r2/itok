@@ -35,6 +35,17 @@ fail_fast = true
 
 env {
   ["HK_HIDE_WHEN_DONE"] = "true"
+  // Opts THIS repo in to the dogfood tests -- the ones that read itok's own
+  // git history (tracked set, blobs at HEAD, HEAD~1..HEAD). They are gated
+  // because the published .crate is not a git repo, so a consumer running
+  // `cargo test` on registry source hit fourteen failures that nothing here
+  // could see: `cargo package --verify` only COMPILES the tarball.
+  //
+  // Set globally rather than on the `test` step, so the ollama and
+  // no-default-features runs and coverage all measure the same suite. The
+  // one place it must NOT reach is `package-suite`, which unsets it on
+  // purpose -- that step exists to be the consumer.
+  ["ITOK_DOGFOOD"] = "1"
 }
 
 /// `depends` chains the cargo steps deliberately (V67). Cargo takes a lock
@@ -416,11 +427,55 @@ local all = (fast) {
       [ -z "$missing" ] || { echo "hk: the published .crate would ship WITHOUT:$missing -- and this repo's tests would stay GREEN, because the repo still has them. Either fix the exclude list in Cargo.toml, or drop the path from must-package and say why it is no longer needed. See AGENTS.md" >&2; exit 1; }
       """
   }
+  // `package` checks WHICH files ship. This checks that what ships WORKS,
+  // and they are different questions -- the file list was complete on the
+  // day fourteen tests failed on the tarball.
+  //
+  // The consumer is simulated properly or not at all: the .crate is
+  // unpacked OUTSIDE this worktree, so `git rev-parse` finds nothing, and
+  // ITOK_DOGFOOD is unset so the history-reading tests skip the way they
+  // will for a vendorer. Unpacking under `target/` instead is the trap --
+  // git commands there still resolve to THIS repo, and the same tarball
+  // then fails 4 tests instead of 14. The count moved with the location,
+  // which is how the tests were found to be location-sensitive at all.
+  //
+  // `--no-verify` on purpose, and it does not weaken anything: verify
+  // COMPILES the tarball, this step compiles AND RUNS it, so keeping both
+  // buys one redundant full build per push. Cargo's verify is the weaker
+  // half of what happens here.
+  //
+  // CARGO_TARGET_DIR is pinned so the temp source path does not mean a
+  // cold build every push. `--offline` keeps it networkless (V34) and
+  // proves the shipped Cargo.lock resolves from cache alone.
+  ["package-suite"] {
+    glob = List("**/*")
+    depends = List("package")
+    check = """
+      cargo package --allow-dirty --no-verify >/dev/null 2>&1 || { echo 'hk: `cargo package` failed -- see the `package` step, this one cannot run without a tarball.' >&2; exit 1; }
+      crate=$(ls -1 target/package/*.crate 2>/dev/null | head -1)
+      [ -n "$crate" ] || { echo 'hk: no .crate in target/package -- nothing to test.' >&2; exit 1; }
+      crate=$PWD/$crate
+      target=$PWD/target/package-suite
+      d=$(mktemp -d) || exit 1
+      trap 'rm -rf "$d"' EXIT
+      tar xzf "$crate" -C "$d" || { echo 'hk: the .crate does not unpack.' >&2; exit 1; }
+      src=$(ls -1d "$d"/*/ | head -1)
+      # cargo writes REPRODUCIBLE mtimes into the .crate, so extracted
+      # sources look OLDER than whatever is already in the shared target
+      # dir -- cargo's fingerprint then calls them fresh and reruns the
+      # PREVIOUS binary. That is a stale green, and it hit during this
+      # step's own bring-up: a fix present in the tarball, on the line the
+      # panic did not point at, and the test still failed. Touching costs
+      # nothing and is the price of pinning the target dir at all.
+      find "$src" -type f -exec touch {} + 2>/dev/null || true
+      ( cd "$src" && env -u ITOK_DOGFOOD CARGO_TARGET_DIR="$target" cargo test --offline ) || { echo 'hk: the published .crate FAILS ITS OWN TESTS outside a git repo -- exactly what a consumer, vendorer or distro packager runs on registry source. `cargo package --verify` cannot see this: it only compiles. A test that needs itok own history must be gated on ITOK_DOGFOOD (see src/testutil.rs), not left to depend on where it happens to be unpacked. See AGENTS.md' >&2; exit 1; }
+      """
+  }
   // The docs.rs badge is a promise; broken intra-doc links break it
   // there, not here, unless this runs.
   ["rustdoc"] {
     glob = List("**/*.rs")
-    depends = List("package")
+    depends = List("package-suite")
     env { ["RUSTDOCFLAGS"] = "-D warnings" }
     check = "cargo doc --no-deps --all-features"
   }

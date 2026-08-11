@@ -47,6 +47,9 @@ mod tests {
 
     #[test]
     fn tracked_lists_this_repo() {
+        if !crate::testutil::dogfood() {
+            return;
+        }
         // Git repo root at runtime (V37): works in-tree and extracted (T11).
         let root = crate::testutil::repo_root();
         assert!(
