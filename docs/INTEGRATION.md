@@ -58,13 +58,22 @@ flowchart TD
     C --> D["pre-push — all (32)"]
     D -->|fails| A
     D -->|passes| E["push"]
-    E --> F["CI — gate: hk check --all"]
-    E --> G["CI — nix-build: default · minimal · ollama"]
+    E --> F["CI — gate ×3: x86-linux · arm-linux · arm-macos"]
+    E --> G["CI — nix-build ×9: 3 packages × 3 systems"]
 ```
 
-The two CI jobs run **concurrently**. They share no cargo artifacts — the
+Twelve jobs, all **concurrent**. They share no cargo artifacts — the
 `nix build`s are sandboxed — so running them in sequence only added one
 cost to the other.
+
+The platform axis is one runner per system `flake.nix` declares
+(`x86_64-linux`, `aarch64-linux`, `aarch64-darwin`), which is what turns the
+platform claim from an assertion into a gated one. Note what a matrix does
+and does not buy: it **replicates** the gate, it does not divide it. Each
+runner pays the whole cost, so wall clock stays roughly flat while total
+compute triples. The return is coverage of the place users actually are —
+and this repo has already shipped two defects invisible from a single
+vantage point (`§B18`, `§B20`).
 
 The fixable hygiene steps repair the file and restage it rather than failing:
 whitespace, final newlines, line endings, smart quotes, TOML formatting. You do
@@ -226,8 +235,12 @@ Stated rather than left to be discovered:
   true automatically.
 - **`coverage` is a floor, not a ratchet.** 98% overall. A per-file regression
   under the floor does not fail.
-- **No platform matrix.** CI is `ubuntu-latest` only. macOS and an MSRV axis
-  are planned (`§T60`).
+- **No MSRV axis, deliberately.** An MSRV job can only fail when the declared
+  minimum sits *below* the toolchain CI runs. Here they are the same number --
+  `rust-version = "1.96"` and a `flake.lock` pinning rustc 1.96.1 -- so the
+  axis would recompile the identical toolchain for an identical answer. A
+  check that cannot fail is the vacuous pass `§V10` warns about. It becomes
+  worth adding the day the declared minimum drops below the pin (`§T60`).
 - **The caches are a modest win, not the fix.** They were added believing CI
   was slow. It was not: the gate reaches its first test **79 seconds** after
   the step starts, cold, and the 3.2 GiB dev shell materialises in **26** of

@@ -89,6 +89,20 @@ gate.
   than a verdict. A complete failure list is worth nothing from a run that
   never reports one, so CI now returns its first failure in about ninety
   seconds. Restore the flag when hk no longer deadlocks.
+- **CI runs on every system the flake declares** — `x86_64-linux`,
+  `aarch64-linux` and `aarch64-darwin`, one runner each, with all three
+  feature configurations built on all three. Twelve concurrent jobs. A
+  matrix replicates the gate rather than dividing it, so wall clock stays
+  roughly flat while compute triples; what it buys is that the platform
+  claim is gated instead of asserted. This project has already shipped two
+  defects invisible from a single vantage point.
+
+  **No MSRV axis**, and that is a decision rather than a gap. Such a job can
+  only fail when the declared minimum sits below the toolchain CI runs, and
+  here they are the same number — `rust-version = "1.96"` against a
+  `flake.lock` pinning rustc 1.96.1. It would recompile the identical
+  toolchain for an identical answer. It becomes worth having the day the
+  declared minimum drops below the pin.
 - CI actions are pinned to commit SHAs rather than tags, with the tag kept
   in a comment. A tag is mutable, so trusting one hands whoever controls
   the action a push into this repository's CI. `workflow_dispatch` too --
