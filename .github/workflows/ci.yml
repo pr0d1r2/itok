@@ -16,10 +16,17 @@ name: ci
 # nix is this crate's own toolchain rather than a host dependency.
 #
 # PENDING -- listed rather than silently absent:
-#   * platform matrix (ubuntu-arm + macos beside x86)   T60 / 0.8.0
-#   * MSRV 1.96 axis                                    T60 / 0.8.0
 #   * cargo target caching, measured                    T60 / 0.8.0
 #   * release automation and publish                    T59 / 0.7.0
+#
+# NO MSRV AXIS, and that is a decision rather than an omission. An MSRV job
+# is worth having when the declared minimum is BELOW the toolchain CI runs,
+# because only then can it fail while the normal build passes. Here they are
+# the same number: `rust-version = "1.96"` in Cargo.toml, and flake.lock
+# pins rustc 1.96.1, which every job below already uses. An axis would
+# recompile the identical toolchain and report the identical answer -- a
+# green check that cannot fail is the vacuous pass V10 warns about. It
+# becomes real the day the declared minimum drops below the pin.
 
 on:
   push:
@@ -36,9 +43,31 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # The gate. Everything hk defines, in hk's own order.
+  # The gate. Everything hk defines, in hk's own order, on every system the
+  # flake declares.
+  #
+  # One runner per `systems` entry in flake.nix, so the platform claim is
+  # GATED rather than asserted:
+  #
+  #   ubuntu-latest     x86_64-linux
+  #   ubuntu-24.04-arm  aarch64-linux
+  #   macos-latest      aarch64-darwin
+  #
+  # A matrix REPLICATES the work, it does not divide it: each runner pays
+  # the whole gate. Wall clock stays roughly flat because they run
+  # concurrently; total compute triples. What it buys is the difference
+  # between "the suite passes" and "the suite passes where users are", and
+  # this repo has already shipped two defects that were invisible from one
+  # vantage point (B18's merge commit, B20's platform-dependent coverage).
   gate:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    strategy:
+      # Every platform reports. Cancelling the others would hide whether a
+      # failure is platform-specific or universal -- which is the first
+      # question anyone asks, and the one a matrix exists to answer.
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest]
     # A bound, not hygiene, and it EARNED ITS KEEP within an hour of being
     # added. GitHub serves no logs for an in-progress job and defaults to
     # 360 minutes, so an unbounded hang is six hours of silence followed by
@@ -163,24 +192,38 @@ jobs:
   # 68 seconds of wall clock for all three. They were never the expensive
   # part, which is worth writing down, because the obvious reading of a
   # 50-minute run is that everything in it is slow.
+  #
+  # CROSSED with the platform matrix: three packages on three systems is
+  # nine jobs, and they are affordable precisely because each is about a
+  # minute. The alternative -- build every package on x86 only -- would
+  # leave `nix build .#itok-minimal` unproven on the two systems where the
+  # zero-dependency claim is most likely to break first, which is the
+  # claim's whole point.
   nix-build:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     strategy:
-      # One package failing is a fact about that package. Cancelling the
-      # other two would hide whether they share the defect.
+      # One package failing is a fact about that package on that system.
+      # Cancelling the rest would hide whether the defect is shared.
       fail-fast: false
       matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest]
         package: [default, itok-minimal, itok-ollama]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: cachix/install-nix-action@630ae543ea3a38a9a4166f03376c02c50f408342 # v31.11.0
 
-      # RESTORE ONLY. Four jobs each saving a multi-gigabyte store would
-      # blow the 10 GB budget in a single run and evict each other; `gate`
-      # is the one writer, and these read what it wrote. On a cold repo they
-      # miss and pay full price once -- measured above at about a minute,
-      # which is why this is the correct trade rather than merely a cheap one.
+      # RESTORE ONLY, and the matrix makes this load-bearing rather than
+      # tidy: twelve jobs each saving a multi-gigabyte store would exhaust
+      # the 10 GB budget several times over in one run and evict each other
+      # continuously. One writer per system -- the `gate` job for that OS --
+      # and everything else reads. On a cold repo these miss and pay full
+      # price once, measured at about a minute.
+      #
+      # The key carries `runner.arch` for the reason the matrix now makes
+      # concrete: `ubuntu-latest` and `ubuntu-24.04-arm` BOTH report `Linux`,
+      # so an os-only key would have had two different closures fighting
+      # over one entry, silently, forever.
       - uses: nix-community/cache-nix-action/restore@7df957e333c1e5da7721f60227dbba6d06080569 # v7
         with:
           primary-key: nix-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('flake.nix', 'flake.lock') }}
