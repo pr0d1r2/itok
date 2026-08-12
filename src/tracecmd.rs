@@ -315,9 +315,15 @@ mod origin_tests {
     }
 
     /// A transcript under a throwaway HOME, and the id that should find it.
+    ///
+    /// The directories are SUFFIXED with the id so two tests never share a
+    /// project dir. They run in separate processes under nextest, so a
+    /// shared dir is not a data race -- it is worse: `newest_in` picks by
+    /// mtime, so one test's planted file can win another test's fallback
+    /// and the failure looks like a bug in the tool.
     fn planted_transcript(id: &str) -> (PathBuf, PathBuf, PathBuf) {
-        let home = std::env::temp_dir().join("itok-v104-home");
-        let cwd = std::env::temp_dir().join("itok-v104-proj");
+        let home = std::env::temp_dir().join(format!("itok-v104-home-{id}"));
+        let cwd = std::env::temp_dir().join(format!("itok-v104-proj-{id}"));
         let _ = std::fs::create_dir_all(&cwd);
         let canon = std::fs::canonicalize(&cwd).unwrap_or_else(|_| cwd.clone());
         let dir = crate::session::claude_code::project_dir(&home, &canon);
@@ -333,11 +339,11 @@ mod origin_tests {
     fn resolve_under_home(
         home: &Path,
         cwd: &Path,
-        arg: &str,
+        arg: Option<&str>,
     ) -> Result<(PathBuf, Origin), Missing> {
         let prev = std::env::var("HOME").ok();
         std::env::set_var("HOME", home);
-        let got = resolve_session(Some(arg), Some(&cwd.to_string_lossy()));
+        let got = resolve_session(arg, Some(&cwd.to_string_lossy()));
         match prev {
             Some(h) => std::env::set_var("HOME", h),
             None => std::env::remove_var("HOME"),
@@ -351,7 +357,7 @@ mod origin_tests {
     #[test]
     fn v104_a_bare_id_resolves_against_the_project_dir() {
         let (home, cwd, file) = planted_transcript("abc-123");
-        let got = resolve_under_home(&home, &cwd, "abc-123");
+        let got = resolve_under_home(&home, &cwd, Some("abc-123"));
         assert_eq!(got, Ok((file.clone(), Origin::Argument)), "id resolved");
         let _ = std::fs::remove_file(&file);
     }
@@ -359,17 +365,40 @@ mod origin_tests {
     /// An id the harness offers wins over newest-by-mtime -- but only if the
     /// transcript EXISTS. A stale variable pointing at a deleted session must
     /// fall back rather than resolve to nothing.
+    ///
+    /// HERMETIC, and it was not. This used to call `resolve_session(None,
+    /// None)` against the AMBIENT home and cwd, then assert inside an
+    /// `if let Ok(..)` -- so on a machine with no transcript directory for
+    /// the current working directory it took the `Err` path and checked
+    /// NOTHING while still reporting green. B3's rule, in the file that
+    /// records B3's lesson: a test whose input is the machine it runs on
+    /// asserts different things on two laptops.
+    ///
+    /// It was found by coverage, not by reading: the `if let` body is
+    /// covered on linux and not on macOS, one line, which is exactly the
+    /// margin between 98.01% and 97.99% against a 98% floor (B22). A
+    /// vacuous test and a platform-dependent gate turned out to be the
+    /// same defect.
     #[test]
     fn a_stale_harness_id_falls_back_instead_of_failing() {
+        let (home, cwd, file) = planted_transcript("stale-fallback");
+        let prev = std::env::var("ITOK_SESSION_ID").ok();
         std::env::set_var("ITOK_SESSION_ID", "no-such-session-id-xyz");
-        let got = resolve_session(None, None);
-        std::env::remove_var("ITOK_SESSION_ID");
-        // Either no transcript dir at all, or the newest one -- never the
-        // named file, which does not exist.
-        if let Ok((path, origin)) = got {
-            assert_eq!(origin, Origin::Newest, "stale id must not win");
-            assert!(!path.to_string_lossy().contains("no-such-session-id-xyz"));
+        let got = resolve_under_home(&home, &cwd, None);
+        match prev {
+            Some(v) => std::env::set_var("ITOK_SESSION_ID", v),
+            None => std::env::remove_var("ITOK_SESSION_ID"),
         }
+        // Unconditional now: the planted transcript is the only candidate,
+        // so the stale id MUST lose to newest-by-mtime and the answer is
+        // known rather than whatever the machine happened to hold.
+        assert_eq!(
+            got,
+            Ok((file.clone(), Origin::Newest)),
+            "a stale harness id must fall back to newest, not resolve to \
+             nothing and not win"
+        );
+        let _ = std::fs::remove_file(&file);
     }
 
     /// An empty or whitespace value is no offer at all: an empty string is
