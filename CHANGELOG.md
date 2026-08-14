@@ -30,6 +30,43 @@ overstate maturity in order to ship. So `itok` is public from `0.3.0-rc.1`,
 at the rung that is actually true -- `0.4.0`'s telemetry is still open, and
 the version number says so.
 
+**A pre-release is not a rung either.** `0.3.0-rc.1` and `0.3.0` claim the
+same guarantee; the suffix said only that the publishing pipeline was
+unproven. It is proven now, so the suffix is gone and the ladder is
+unchanged.
+
+## [0.3.0] - 2026-08-14
+
+**The rc's number, spent.** Everything below under `0.3.0-rc.1` ships here
+unchanged in intent; what changed is that the pipeline it existed to prove
+has now been proven, and the defects it surfaced have runners.
+
+The pre-release earned its keep by failing in five places no dry run
+reached:
+
+| | what it was |
+|---|---|
+| `§B17` | fifteen tests failed on the published `.crate` — `--verify` only *compiles* it |
+| `§B18` | `itok show <merge>` reported zero; `git diff-tree` answers empty for merges and root commits |
+| `§B19` | `-C` is not isolation — every verb could answer about whichever repo invoked it |
+| `§B20` | a coverage badge no single machine could reproduce |
+| `§B21` | the gate hanging for 74 minutes instead of reporting |
+
+`§B17` and `§B18` would have been **permanent** in a non-pre-release
+version, which is the entire argument for having spent an rc.
+
+### Changed
+
+- The dev shell, the toolchain and the gate all moved under the rc — nixos
+  26.05 via the fleet lock, rustc 1.95.0, hk from `nix-hk`, microlith 0.6.1.
+  Those entries are recorded under `0.3.0-rc.1` below, because that is the
+  version they were developed against.
+- **The release runs through `cargo-release`**, configured by `release.toml`.
+  `0.3.0-rc.1` was published by hand from prose in `§T59` — eight commands
+  whose order was remembered rather than enforced. The gate is now a
+  `pre-release-hook`, so publishing is conditional on all 33 steps rather
+  than on the releaser having run them.
+
 ## [0.3.0-rc.1] - 2026-08-08
 
 **First public release.** An odd minor, which is a fix release between
