@@ -75,17 +75,23 @@ jobs:
     # identified the hk deadlock -- a diagnosis no amount of staring at the
     # Actions page could reach, because the page had nothing to show.
     #
-    # 15, tightened from 45 once the matrix gave a real worst case. MEASURED
-    # on main, all twelve jobs green: the slowest is `gate (macos-latest)` at
-    # 6m40s, with ubuntu-latest at 3m27s and ubuntu-24.04-arm at 4m41s. 15 is
-    # ~2.2x the worst observed, which leaves room for a cold cache while
-    # keeping a hang cheap.
+    # 10, which is ~2x the worst MEASURED job. Three numbers, each replacing
+    # a guess with a measurement, and the middle one is the lesson:
     #
-    # A bound is only useful if it is TIGHT. At 45 a hang cost three quarters
-    # of an hour per job; the number was chosen when nothing had been timed
-    # and the honest cost was unknown. Now it is known, so the bound follows
-    # the measurement instead of guessing above it.
-    timeout-minutes: 15
+    #   45  chosen when nothing had been timed
+    #   15  worst job 6m40s, so ~2.2x  -- correct until the shell changed
+    #   25  provisional: `cargo-release` and hk-from-`nix-hk` added two Rust
+    #       builds, macOS shell materialisation went seconds -> ~8 min, and
+    #       the job died at 15m05s SECONDS after its last step had passed
+    #   10  the binary cache above removed those 8 minutes; worst is now
+    #       `gate (macos-latest)` at 4m43s, with 4m32s and 2m54s beside it
+    #
+    # 25 was deliberately loose pending a green run, and this is that run, so
+    # it gets tightened rather than left. A bound nobody revisits drifts back
+    # toward the 360-minute default that hid B21 for three hours -- and a
+    # bound is only worth having if it is tight enough to fire before a hang
+    # costs an afternoon.
+    timeout-minutes: 10
     steps:
       # Pinned to commit SHAs, not tags. A tag is mutable: whoever controls
       # the action can move `v4` to different code, and every workflow that
@@ -101,7 +107,21 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+      # The fleet's binary cache. `nix-hk` and `microlith` are Rust crates
+      # built from source without it, and the dev shell gained BOTH plus
+      # `cargo-release` -- MEASURED on macOS, materialising the shell went
+      # from seconds to ~8 minutes and took the job past its bound. The cache
+      # already holds these; CI simply was not reading it.
+      #
+      # Declared HERE rather than as `nixConfig` in flake.nix on purpose: a
+      # flake-level substituter prompts every contributor to trust it, and a
+      # prompt answered by habit is not consent. CI is a machine we control
+      # and the key is pinned beside the URL.
       - uses: cachix/install-nix-action@630ae543ea3a38a9a4166f03376c02c50f408342 # v31.11.0
+        with:
+          extra_nix_config: |
+            extra-substituters = https://pr0d1r2.cachix.org
+            extra-trusted-public-keys = pr0d1r2.cachix.org-1:NfWjbhgAj41byXhCKiaE+av3Vnphm1fTezHXEGsiQIM=
 
       # A MODEST saving, and the honest number is here because the first
       # version of this comment claimed a large one.
@@ -213,10 +233,11 @@ jobs:
   # claim's whole point.
   nix-build:
     runs-on: ${{ matrix.os }}
-    # 15, the same bound as the gate. MEASURED across all nine: 30s to 1m50s,
-    # so this is roughly 8x the worst -- generous even for a cold store, and
-    # one number is easier to reason about than two.
-    timeout-minutes: 15
+    # 10, matching the gate again. These jobs never enter the dev shell --
+    # they build PACKAGES -- so they did not get heavier when it did.
+    # MEASURED across all nine: 54s to 3m55s, macOS slowest, so ~2.5x the
+    # worst.
+    timeout-minutes: 10
     strategy:
       # One package failing is a fact about that package on that system.
       # Cancelling the rest would hide whether the defect is shared.
@@ -226,7 +247,21 @@ jobs:
         package: [default, itok-minimal, itok-ollama]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # The fleet's binary cache. `nix-hk` and `microlith` are Rust crates
+      # built from source without it, and the dev shell gained BOTH plus
+      # `cargo-release` -- MEASURED on macOS, materialising the shell went
+      # from seconds to ~8 minutes and took the job past its bound. The cache
+      # already holds these; CI simply was not reading it.
+      #
+      # Declared HERE rather than as `nixConfig` in flake.nix on purpose: a
+      # flake-level substituter prompts every contributor to trust it, and a
+      # prompt answered by habit is not consent. CI is a machine we control
+      # and the key is pinned beside the URL.
       - uses: cachix/install-nix-action@630ae543ea3a38a9a4166f03376c02c50f408342 # v31.11.0
+        with:
+          extra_nix_config: |
+            extra-substituters = https://pr0d1r2.cachix.org
+            extra-trusted-public-keys = pr0d1r2.cachix.org-1:NfWjbhgAj41byXhCKiaE+av3Vnphm1fTezHXEGsiQIM=
 
       # RESTORE ONLY, and the matrix makes this load-bearing rather than
       # tidy: twelve jobs each saving a multi-gigabyte store would exhaust

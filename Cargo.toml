@@ -74,6 +74,9 @@ exclude = [
   # machinery for THIS repo -- a consumer has no README of ours to render.
   ".coverage",
   "scripts",
+  # The config that PUBLISHES this crate is about the release rather than
+  # part of it. A consumer has nothing to release.
+  "release.toml",
   # Its whole subject is `hk.pkl`, which the line above excludes. Shipping
   # a test that reads an excluded file is how three assertions failed on
   # the tarball while staying green here -- see the `package` step in

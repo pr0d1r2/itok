@@ -71,6 +71,23 @@ gate.
   `package-suite`, which unpacks the `.crate` outside the worktree and runs
   its own tests the way a consumer would.
 - `hk run refresh` to update the coverage cache and the badges.
+- **The release is configured, not scripted.** `release.toml` drives
+  `cargo-release`; there is no release script and there should not be one.
+  `0.3.0-rc.1` was published by hand from prose in `§T59` — eight commands
+  whose *order* was remembered rather than enforced, which is a rule with no
+  runner (`§V17`).
+
+  The version bump still goes through a pull request, because `main` requires
+  one with twelve passing checks. Only the tail runs from `main` afterwards,
+  and `cargo release hook` must be first: `tag`, `publish` and `push` do
+  **not** run `pre-release-hook`, so a sequence starting at `tag` would
+  publish whatever the tree happened to hold.
+
+  The hook is `hk check --all --check --no-fail-fast`, which makes the whole
+  gate a precondition of publishing rather than something the releaser is
+  trusted to have run — including `package-suite`, the step that catches what
+  `cargo publish --verify` cannot, since verify only *compiles* the tarball
+  (`§B17`).
 - CI caches the nix store and the cargo target directory, runs the three
   `nix build`s as a concurrent job, and carries a `timeout-minutes` bound.
 
@@ -99,10 +116,10 @@ gate.
 
   **No MSRV axis**, and that is a decision rather than a gap. Such a job can
   only fail when the declared minimum sits below the toolchain CI runs, and
-  here they are the same number — `rust-version = "1.96"` against a
-  `flake.lock` pinning rustc 1.96.1. It would recompile the identical
-  toolchain for an identical answer. It becomes worth having the day the
-  declared minimum drops below the pin.
+  here they are the same number — `rust-version` and the `flake.lock` pin are
+  kept equal by policy, so the axis would recompile the identical toolchain
+  for an identical answer. It becomes worth having the day the declared
+  minimum drops below the pin.
 - CI actions are pinned to commit SHAs rather than tags, with the tag kept
   in a comment. A tag is mutable, so trusting one hands whoever controls
   the action a push into this repository's CI. `workflow_dispatch` too --

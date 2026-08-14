@@ -57,9 +57,29 @@ the machine it ran on.
 | `readme-badges` | the README badge block no longer matches its sources | `hk fix` regenerates it. Never hand-edit the block -- every number is read from the file that owns it (`Cargo.toml`, `flake.nix`, `flake.lock`, `hk.pkl`, `.coverage`). If the coverage number is what moved, `hk run refresh`. |
 | `links` | a relative link does not resolve | Fix the path, or the file it points at. Only relative links are checked; external URLs are deliberately not, so this never fails on someone else's downtime. |
 | `coverage` (cache half) | `.coverage` disagrees with a fresh measurement | `hk run refresh`, then amend. The badge was rendering a stale number. |
-| `semver` | the public API broke against the newest `v*` tag | Restore it, or take the version bump semver requires. `crates.io` is immutable, so a wrong rung on V70's ladder cannot be corrected. With no tags it reports `NO BASELINE` on stderr and passes -- that is it saying it examined nothing, not that it found nothing. |
+| `semver` | the public API broke against the newest `v*` tag | Restore it, or take the version bump semver requires. `crates.io` is immutable, so a wrong rung on V70's ladder cannot be corrected. Two branches report that they examined NOTHING rather than that they found nothing, both on stderr, both passing: `NO BASELINE` when no `v*` tag exists yet, and `BASELINE UNBUILDABLE` when the tag's frozen `rust-version` exceeds the running toolchain -- the second clears itself at the next tag cut on the current toolchain. |
 | `coverage` | below the 98% floor | Cover the gap. Lowering the floor needs a reason recorded in `SPEC.md`. |
 | hygiene steps | whitespace, line endings, BOM, merge markers, private keys, large files, case conflicts, broken symlinks, smart quotes | The fixable ones fix themselves on commit. A smart quote matters because these docs carry commands meant to be pasted, and the wrong quote fails in the reader's shell rather than here. A private-key hit is never cosmetic -- stop and check what you are about to commit. |
+
+## Releasing
+
+`cargo-release`, configured by `release.toml`. Do not write a release script:
+everything one would do, the tool already does, and a second implementation of
+one rule set is what `§V64` exists to prevent.
+
+The version bump goes through a **pull request**, because `main` requires one
+with twelve passing checks. Only the tail runs from `main` afterwards:
+
+```bash
+cargo release hook                 # the gate; dry-run is enough
+cargo release tag --execute
+cargo release publish --execute
+cargo release push --execute
+```
+
+Run `hook` first and do not skip it. `tag`, `publish` and `push` do **not**
+run `pre-release-hook` — a sequence starting at `tag` publishes whatever the
+tree holds. `release.toml` carries the reasoning.
 
 ## After fixing
 
