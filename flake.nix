@@ -7,17 +7,64 @@
   # the cargo-native gate. No host guard bins, because those do not travel.
   description = "itok -- context-cost estimator (dev shell)";
 
-  inputs.nixpkgs.url = "github:NixOS/nixpkgs/241313f4e8e508cb9b13278c2b0fa25b9ca27163";
+  # `nixpkgs-lock` is the fleet's SOLE nixpkgs authority, and nixpkgs follows
+  # it rather than naming a rev of its own. One rev across every repo is what
+  # makes the shared binary cache hit instead of rebuilding -- a second
+  # nixpkgs edge here would silently fork it, and the fork costs a full
+  # toolchain rebuild rather than an error anyone would notice.
+  #
+  # Following a BRANCH is not the drift it looks like: `flake.lock` is the
+  # pin, so the toolchain only moves when someone runs `nix flake update`
+  # and commits the result. The gate can always name the compiler that
+  # produced a verdict.
+  #
+  # This does not breach the standalone rule (V13/V31): `flake.nix` is in
+  # `Cargo.toml`'s exclude list, so none of these inputs reach a consumer of
+  # the published crate. They bind the DEV SHELL, not the tool.
+  inputs.nixpkgs-lock.url = "github:pr0d1r2/nixpkgs-lock";
+  inputs.nixpkgs.follows = "nixpkgs-lock/nixpkgs";
+
+  # The gate RUNNER, from its own flake rather than from nixpkgs.
+  #
+  # nixos 26.05 dropped `pkgs.hk` entirely -- the dev shell stopped
+  # evaluating with `attribute 'hk' missing`, which is the whole gate gone in
+  # one nixpkgs bump. Sourcing it here makes the runner an explicit, versioned
+  # choice instead of a side effect of whatever nixpkgs happens to carry,
+  # exactly the argument that already pins microlith to a tag below.
+  #
+  # `nixpkgs-lock` follows ours so the closure holds ONE nixpkgs. Without it
+  # hk resolves its own copy of the same lock repo and the cache misses.
+  inputs.hk.url = "github:pr0d1r2/nix-hk";
+  inputs.hk.inputs.nixpkgs-lock.follows = "nixpkgs-lock";
 
   # The FORMAT owner, pinned to a released TAG rather than a branch: the
   # rules this spec is held to should change when the pin changes and at no
-  # other time. `follows` because microlith pins its own nixpkgs, and two
-  # nixpkgs in one closure is two toolchains to download for no benefit.
-  inputs.microlith.url = "github:pr0d1r2/microlith/v0.5.0";
-  inputs.microlith.inputs.nixpkgs.follows = "nixpkgs";
+  # other time.
+  #
+  # v0.6.1 rather than v0.5.0 because 26.05 made the old pin UNBUILDABLE:
+  # both earlier tags declare `rust-version = "1.96"` and this nixpkgs
+  # carries rustc 1.95.0, so the shell died with `rustc 1.95.0 is not
+  # supported by microlith@0.5.0`. 0.6.1 lowers its MSRV to 1.95 and takes
+  # nixpkgs from the same fleet lock.
+  #
+  # It follows our `nixpkgs-lock`, not our `nixpkgs`: 0.6.1 consumes the
+  # lock repo directly, so redirecting only `nixpkgs` left a SECOND
+  # `nixpkgs-lock` node resolving the same repo twice. One authority, one
+  # nixpkgs, one toolchain to download -- same wiring as `hk` above.
+  # `nix-hk` follows ours too: microlith consumes it for its OWN dev shell,
+  # and left alone it locks a different rev -- two hk builds in one closure
+  # for a binary neither this shell nor `mth` needs twice.
+  inputs.microlith.url = "github:pr0d1r2/microlith/v0.6.1";
+  inputs.microlith.inputs.nixpkgs-lock.follows = "nixpkgs-lock";
+  inputs.microlith.inputs.nix-hk.follows = "hk";
 
   outputs =
-    { nixpkgs, microlith, ... }:
+    {
+      nixpkgs,
+      microlith,
+      hk,
+      ...
+    }:
     let
       # Same tier-1 systems as the host.
       systems = [
@@ -168,7 +215,11 @@
             # locally on pre-commit/pre-push and in CI via `hk check`.
             # Pinned here so every contributor on nix gets the same hk as
             # the vendored pkl schema was cut from.
-            pkgs.hk
+            #
+            # From the `hk` INPUT, not `pkgs.hk`: nixos 26.05 dropped the
+            # nixpkgs package, and the runner of every rule in this repo is
+            # not something to leave at the mercy of a channel.
+            hk.packages.${pkgs.stdenv.hostPlatform.system}.default
             # Gate steps that need a real binary (V72). Pinned here so the
             # dev shell and CI run the same versions.
             pkgs.typos

@@ -39,12 +39,16 @@ sealed, reproducible artefact. `itok-minimal` in particular is how the
 zero-dependency claim stays true rather than remembered. Measured cold, all
 three finish inside 70 seconds.
 
-Fail-fast **both** in CI and locally. CI used to pass `--no-fail-fast`, on the
-reasoning that an expensive round-trip deserves every failure in one pass.
-That reasoning was sound and the flag was still wrong: hk stops producing
-output entirely once a `depends`-chained step fails under it, so the run
-reported nothing at all until it was killed. A complete list from a run that
-never finishes is worth less than one failure in ninety seconds.
+Fail-fast locally and on pull requests; `--no-fail-fast` on pushes to `main`.
+The split is deliberate. A PR's merge is blocked by a red check either way, so
+the only thing worth optimising there is time-to-first-signal — about ninety
+seconds. On `main` nobody is waiting on the answer, so a complete list of
+every failure is worth the extra minutes.
+
+The flag was off everywhere for a while: hk stopped producing output entirely
+once a `depends`-chained step failed under it, so the run reported nothing at
+all until it was killed (`§B21`). Fixed in hk 1.55.0, verified against the
+same minimal fixture that hung three times out of three on 1.51.0.
 
 ## The path a change takes
 
@@ -237,7 +241,7 @@ Stated rather than left to be discovered:
   under the floor does not fail.
 - **No MSRV axis, deliberately.** An MSRV job can only fail when the declared
   minimum sits *below* the toolchain CI runs. Here they are the same number --
-  `rust-version = "1.96"` and a `flake.lock` pinning rustc 1.96.1 -- so the
+  `rust-version = "1.95"` and a `flake.lock` pinning rustc 1.95.0 -- so the
   axis would recompile the identical toolchain for an identical answer. A
   check that cannot fail is the vacuous pass `§V10` warns about. It becomes
   worth adding the day the declared minimum drops below the pin (`§T60`).
@@ -249,11 +253,8 @@ Stated rather than left to be discovered:
   The caches save roughly half a minute and are kept on that basis. The cargo
   one is reasoning rather than measurement, and if the two ever compete for
   the 10 GB repository budget it is the one to shrink first (`§T60`).
-- **`--no-fail-fast` is off in CI**, so a red run reports its *first* failure
-  rather than every failure. That is a downgrade taken deliberately: under
-  the flag, hk produced no output at all after a failure, and a complete list
-  from a run that never reports one is worth nothing. Restore it when hk
-  stops deadlocking.
+- **A red PR reports its *first* failure, not every failure.** Deliberate:
+  see the fail-fast split above. A push to `main` reports all of them.
 - **`cargo-deny` is not wired.** The dependency tree is not checked for bans,
   licences or advisories. `§V23`'s "no async runtime" is
   currently enforced only by `no-default-features` compiling, which does not
