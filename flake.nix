@@ -239,6 +239,15 @@
             # The version ladder (V70), checked instead of remembered.
             # Vacuous until the first `v*` tag, and it says so.
             pkgs.cargo-semver-checks
+            # THE RELEASE, which is a tool and not a script. Everything T59
+            # described as prose -- clean tree, allowed branch, tag scheme,
+            # dry-run first, verify, publish, push -- this already does, and
+            # `release.toml` configures it. `0.3.0-rc.1` went out by hand
+            # from that prose: eight commands whose ORDER was remembered
+            # rather than enforced, which is the shape of a rule with no
+            # runner (V17). Propagated from microlith, which reached the
+            # same conclusion and deleted the script it had started (V84).
+            pkgs.cargo-release
           ];
           # Pin locale so tool output is deterministic across machines.
           LANG = "C.UTF-8";

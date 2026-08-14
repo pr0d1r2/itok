@@ -147,6 +147,37 @@ each other.
 The hygiene steps carry no `depends` at all. They are independent and cheap, so
 they run concurrently.
 
+## Releasing
+
+`release.toml` configures **`cargo-release`**. There is no release script,
+deliberately: everything a script would do — clean tree, allowed branch, tag
+scheme, dry-run first, verify, publish, push — the tool already does, and a
+second implementation of one rule set is the defect `§V64` exists to prevent.
+
+The version bump does **not** happen through `cargo-release`'s default flow.
+That flow commits the bump and pushes it to the release branch, and `main`
+forbids that: a pull request is required, with twelve passing checks. So the
+bump is a PR like any other change, and only the tail runs from `main` after
+it merges:
+
+```bash
+cargo release hook                 # the gate; dry-run is enough
+cargo release tag --execute
+cargo release publish --execute
+cargo release push --execute
+```
+
+**`hook` is first, and that is load-bearing.** `tag`, `publish` and `push` do
+*not* run `pre-release-hook` — only the full flow does, and `cargo release
+hook` on its own. A sequence starting at `tag` publishes whatever the tree
+happens to hold. Running it dry is enough: the hook executes and a non-zero
+return aborts.
+
+Two things the gate contributes that `cargo publish` cannot. `verify` only
+*compiles* the packaged tarball, so `package-suite` is what runs the tarball's
+own suite as a consumer would (`§B17`); and `semver` diffs the public API
+against the last `v*` tag, which is why `tag-name` must stay `v{{version}}`.
+
 ## Where spec-driven development fits
 
 `SPEC.md` is the design and the build queue in one document. `§V` records
