@@ -75,23 +75,23 @@ jobs:
     # identified the hk deadlock -- a diagnosis no amount of staring at the
     # Actions page could reach, because the page had nothing to show.
     #
-    # 25, and PROVISIONAL -- the previous 15 was a good number that stopped
-    # describing the job.
+    # 10, which is ~2x the worst MEASURED job. Three numbers, each replacing
+    # a guess with a measurement, and the middle one is the lesson:
     #
-    # 15 came from a real measurement: all twelve jobs green on main, worst
-    # case `gate (macos-latest)` at 6m40s, so ~2.2x the worst observed. Then
-    # the dev shell gained `cargo-release` and hk-from-`nix-hk`, both Rust
-    # builds, and on macOS materialising the shell went from seconds to ~8
-    # minutes. The job died at 15m05s -- SECONDS after the last gate step had
-    # passed. The bound was right; what it was measured against had changed
-    # underneath it.
+    #   45  chosen when nothing had been timed
+    #   15  worst job 6m40s, so ~2.2x  -- correct until the shell changed
+    #   25  provisional: `cargo-release` and hk-from-`nix-hk` added two Rust
+    #       builds, macOS shell materialisation went seconds -> ~8 min, and
+    #       the job died at 15m05s SECONDS after its last step had passed
+    #   10  the binary cache above removed those 8 minutes; worst is now
+    #       `gate (macos-latest)` at 4m43s, with 4m32s and 2m54s beside it
     #
-    # The binary cache above is the actual repair, and it should push this
-    # back down. This number is deliberately loose until a green run gives a
-    # new worst case, and then it should be TIGHTENED to roughly twice it. A
-    # bound nobody revisits drifts back into the 360-minute default that hid
-    # B21 for three hours.
-    timeout-minutes: 25
+    # 25 was deliberately loose pending a green run, and this is that run, so
+    # it gets tightened rather than left. A bound nobody revisits drifts back
+    # toward the 360-minute default that hid B21 for three hours -- and a
+    # bound is only worth having if it is tight enough to fire before a hang
+    # costs an afternoon.
+    timeout-minutes: 10
     steps:
       # Pinned to commit SHAs, not tags. A tag is mutable: whoever controls
       # the action can move `v4` to different code, and every workflow that
@@ -233,11 +233,11 @@ jobs:
   # claim's whole point.
   nix-build:
     runs-on: ${{ matrix.os }}
-    # 15, and no longer the same number as the gate -- these jobs did not get
-    # heavier when the dev shell did, because they build PACKAGES and never
-    # enter the shell. MEASURED across all nine, most recently 30s to 3m31s
-    # (macOS slowest), so 15 is still roughly 4x the worst.
-    timeout-minutes: 15
+    # 10, matching the gate again. These jobs never enter the dev shell --
+    # they build PACKAGES -- so they did not get heavier when it did.
+    # MEASURED across all nine: 54s to 3m55s, macOS slowest, so ~2.5x the
+    # worst.
+    timeout-minutes: 10
     strategy:
       # One package failing is a fact about that package on that system.
       # Cancelling the rest would hide whether the defect is shared.
