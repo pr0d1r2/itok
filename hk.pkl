@@ -556,6 +556,34 @@ local all = (fast) {
   // different thing from a vacuous pass HIDDEN. It arms itself at the
   // first `v*` tag -- which is T59, the same commit that first makes a
   // version number permanent.
+  // THE BASELINE CAN OUTLIVE ITS TOOLCHAIN, and the failure looks like a
+  // broken API if nothing separates the two causes.
+  //
+  // `v0.3.0-rc.1` declares `rust-version = "1.96"` -- frozen, because a
+  // published tag's manifest cannot be edited. Moving the dev shell to
+  // nixos 26.05 put rustc at 1.95.0, so cargo refuses to build the
+  // BASELINE at all:
+  //
+  //   error: rustc 1.95.0 is not supported by the following package:
+  //     itok@0.3.0-rc.1 requires rustc 1.96
+  //   error: failed to build rustdoc for crate itok v0.3.0-rc.1
+  //
+  // The old catch-all then announced "the pub API broke", which is B8's
+  // exact defect -- a check naming the wrong cause is worse than one that
+  // misses, because it sends the reader to restore an API that never
+  // changed. The rust-version comparison below distinguishes them and says
+  // it examined NOTHING, the same shape as the NO BASELINE branch.
+  //
+  // It self-clears: the next tag is cut on the current toolchain, so its
+  // frozen rust-version will be buildable by definition.
+  //
+  // The comparison uses two `echo`s rather than `printf '%s\n%s\n'` on
+  // purpose. Pkl renders a backslash in these strings LITERALLY, so the
+  // printf form reached the shell as `%s\\n%s\\n` and emitted both versions
+  // on ONE line separated by a literal backslash-n. `sort -V | head -1` then
+  // returned that whole string, which never equals `$want`, so the guard
+  // skipped unconditionally -- a check that always says "I examined
+  // nothing" is no better than a deleted one.
   ["semver"] {
     glob = List("src/**/*.rs", "Cargo.toml")
     depends = List("coverage")
@@ -563,6 +591,13 @@ local all = (fast) {
       cargo semver-checks --version >/dev/null 2>&1 || { echo 'hk: cargo-semver-checks is not on PATH -- re-enter the dev shell (`nix develop`, or `direnv reload`). This is a MISSING TOOL, not a finding.' >&2; exit 1; }
       baseline=$(git tag --list 'v*' --sort=-v:refname | head -1)
       [ -n "$baseline" ] || { echo 'hk: semver: NO BASELINE -- no release tag exists yet, so there is no prior API to diff against. This step arms itself at the first `v*` tag; it is reporting that it examined nothing, not that it found nothing.' >&2; exit 0; }
+      want=$(git show "$baseline:Cargo.toml" 2>/dev/null | awk -F'"' '/^rust-version/{print $2; exit}')
+      have=$(rustc --version | awk '{print $2}')
+      lowest=$({ echo "$want"; echo "$have"; } | sort -V | head -1)
+      if [ -n "$want" ] && [ "$lowest" != "$want" ]; then
+        echo "hk: semver: BASELINE UNBUILDABLE -- $baseline declares rust-version $want and this toolchain is $have, so cargo refuses to build the baseline's rustdoc and NOTHING was compared. A published tag's manifest is frozen; the toolchain moved under it. This clears itself at the first tag cut on the current toolchain. Reporting that it examined nothing, not that it found nothing." >&2
+        exit 0
+      fi
       cargo semver-checks check-release --baseline-rev "$baseline" || { echo "hk: the pub API broke against $baseline. Either restore it, or take the version bump semver requires -- V70's ladder is a promise to consumers, and crates.io is immutable, so a wrong rung cannot be corrected. See AGENTS.md" >&2; exit 1; }
       """
   }
