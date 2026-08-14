@@ -556,8 +556,22 @@ local all = (fast) {
   // different thing from a vacuous pass HIDDEN. It arms itself at the
   // first `v*` tag -- which is T59, the same commit that first makes a
   // version number permanent.
-  // THE BASELINE CAN OUTLIVE ITS TOOLCHAIN, and the failure looks like a
-  // broken API if nothing separates the two causes.
+  // A PRE-RELEASE MUST NOT OUTRANK ITS RELEASE. `--sort=-v:refname` puts
+  // `v0.3.0-rc.1` ABOVE `v0.3.0` by default: git's version sort has no
+  // notion of a semver pre-release, so the longer refname wins. Publishing
+  // 0.3.0 therefore did NOT move the baseline off the rc, and every run
+  // after it would have diffed against a tag that (a) is older and (b) is
+  // the one this toolchain cannot build.
+  //
+  // `versionsort.suffix=-` tells git that `-` introduces a pre-release, so
+  // `v0.3.0` sorts first. MEASURED both ways on the two real tags (B23).
+  //
+  // Found by checking a claim rather than trusting it: the whole point of
+  // cutting `v0.3.0` was to arm this step, and it was still reporting
+  // BASELINE UNBUILDABLE afterwards.
+  //
+  // THE BASELINE CAN ALSO OUTLIVE ITS TOOLCHAIN, and that failure looks
+  // like a broken API if nothing separates the two causes.
   //
   // `v0.3.0-rc.1` declares `rust-version = "1.96"` -- frozen, because a
   // published tag's manifest cannot be edited. Moving the dev shell to
@@ -589,7 +603,7 @@ local all = (fast) {
     depends = List("coverage")
     check = """
       cargo semver-checks --version >/dev/null 2>&1 || { echo 'hk: cargo-semver-checks is not on PATH -- re-enter the dev shell (`nix develop`, or `direnv reload`). This is a MISSING TOOL, not a finding.' >&2; exit 1; }
-      baseline=$(git tag --list 'v*' --sort=-v:refname | head -1)
+      baseline=$(git -c versionsort.suffix=- tag --list 'v*' --sort=-v:refname | head -1)
       [ -n "$baseline" ] || { echo 'hk: semver: NO BASELINE -- no release tag exists yet, so there is no prior API to diff against. This step arms itself at the first `v*` tag; it is reporting that it examined nothing, not that it found nothing.' >&2; exit 0; }
       want=$(git show "$baseline:Cargo.toml" 2>/dev/null | awk -F'"' '/^rust-version/{print $2; exit}')
       have=$(rustc --version | awk '{print $2}')
