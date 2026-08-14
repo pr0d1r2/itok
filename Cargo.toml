@@ -21,24 +21,37 @@ name = "itok"
 version = "0.3.0-rc.1"
 edition = "2021"
 # MSRV, matched to `microlith` and to the toolchain this gate actually runs
-# (`flake.lock` pins rustc 1.96.1). Both halves of that matter.
+# (`flake.lock` pins rustc 1.95.0). Both halves of that matter.
+#
+# 1.96 -> 1.95 with the move to the fleet's nixos 26.05 lock, which carries
+# 1.95.0. LOWERING an MSRV widens the set of consumers who can build this,
+# so it is compatible in the direction that matters and needs no version
+# bump of its own. The rule is unchanged and is what moved the number: the
+# declared minimum is the toolchain the gate runs, because that is the only
+# one anything here is ever compiled against.
 #
 # It was `1.82`, derived from the oldest release carrying a feature the code
 # uses (`Option::is_none_or`). That is a defensible way to pick a number and
-# a poor way to KEEP one: nothing here ever compiled against 1.82. There is
-# no MSRV axis in CI (a listed gap, T60), so the claim was unverified in the
-# only sense that counts -- a consumer on 1.82 would have been the one to
-# find out, and pre-publication is the moment that costs nothing to fix.
+# a poor way to KEEP one: nothing here ever compiled against 1.82. A
+# consumer on 1.82 would have been the one to find out, and pre-publication
+# was the moment that cost nothing to fix.
+#
+# There is deliberately no MSRV axis in CI. T60 considered one and rejected
+# it: such a job can only FAIL when the declared minimum sits below the
+# toolchain CI runs, and this line keeps the two equal, so the axis would
+# recompile the same toolchain for the same answer (V10's vacuous pass). It
+# becomes worth adding the day this number drops below the flake pin.
 #
 # Set to the pinned toolchain instead, so the claim is EVIDENCED by every
-# gate run rather than asserted beside them. When T60 adds the MSRV axis it
-# will confirm this rather than discover a gap. Matching microlith keeps one
+# gate run rather than asserted beside them. Matching microlith keeps one
 # number across both repos, which is also why the dev shells agree.
 #
-# Raising an MSRV is a compatibility decision. It is free right now --
-# nothing is published, so no consumer exists to strand (V70's ladder has
-# not started). It will not be free after T59.
-rust-version = "1.96"
+# Direction matters now that `0.3.0-rc.1` IS published. LOWERING is safe --
+# it widens who can build. RAISING would strand consumers, and is a decision
+# to make against the ladder (V70) rather than a side effect of a nixpkgs
+# bump. If a future fleet lock carries a NEWER rustc, this number should not
+# follow it upward without that decision being made deliberately.
+rust-version = "1.95"
 license = "MIT"
 description = "context-cost estimator: token and window budgets for files and changes"
 repository = "https://github.com/pr0d1r2/itok"

@@ -110,8 +110,32 @@ gate.
 
 ### Changed
 
-- MSRV `1.82` -> `1.96`, matched to the toolchain the gate actually runs.
-  The old number was never compiled against.
+- MSRV `1.82` -> `1.96` -> **`1.95`**, matched to the toolchain the gate
+  actually runs. `1.82` was never compiled against; `1.96` became `1.95` when
+  the dev shell moved to the fleet's nixos 26.05 lock, which carries rustc
+  1.95.0. Lowering an MSRV widens who can build the crate, so it is
+  compatible in the direction that matters.
+- **The dev shell moves to nixos 26.05**, via `nixpkgs-lock` as the single
+  nixpkgs authority rather than a rev pinned here. One rev across every repo
+  is what lets the shared binary cache hit instead of rebuilding.
+
+  26.05 dropped `pkgs.hk` entirely — the shell stopped evaluating with
+  `attribute 'hk' missing`, which is the whole gate gone in one bump. hk now
+  comes from its own flake (`nix-hk`), which makes the runner of every rule
+  here an explicit, versioned choice instead of a side effect of whatever
+  nixpkgs happens to carry.
+
+  That also raised hk 1.51.0 -> **1.55.0**, which fixes the deadlock recorded
+  as `§B21`. Verified against the same minimal fixture that hung three times
+  out of three: a dependent of a failed step now runs to completion instead
+  of waiting forever.
+- **`--no-fail-fast` returns, for pushes to `main` only.** A pull request's
+  merge is blocked by a red check either way, so the first failure in ninety
+  seconds beats a complete list in ten minutes. On `main` nobody is waiting,
+  so every failure is reported at once.
+- `microlith` `0.5.0` -> `0.6.1`. Both earlier tags declare
+  `rust-version = "1.96"` and could not build on 1.95.0, so the old pin made
+  the shell unbuildable on 26.05.
 - The `SPEC.md` format checker is a pinned flake input (`microlith 0.5.0`)
   rather than a sibling checkout, so a fresh clone can build and commit.
 - The `ollama` tier went from 60 dependencies to **44**, and its 19

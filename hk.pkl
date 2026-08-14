@@ -24,13 +24,17 @@ amends "pkl/Config.pkl"
 /// failure is the most useful thing to surface, and the steps are ordered
 /// cheapest-first via `depends` so it arrives fast.
 ///
-/// CI used to invert it with `--no-fail-fast`, on the reasoning that an
-/// expensive round-trip deserves a complete list. It does not any more, and
-/// the reason is worth recording HERE rather than only in the workflow:
-/// under that flag hk emits NOTHING once a `depends`-chained step fails --
-/// measured twice, 74 and 43 minutes of silence, both ended by a kill
-/// rather than a verdict. The `depends` graph and `--no-fail-fast` do not
-/// currently compose.
+/// CI inverts it with `--no-fail-fast` on PUSH ONLY: on a PR the merge is
+/// blocked by a red check either way, so the first failure in ninety
+/// seconds beats a complete list in ten minutes; on main nobody is waiting,
+/// so the complete list wins.
+///
+/// That flag was OFF entirely for a while, and the reason belongs HERE
+/// rather than only in the workflow: under it hk emitted NOTHING once a
+/// `depends`-chained step failed -- measured twice, 74 and 43 minutes of
+/// silence, both ended by a kill rather than a verdict (B21). Fixed in hk
+/// 1.55.0 and verified on the minimal fixture that hung 3/3 on 1.51.0, so
+/// the `depends` graph and the flag compose again.
 fail_fast = true
 
 env {

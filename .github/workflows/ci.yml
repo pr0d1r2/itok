@@ -22,8 +22,8 @@ name: ci
 # NO MSRV AXIS, and that is a decision rather than an omission. An MSRV job
 # is worth having when the declared minimum is BELOW the toolchain CI runs,
 # because only then can it fail while the normal build passes. Here they are
-# the same number: `rust-version = "1.96"` in Cargo.toml, and flake.lock
-# pins rustc 1.96.1, which every job below already uses. An axis would
+# the same number: `rust-version = "1.95"` in Cargo.toml, and flake.lock
+# pins rustc 1.95.0, which every job below already uses. An axis would
 # recompile the identical toolchain and report the identical answer -- a
 # green check that cannot fail is the vacuous pass V10 warns about. It
 # becomes real the day the declared minimum drops below the pin.
@@ -169,23 +169,27 @@ jobs:
       # --check, because `hk check` defaults to running FIX commands; CI
       # must report, never rewrite. --all, because CI has no staged set.
       #
-      # `--no-fail-fast` REMOVED, and this is the change that actually fixed
-      # CI. It used to be here for a good reason -- a round-trip costs
-      # minutes, so a complete list beats an early one -- but MEASURED, hk
-      # goes SILENT the instant a `depends`-chained step fails under it. Two
-      # independent reproductions, both immediately after the same test
-      # failure:
+      # `--no-fail-fast` on PUSH only, and the split is the point.
       #
-      #   PR #1  fail at 05:36:54  ->  74m17s of no output  -> cancelled
-      #   PR #2  fail at 06:02:35  ->  43m26s of no output  -> timed out
+      # On a PR, fail-fast is a FEATURE rather than a compromise: the merge is
+      # blocked by a red check either way, so the only thing that matters is
+      # time-to-first-signal, and stopping at the first failure delivers it in
+      # about ninety seconds. On a push to main nobody is waiting on the
+      # answer, so the complete list is worth the extra minutes.
       #
-      # A complete failure list is worth nothing from a run that never
-      # reports one. Fail-fast returns the FIRST failure in about ninety
-      # seconds, which is the whole gate's honest cost.
+      # The flag was OFF entirely until now, because hk went silent the
+      # instant a `depends`-chained step failed under it -- two reproductions,
+      # 74 and 43 minutes of no output, both ended by a kill rather than a
+      # verdict (B21). hk 1.55.0 fixes it, VERIFIED on the same minimal
+      # fixture that hung 3/3 on 1.51.0: the dependent of a failed step now
+      # runs to completion instead of waiting forever. That version arrives
+      # with `nix-hk`, so the dependency bump is what made this safe.
       #
-      # Restore the flag when hk no longer deadlocks; the timeout above stays
-      # either way, because it is what made this visible at all.
-      - run: nix develop --command hk check --all --check
+      # The timeout above stays regardless. It is what made the deadlock
+      # visible, and it is what bounds the next one.
+      - run: >
+          nix develop --command hk check --all --check
+          ${{ github.event_name == 'push' && '--no-fail-fast' || '' }}
 
   # All three feature configurations must build reproducibly. The minimal
   # one is load-bearing: it is what proves the zero-dependency core actually
