@@ -340,7 +340,7 @@ Each of these is checked by something, not asserted here:
 
 ## Status
 
-`0.3.0-rc.1` — the first public release. A minor here is a level of
+`0.3.0` — the first public release. A minor here is a level of
 **guarantee**, not a feature count, and `0.3` is an *odd* minor, which the
 ladder reserves for a fix release between milestones (§V70). It says what is
 not done: `0.4` means "knows what a context costs", and that is still open.
@@ -349,8 +349,10 @@ Publication is deliberately **not** a rung (§V107). The ladder once made
 `0.7` the first public release, welding who-can-install-it onto
 what-it-guarantees — leaving only two moves, wait or overstate. This ships at
 the rung that is true, early, because real use finds what another pass over
-our own tree does not. It is a release candidate because crates.io is
-immutable and cargo will not pick a pre-release by default.
+our own tree does not.
+
+An `-rc.1` came first because crates.io is immutable. It found five defects
+no dry run reaches, two of which would have been permanent.
 
 Fourteen verbs are built. The reduction ladder (`cap --strip` and friends)
 and `doctor --session` are specced and **not** built — `SPEC.md` `§I` marks

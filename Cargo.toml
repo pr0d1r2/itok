@@ -7,18 +7,30 @@
 name = "itok"
 # The ladder (V70): each minor is a level of GUARANTEE, not a feature count.
 # 0.3.0 is an ODD minor, which the ladder reserves for a fix release between
-# milestones -- and that is exactly what this is: TLS on the exact tier, a
-# raised MSRV, the public docs, and eight new gate steps. No milestone moved.
+# milestones -- and that is exactly what this is: TLS on the exact tier, an
+# MSRV matched to the toolchain, the public docs, and the gate steps added
+# with them. No milestone moved.
 #
 # It is also the FIRST PUBLIC release, which used to be welded to 0.7.0.
 # V107 separated those: publication is a distribution decision, maturity is a
 # rung, and they move independently. So this ships at the rung that is TRUE
 # -- 0.4's telemetry is still open, and the number says so out loud.
 #
-# `-rc.1` because crates.io is immutable and cargo will not select a
-# pre-release by default: the pipeline gets proven before a permanent number
-# is spent.
-version = "0.3.0-rc.1"
+# THE PRE-RELEASE DID ITS JOB, so the suffix goes.
+#
+# `0.3.0-rc.1` existed because crates.io is immutable: prove the pipeline
+# before spending a permanent number. It proved it by FAILING in five places
+# no dry run reached -- B17 (fifteen tests failed on the published .crate,
+# because `--verify` only compiles it), B18 (`show <merge>` reported zero),
+# B19 (`-C` is not isolation, so every verb could answer about the wrong
+# repo), B20 (a coverage badge no machine could reproduce) and B21 (the gate
+# hanging instead of reporting). Two of those would have been permanent in a
+# non-pre-release version.
+#
+# Each has a runner now, and the release itself is `cargo-release` driven by
+# `release.toml` rather than eight remembered commands. That is what makes
+# this number safe to spend.
+version = "0.3.0"
 edition = "2021"
 # MSRV, matched to `microlith` and to the toolchain this gate actually runs
 # (`flake.lock` pins rustc 1.95.0). Both halves of that matter.
