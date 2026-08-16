@@ -149,9 +149,62 @@ fn age_seconds(first: &str, last: &str) -> u64 {
     parse_ts(last).saturating_sub(parse_ts(first))
 }
 
+/// Epoch seconds from the RFC 3339 stamp a transcript carries
+/// (`2026-08-15T06:55:39.102Z`). Fixed offsets over that fixed shape, not
+/// a date parser and not a calendar crate -- the whole need is one
+/// subtraction between two machine-written stamps. A stamp of any other
+/// shape reads as 0, so `age_seconds` collapses to 0 and the badge still
+/// prints: rate is report-only (V5), and an unreadable clock must not
+/// become an error the caller has to handle. Pre-1970 stamps clamp their
+/// date to the epoch day for the same reason -- no transcript carries
+/// one, so the clamp costs nothing a caller can observe.
 fn parse_ts(ts: &str) -> u64 {
-    let s = ts.get(..10).unwrap_or(ts);
-    s.parse::<u64>().unwrap_or(0)
+    let days = days_from_civil(num(ts, 0..4), num(ts, 5..7), num(ts, 8..10));
+    let secs = num(ts, 11..13)
+        .saturating_mul(3600)
+        .saturating_add(num(ts, 14..16).saturating_mul(60))
+        .saturating_add(num(ts, 17..19));
+    days.saturating_mul(86_400).saturating_add(secs)
+}
+
+/// One fixed-width numeric field, or 0 when it is absent or not a number.
+fn num(ts: &str, at: std::ops::Range<usize>) -> u64 {
+    ts.get(at).and_then(|s| s.parse().ok()).unwrap_or(0)
+}
+
+/// Days since 1970-01-01 for a civil date (Hinnant's `days_from_civil`).
+/// Saturating throughout: `arithmetic_side_effects` is denied, and a
+/// garbled date must yield a number, never a panic.
+fn days_from_civil(y: u64, m: u64, d: u64) -> u64 {
+    let shifted = if m <= 2 { y.saturating_sub(1) } else { y };
+    let era = shifted.checked_div(400).unwrap_or(0);
+    let yoe = shifted.saturating_sub(era.saturating_mul(400));
+    era.saturating_mul(146_097)
+        .saturating_add(day_of_era(yoe, day_of_year(m, d)))
+        .saturating_sub(719_468)
+}
+
+/// Day of the year counted from March 1. That shift puts the leap day
+/// last, which is what collapses the month lengths to one linear formula.
+fn day_of_year(m: u64, d: u64) -> u64 {
+    let mp = m.saturating_add(9).checked_rem(12).unwrap_or(0);
+    mp.saturating_mul(153)
+        .saturating_add(2)
+        .checked_div(5)
+        .unwrap_or(0)
+        .saturating_add(d)
+        .saturating_sub(1)
+}
+
+/// Day within the 400-year era: whole years, plus their leap days.
+fn day_of_era(yoe: u64, doy: u64) -> u64 {
+    let leaps = yoe
+        .checked_div(4)
+        .unwrap_or(0)
+        .saturating_sub(yoe.checked_div(100).unwrap_or(0));
+    yoe.saturating_mul(365)
+        .saturating_add(leaps)
+        .saturating_add(doy)
 }
 
 /// V108: ceiling, never floor.
@@ -389,9 +442,16 @@ mod tests {
         s
     }
 
+    /// The stamps below are RFC 3339 because that is what a transcript
+    /// carries. B-record: the first cut of these fixtures used epoch
+    /// digits, which no reader ever writes -- every rate test passed
+    /// while `age_seconds` was 0 on every real session.
+    const T0: &str = "2026-08-15T06:00:00.000Z";
+    const T1H: &str = "2026-08-15T07:00:00.000Z";
+
     #[test]
     fn throughput_needs_at_least_two_turns() {
-        let s = session_with_turns(&[(1000, "1000000000")]);
+        let s = session_with_turns(&[(1000, T0)]);
         assert!(throughput(&s).is_none());
         let empty = Session::default();
         assert!(throughput(&empty).is_none());
@@ -399,8 +459,7 @@ mod tests {
 
     #[test]
     fn throughput_computes_totals() {
-        let s =
-            session_with_turns(&[(1_000, "1000000000"), (2_000, "1000003600")]);
+        let s = session_with_turns(&[(1_000, T0), (2_000, T1H)]);
         let tp = throughput(&s);
         assert!(tp.is_some());
         let tp = tp.unwrap_or(ZERO_TP);
@@ -411,12 +470,44 @@ mod tests {
 
     #[test]
     fn throughput_computes_wallclock_rates() {
-        let s =
-            session_with_turns(&[(1_000, "1000000000"), (2_000, "1000003600")]);
+        let s = session_with_turns(&[(1_000, T0), (2_000, T1H)]);
         let tp = throughput(&s).unwrap_or(ZERO_TP);
         assert_eq!(tp.age_seconds, 3600);
         assert_eq!(tp.per_hour, 3_000);
         assert_eq!(tp.per_day, 72_000);
+    }
+
+    /// The stamp shape pinned against a value computed elsewhere, so a
+    /// reimplementation of `days_from_civil` cannot drift unnoticed.
+    #[test]
+    fn rfc3339_stamps_become_epoch_seconds() {
+        assert_eq!(parse_ts("1970-01-01T00:00:00.000Z"), 0);
+        assert_eq!(parse_ts("1970-01-02T00:00:01.000Z"), 86_401);
+        assert_eq!(parse_ts("2000-03-01T00:00:00.000Z"), 951_868_800);
+        assert_eq!(parse_ts("2026-08-15T06:55:39.102Z"), 1_786_776_939);
+    }
+
+    /// The leap day lands on the right side of the March-shift, in a
+    /// leap year and in the century year that is NOT one.
+    #[test]
+    fn leap_days_are_counted() {
+        let day = parse_ts("2024-03-01T00:00:00.000Z")
+            .saturating_sub(parse_ts("2024-02-29T00:00:00.000Z"));
+        assert_eq!(day, 86_400, "2024-02-29 exists");
+        let century = parse_ts("2100-03-01T00:00:00.000Z")
+            .saturating_sub(parse_ts("2100-02-28T00:00:00.000Z"));
+        assert_eq!(century, 86_400, "2100 is not a leap year");
+    }
+
+    /// A stamp of any other shape degrades to 0 (V5): no panic, no error.
+    /// The epoch-digit case is the exact fixture shape that hid this bug.
+    #[test]
+    fn an_unreadable_stamp_is_no_age() {
+        assert_eq!(parse_ts(""), 0);
+        assert_eq!(parse_ts("not-a-timestamp"), 0);
+        assert_eq!(parse_ts("1000000000"), 0);
+        let pre = parse_ts("1900-06-01T12:00:00.000Z");
+        assert!(pre < 86_400, "pre-epoch clamps to the epoch day: {pre}");
     }
 
     #[test]
@@ -480,13 +571,6 @@ mod tests {
         });
         let out = colored("1k".to_owned(), 1_000, th, false);
         assert!(!out.contains('\x1b'), "no ANSI when color=false");
-    }
-
-    #[test]
-    fn parse_ts_extracts_epoch_seconds() {
-        assert_eq!(parse_ts("1000000000.123"), 1000000000);
-        assert_eq!(parse_ts("1718000000"), 1718000000);
-        assert_eq!(parse_ts(""), 0);
     }
 
     #[test]
