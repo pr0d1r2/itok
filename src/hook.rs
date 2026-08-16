@@ -14,6 +14,11 @@
 //!          "systemMessage":"..."}
 //! ```
 //!
+//! And its statusline contract, which `rate --statusline` implements: the
+//! payload names the transcript outright, which is the point -- a badge
+//! must report the session it is drawn beside, and inference cannot know
+//! which of a directory's transcripts that is (V96).
+//!
 //! The decision travels in the JSON, never in the exit code (V52 and the
 //! section I line for `guard`): the harness reads stdout, and a non-zero exit
 //! means the adapter itself failed, which is a different claim entirely.
@@ -78,6 +83,38 @@ pub(crate) fn request(stdin: &str) -> Request {
     }
 }
 
+/// Where a statusline payload says this statusline's session lives.
+///
+/// A DIFFERENT harness event from `PreToolUse`, and it lands here for the
+/// same reason that one does: this is the only module allowed to know a
+/// harness (V52). A shell wrapper pulling `transcript_path` out with `jq`
+/// would be a second mapping -- outside the crate, covered by no test,
+/// and silently wrong the day the harness renames a field.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct StatusLine {
+    /// The transcript THIS statusline belongs to. The whole reason the
+    /// payload is read at all: inference is newest-by-mtime for a cwd
+    /// (V96), so two concurrent sessions in one repo would each show the
+    /// other's numbers.
+    pub(crate) transcript: Option<String>,
+    /// The session's directory, which is whose `itok.toml` applies.
+    pub(crate) cwd: Option<String>,
+}
+
+/// Read one statusline payload. Same contract as `request`: an unknown
+/// field is ignored, a needed one that is absent is `None`, never a guess.
+///
+/// ```text
+/// stdin  {"session_id","transcript_path","cwd","model":{...},...}
+/// ```
+#[must_use]
+pub(crate) fn statusline(stdin: &str) -> StatusLine {
+    StatusLine {
+        transcript: string_field(stdin, "transcript_path"),
+        cwd: string_field(stdin, "cwd"),
+    }
+}
+
 /// One string field's value, or `None` when absent or not a string.
 fn string_field(text: &str, key: &str) -> Option<String> {
     let at = text.find(&format!("\"{key}\":"))?;
@@ -112,6 +149,33 @@ mod tests {
     const PAYLOAD: &str = r#"{"session_id":"s1","transcript_path":"/t.jsonl",
         "cwd":"/repo","permission_mode":"ask","hook_event_name":"PreToolUse",
         "tool_name":"Read","tool_input":{"file_path":"/repo/big.rs"}}"#;
+
+    /// The statusline payload, in the shape the harness sends it: the
+    /// two fields the badge needs, out of a body carrying much more.
+    #[test]
+    fn a_statusline_payload_names_its_transcript() {
+        let text = r#"{"hook_event_name":"Status","session_id":"s1",
+            "transcript_path":"/p/s1.jsonl","cwd":"/repo",
+            "model":{"id":"claude","display_name":"Opus"},
+            "workspace":{"current_dir":"/repo"}}"#;
+        assert_eq!(
+            statusline(text),
+            StatusLine {
+                transcript: Some("/p/s1.jsonl".to_owned()),
+                cwd: Some("/repo".to_owned()),
+            }
+        );
+    }
+
+    /// A field the mapping needs and cannot find is `None`, never a
+    /// guess -- the caller turns that into a usage error rather than
+    /// silently reporting some other session.
+    #[test]
+    fn a_statusline_payload_missing_the_transcript_is_none() {
+        let got = statusline(r#"{"session_id":"s1","cwd":"/repo"}"#);
+        assert_eq!(got.transcript, None);
+        assert_eq!(got.cwd, Some("/repo".to_owned()));
+    }
 
     /// The four fields the guard needs, out of a real payload shape.
     #[test]

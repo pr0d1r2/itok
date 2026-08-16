@@ -10,9 +10,14 @@ use crate::tracecmd::{value, Origin};
 #[derive(Default)]
 struct Raw {
     session: Option<String>,
-    color: ColorMode,
+    /// `None` = not asked for, so the DEFAULT still applies -- which is
+    /// `auto` normally and `always` under `--statusline`. An explicit
+    /// `--color` therefore wins regardless of flag order, instead of the
+    /// two settings racing.
+    color: Option<ColorMode>,
     format: Format,
     chdir: Option<String>,
+    statusline: bool,
 }
 
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
@@ -65,11 +70,44 @@ struct Throughput {
     age_seconds: u64,
 }
 
-pub(crate) fn rate(rest: &[String]) -> Output {
+pub(crate) fn rate(rest: &[String], input: crate::cli::Input) -> Output {
     match parse(rest) {
-        Ok(raw) => run(&raw),
+        Ok(mut raw) => {
+            if raw.statusline {
+                if let Err(o) = adopt_payload(&mut raw, input) {
+                    return o;
+                }
+            }
+            run(&raw)
+        }
         Err(e) => Output::usage_err(format!("itok: {e}")),
     }
+}
+
+/// Take the session and directory from the harness's statusline payload.
+///
+/// Read HERE and not in `run`, so `input()` is called only when the flag
+/// asked for it: a bare `itok rate` must never block waiting on a pipe
+/// nobody is writing to.
+///
+/// An explicit positional session still wins -- the flag SUPPLIES a
+/// default source, it does not seize one the caller named.
+fn adopt_payload(
+    raw: &mut Raw,
+    input: crate::cli::Input,
+) -> Result<(), Output> {
+    let payload = crate::hook::statusline(&input());
+    let Some(transcript) = payload.transcript else {
+        return Err(Output::usage_err(
+            "itok: --statusline: no `transcript_path` in the payload on stdin"
+                .to_owned(),
+        ));
+    };
+    raw.session.get_or_insert(transcript);
+    if let Some(cwd) = payload.cwd {
+        raw.chdir.get_or_insert(cwd);
+    }
+    Ok(())
 }
 
 fn run(raw: &Raw) -> Output {
@@ -86,11 +124,43 @@ fn run(raw: &Raw) -> Output {
 fn format_output(raw: &Raw, tp: &Throughput, origin: &Origin) -> Output {
     let note = crate::tracecmd::origin_note(origin);
     let config = load_config(raw.chdir.as_deref());
-    let want_color = want_color(raw.color);
+    let want_color = want_color(color_of(raw));
     Output::ok(match raw.format {
         Format::Json => json(tp),
+        Format::Human if raw.statusline => {
+            badge(human(tp, &config, want_color))
+        }
         Format::Human => human(tp, &config, want_color) + &note,
     })
+}
+
+/// The mode asked for, or the default for how this was invoked.
+///
+/// `--statusline` defaults to `always` because the harness CAPTURES the
+/// string: `auto` probes for a tty, finds none, and would strip the color
+/// from every badge -- a default that is right for a pipe is wrong for a
+/// display surface being fed through one.
+fn color_of(raw: &Raw) -> ColorMode {
+    raw.color.unwrap_or(if raw.statusline {
+        ColorMode::Always
+    } else {
+        ColorMode::Auto
+    })
+}
+
+/// The badge, wrapped for a statusline. Empty stays EMPTY -- a session
+/// with nothing to report hides the badge (V3), and `(itok:)` around
+/// nothing is a widget announcing its own silence.
+///
+/// The origin note is dropped here: it explains WHICH session was picked,
+/// and under `--statusline` the payload named it outright, so there is no
+/// inference left to disclose.
+fn badge(line: String) -> String {
+    let body = line.trim_end_matches('\n');
+    if body.is_empty() {
+        return String::new();
+    }
+    format!("(itok:{body})")
 }
 
 fn want_color(mode: ColorMode) -> bool {
@@ -351,9 +421,10 @@ fn apply<'a>(
         "--bpe" | "--ollama" => {
             return Err(crate::tracecmd::no_real_tier(a, "rate"))
         }
-        "--color" => raw.color = parse_color(&value(it, a)?)?,
+        "--color" => raw.color = Some(parse_color(&value(it, a)?)?),
         "--format" => raw.format = crate::tracecmd::format_of(&value(it, a)?)?,
         "-C" => raw.chdir = Some(value(it, a)?),
+        "--statusline" => raw.statusline = true,
         _ => return apply_positional(a, raw),
     }
     Ok(())
@@ -600,6 +671,101 @@ total = { green = 1000000, amber = 5000000 }
             "{}/tests/fixtures/session/{name}",
             env!("CARGO_MANIFEST_DIR")
         )
+    }
+
+    fn nothing() -> String {
+        String::new()
+    }
+
+    /// Every test below drives the verb through an input source of its
+    /// own. Shadowing the real `rate` keeps that from being something
+    /// each test has to remember.
+    fn rate(args: &[String]) -> Output {
+        super::rate(args, &nothing)
+    }
+
+    fn payload(transcript: &str, cwd: &str) -> String {
+        format!(
+            "{{\"session_id\":\"s1\",\"transcript_path\":\"{transcript}\",\
+             \"cwd\":\"{cwd}\",\"model\":{{\"id\":\"claude\"}}}}"
+        )
+    }
+
+    /// The payload names the transcript, and the badge reports THAT one.
+    #[test]
+    fn statusline_reads_the_transcript_from_the_payload() {
+        let text = payload(&fixture("tool-shapes.jsonl"), "/tmp");
+        let src = || text.clone();
+        let out = super::rate(&["--statusline".to_owned()], &src);
+        assert_eq!(out.code, 0);
+        assert!(out.out.starts_with("(itok:"), "wrapped: {:?}", out.out);
+        assert!(out.out.ends_with(')'), "wrapped: {:?}", out.out);
+    }
+
+    /// The harness captures the string, so there is no tty to detect and
+    /// `auto` would strip every badge's color. Default is `always`.
+    #[test]
+    fn statusline_colors_by_default() {
+        let dir = std::env::temp_dir().join("itok-rate-statusline");
+        let _ = std::fs::create_dir_all(&dir);
+        let _ = std::fs::write(
+            dir.join("itok.toml"),
+            "[rate]\nturn = { green = 1, amber = 2 }\n",
+        );
+        let text =
+            payload(&fixture("tool-shapes.jsonl"), &dir.display().to_string());
+        let src = || text.clone();
+        let out = super::rate(&["--statusline".to_owned()], &src);
+        assert!(out.out.contains('\x1b'), "ANSI by default: {:?}", out.out);
+    }
+
+    /// An explicit `--color` still wins -- the flag supplies a DEFAULT,
+    /// it does not seize the setting.
+    #[test]
+    fn an_explicit_color_beats_the_statusline_default() {
+        let text = payload(&fixture("tool-shapes.jsonl"), "/tmp");
+        let src = || text.clone();
+        let args = ["--statusline", "--color", "never"];
+        let out = super::rate(
+            &args.iter().map(|s| (*s).to_owned()).collect::<Vec<_>>(),
+            &src,
+        );
+        assert!(!out.out.contains('\x1b'), "explicit never: {:?}", out.out);
+    }
+
+    /// A payload with no transcript is a usage error, not a guess: the
+    /// whole point of the flag is that the session is NAMED (V104).
+    #[test]
+    fn a_payload_without_a_transcript_is_a_usage_error() {
+        let src = || "{\"session_id\":\"s1\"}".to_owned();
+        let out = super::rate(&["--statusline".to_owned()], &src);
+        assert_eq!(out.code, 2);
+        assert!(out.err.contains("transcript_path"), "{:?}", out.err);
+        assert!(out.out.is_empty(), "statusline renders nothing");
+    }
+
+    /// The guarantee that keeps a bare `itok rate` from blocking on a
+    /// terminal: without the flag, the input source is never touched.
+    #[test]
+    fn stdin_is_read_only_under_the_flag() {
+        let seen = std::cell::Cell::new(false);
+        let src = || {
+            seen.set(true);
+            String::new()
+        };
+        let _ = super::rate(&[fixture("tool-shapes.jsonl")], &src);
+        assert!(!seen.get(), "bare rate must not read stdin");
+        let _ = super::rate(&["--statusline".to_owned()], &src);
+        assert!(seen.get(), "--statusline must read stdin");
+    }
+
+    /// Nothing to report hides the badge entirely -- `(itok:)` wrapped
+    /// around nothing is a widget announcing its own silence (V3).
+    #[test]
+    fn an_empty_rate_produces_no_badge() {
+        assert_eq!(badge(String::new()), "");
+        assert_eq!(badge("\n".to_owned()), "");
+        assert_eq!(badge("1k,2k/total\n".to_owned()), "(itok:1k,2k/total)");
     }
 
     #[test]

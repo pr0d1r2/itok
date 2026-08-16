@@ -123,19 +123,24 @@ fn handle(
 /// verb is a compile error here until it is wired.
 /// The runtime-axis verbs, together because they share a feature gate
 /// (V23's shape: a tier that needs a dep is opt-in).
+/// `rate` takes the input CLOSURE, not its result: only `--statusline`
+/// reads a payload, and calling `input()` here would make every bare
+/// `itok rate` block on whatever stdin happens to be -- a terminal, under
+/// plain `cargo test`. That is the same hazard the `Input` type exists to
+/// prevent, one verb further down.
 #[cfg(feature = "session")]
-fn runtime(v: Verb, rest: &[String]) -> Output {
+fn runtime(v: Verb, rest: &[String], input: Input) -> Output {
     match v {
         Verb::Top => crate::topcmd::top(rest),
         Verb::Headroom => crate::headroom::headroom(rest),
         Verb::Calibrate => crate::calibrate::calibrate(rest),
-        Verb::Rate => crate::ratecmd::rate(rest),
+        Verb::Rate => crate::ratecmd::rate(rest, input),
         _ => crate::tracecmd::trace(rest),
     }
 }
 
 #[cfg(not(feature = "session"))]
-fn runtime(_v: Verb, _rest: &[String]) -> Output {
+fn runtime(_v: Verb, _rest: &[String], _input: Input) -> Output {
     Output::usage_err(
         "itok: the runtime verbs need the `session` feature".to_owned(),
     )
@@ -152,7 +157,7 @@ fn dispatch(v: Verb, rest: &[String], input: Input) -> Output {
         Verb::Log => crate::logcmd::log(rest),
         Verb::Check => crate::checkcmd::check(rest),
         Verb::Fit => crate::fitcmd::fit(rest),
-        _ => runtime(v, rest),
+        _ => runtime(v, rest, input),
     }
 }
 

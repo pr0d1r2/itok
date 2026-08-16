@@ -268,10 +268,10 @@ What this session's context actually cost, against what itok estimated: a fixed 
 ### `rate`
 
 ```text
-rate [<session>] [--color auto|always|never] [--format human|json] [-C dir]
+rate [<session>] [--statusline] [--color auto|always|never] [--format human|json] [-C dir]
 ```
 
-Pre-formatted throughput string for a statusline badge: last turn's billed input, cumulative total, tokens per hour and per day -- each shortened with ceiling rounding (900 tokens shows as `1k`, never `0k`). `--color` reads `[rate]` thresholds from `itok.toml` for per-metric ANSI coloring (green/amber/red independently per value); without a config file all values are uncolored. 0-1 turns = empty output (badge hidden). Report-only.
+Pre-formatted throughput string for a statusline badge: last turn's billed input, cumulative total, tokens per hour and per day -- each shortened with ceiling rounding (900 tokens shows as `1k`, never `0k`). `--color` reads `[rate]` thresholds from `itok.toml` for per-metric ANSI coloring (green/amber/red independently per value); without a config file all values are uncolored. `--statusline` reads the harness statusline payload on stdin, taking the transcript and directory from it and emitting the wrapped badge `(itok:...)` -- so the badge reports the session it is drawn beside instead of guessing the newest one in the directory; color defaults to `always` there, since the harness captures the string and no tty is left to detect. 0-1 turns = empty output (badge hidden). Report-only.
 
 ### `cap`
 
