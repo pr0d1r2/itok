@@ -7,7 +7,7 @@
 [![docs.rs](https://docs.rs/itok/badge.svg)](https://docs.rs/itok)
 [![edition 2021](https://img.shields.io/badge/edition-2021-000000?logo=rust&logoColor=white)](Cargo.toml)
 [![MSRV 1.95](https://img.shields.io/badge/MSRV-1.95-000000?logo=rust&logoColor=white)](Cargo.toml)
-[![direct dependencies 3](https://img.shields.io/badge/direct_dependencies-3-brightgreen)](docs/THIRD-PARTY-NOTICES.md)
+[![direct dependencies 5](https://img.shields.io/badge/direct_dependencies-5-brightgreen)](docs/THIRD-PARTY-NOTICES.md)
 [![minimal tier 0 dependencies](https://img.shields.io/badge/minimal_tier-0_dependencies-brightgreen)](docs/THIRD-PARTY-NOTICES.md)
 [![unsafe forbidden](https://img.shields.io/badge/unsafe-forbidden-brightgreen)](Cargo.toml)
 [![gate hk](https://img.shields.io/badge/gate-hk-6E4AFF)](hk.pkl)
@@ -264,6 +264,14 @@ calibrate [<session>] [-h] [--format human|json] [-C dir]
 ```
 
 What this session's context actually cost, against what itok estimated: a fixed overhead the transcript cannot see (system prompt + tool schemas) and a scale from `bytes/4` to real tokens. Reports the error BAND measured on turns the fit never saw, plus `n` -- never a bare factor. Too few turns reports `n` and no factor. The scale absorbs message framing and unrecorded reasoning, so it is not a tokenizer ratio and is derived per session. Report-only.
+
+### `rate`
+
+```text
+rate [<session>] [--color auto|always|never] [--format human|json] [-C dir]
+```
+
+Pre-formatted throughput string for a statusline badge: last turn's billed input, cumulative total, tokens per hour and per day -- each shortened with ceiling rounding (900 tokens shows as `1k`, never `0k`). `--color` reads `[rate]` thresholds from `itok.toml` for per-metric ANSI coloring (green/amber/red independently per value); without a config file all values are uncolored. 0-1 turns = empty output (badge hidden). Report-only.
 
 ### `cap`
 

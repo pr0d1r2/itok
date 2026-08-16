@@ -160,7 +160,7 @@ bpe = ["dep:tiktoken-rs"]
 # feature-gated like every other tier (V23's shape). Default-on, because
 # the runtime verbs are the point of installing at 0.4; and
 # `--no-default-features` stays genuinely zero-dep, which the gate proves.
-session = ["dep:serde_json"]
+session = ["dep:serde_json", "dep:serde", "dep:basic-toml"]
 # The exact tier (V4) is a LAN-local backend: ollama's own tokenizer over
 # plain HTTP on :11434 -- keyless, free, on-LAN (V22). Behind its own
 # feature (V23) so the core ships ZERO network deps and runs in a
@@ -178,6 +178,8 @@ ollama = ["dep:ureq"]
 tiktoken-rs = { version = "0.6", optional = true }
 ureq = { version = "3", default-features = false, features = ["rustls"], optional = true }
 serde_json = { version = "1", optional = true }
+serde = { version = "1", features = ["derive"], optional = true }
+basic-toml = { version = "0.1", optional = true }
 
 # assert_cmd/predicates are dev-only and already in the workspace lockfile.
 [dev-dependencies]

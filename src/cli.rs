@@ -129,10 +129,7 @@ fn runtime(v: Verb, rest: &[String]) -> Output {
         Verb::Top => crate::topcmd::top(rest),
         Verb::Headroom => crate::headroom::headroom(rest),
         Verb::Calibrate => crate::calibrate::calibrate(rest),
-        // Trace, and by construction nothing else -- `dispatch` routes
-        // only the runtime verbs here. A future runtime verb that forgot
-        // its arm above would silently BECOME trace, so
-        // `each_runtime_verb_reaches_its_own_module` pins the mapping.
+        Verb::Rate => crate::ratecmd::rate(rest),
         _ => crate::tracecmd::trace(rest),
     }
 }
@@ -146,11 +143,7 @@ fn runtime(_v: Verb, _rest: &[String]) -> Output {
 
 fn dispatch(v: Verb, rest: &[String], input: Input) -> Output {
     match v {
-        // The one verb that reads a stream, so the one place `input` is
-        // called at all (V49: `cap` is a pipe filter, not a file reader).
         Verb::Cap => crate::capcmd::cap(rest, &input()),
-        // The other stream reader, and for the same reason: the harness
-        // hands the payload over on stdin (V52).
         Verb::Guard => crate::guardcmd::guard(&input()),
         Verb::Estimate => crate::estcmd::estimate(rest),
         Verb::Doctor => crate::doctor::doctor(rest),
@@ -159,9 +152,7 @@ fn dispatch(v: Verb, rest: &[String], input: Input) -> Output {
         Verb::Log => crate::logcmd::log(rest),
         Verb::Check => crate::checkcmd::check(rest),
         Verb::Fit => crate::fitcmd::fit(rest),
-        Verb::Trace | Verb::Top | Verb::Headroom | Verb::Calibrate => {
-            runtime(v, rest)
-        }
+        _ => runtime(v, rest),
     }
 }
 
@@ -283,6 +274,7 @@ mod tests {
         assert!(out("headroom").contains("\"rate_unit\""), "headroom");
         assert!(out("top").contains("\"summary\":true"), "top");
         assert!(out("trace").contains("\"ts\":"), "trace");
+        assert!(out("rate").contains("\"per_hour\":"), "rate");
     }
 
     /// `cap` is the only verb fed from the input source, and it is fed the

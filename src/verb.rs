@@ -27,6 +27,7 @@ pub(crate) enum Verb {
     Headroom,
     Calibrate,
     Cap,
+    Rate,
     /// The runtime gate (V52/V53). NOT prefix-inferred -- see `EXACT`.
     Guard,
 }
@@ -46,6 +47,7 @@ pub(crate) const VERBS: &[(&str, Verb)] = &[
     ("headroom", Verb::Headroom),
     ("calibrate", Verb::Calibrate),
     ("cap", Verb::Cap),
+    ("rate", Verb::Rate),
 ];
 
 /// Verbs that must be spelled IN FULL. Never prefix-matched, never
@@ -196,6 +198,7 @@ mod tests {
         assert_eq!(resolve("do"), Resolution::Verb(Verb::Doctor));
         assert_eq!(resolve("di"), Resolution::Verb(Verb::Diff));
         assert_eq!(resolve("f"), Resolution::Verb(Verb::Fit));
+        assert_eq!(resolve("r"), Resolution::Verb(Verb::Rate));
     }
 
     #[test]
