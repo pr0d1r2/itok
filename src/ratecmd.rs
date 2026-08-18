@@ -201,12 +201,16 @@ fn tp_from(
     Some(Throughput {
         last_turn,
         total,
-        per_hour: extrapolate(total, age_clamped, 3600),
-        per_day: extrapolate(total, age_clamped, 86400),
+        per_hour: extrapolate(total, age_clamped, HOUR),
+        per_day: extrapolate(total, age_clamped, DAY),
         turns,
         age_seconds: age,
     })
 }
+
+/// The two periods the badge projects onto (V110).
+const HOUR: u64 = 3_600;
+const DAY: u64 = 86_400;
 
 fn extrapolate(total: u64, age: u64, period: u64) -> u64 {
     total
@@ -294,22 +298,39 @@ pub(crate) fn shorten(n: u64) -> String {
 }
 
 fn human(tp: &Throughput, config: &RateConfig, color: bool) -> String {
-    let parts = [
-        metric(tp.last_turn, "", config.turn, color),
-        metric(tp.total, "/total", config.total, color),
-        metric(tp.per_hour, "/h", config.hour, color),
-        metric(tp.per_day, "/d", config.day, color),
+    let age = tp.age_seconds;
+    let cells = [
+        (tp.last_turn, "", "", config.turn),
+        (tp.total, "/total", "", config.total),
+        (tp.per_hour, "/h", mark(age, HOUR), config.hour),
+        (tp.per_day, "/d", mark(age, DAY), config.day),
     ];
+    let parts = cells.map(|cell| metric(cell, color));
     format!("{}\n", parts.join(","))
 }
 
-fn metric(
-    value: u64,
-    suffix: &str,
-    threshold: Option<Threshold>,
-    color: bool,
-) -> String {
-    let text = format!("{}{suffix}", shorten(value));
+/// V110: the `~` on a value whose period the SAMPLE does not cover.
+///
+/// An hour-rate off twenty minutes is a projection, not a measurement,
+/// and V3 has marked crude numbers this way since the first estimator.
+/// Empty once the age covers the period -- the mark says the sample is
+/// short, so it must disappear when the sample stops being short.
+fn mark(age: u64, period: u64) -> &'static str {
+    if age < period {
+        "~"
+    } else {
+        ""
+    }
+}
+
+/// One badge value: the number, its suffix, its projection mark, and the
+/// thresholds that color it. Grouped because the limit on arguments is
+/// four and the mark is the fifth thing every value carries.
+type Cell = (u64, &'static str, &'static str, Option<Threshold>);
+
+fn metric(cell: Cell, color: bool) -> String {
+    let (value, suffix, mark, threshold) = cell;
+    let text = format!("{mark}{}{suffix}", shorten(value));
     colored(text, value, threshold, color)
 }
 
@@ -339,10 +360,15 @@ fn ansi_for(value: u64, th: Threshold) -> &'static str {
     }
 }
 
+/// V110 lands here as a BOOLEAN per projected metric, not as a tilde in
+/// a numeric field -- json carries the same intent structurally (V9).
 fn json(tp: &Throughput) -> String {
+    let hour = tp.age_seconds < HOUR;
+    let day = tp.age_seconds < DAY;
     format!(
         "{{\"last_turn\":{},\"total\":{},\"per_hour\":{},\
-         \"per_day\":{},\"turns\":{},\"age_seconds\":{}}}\n",
+         \"per_day\":{},\"turns\":{},\"age_seconds\":{},\
+         \"projected_hour\":{hour},\"projected_day\":{day}}}\n",
         tp.last_turn,
         tp.total,
         tp.per_hour,
@@ -581,10 +607,64 @@ mod tests {
         assert!(pre < 86_400, "pre-epoch clamps to the epoch day: {pre}");
     }
 
+    /// The sample here is 3120 seconds: under an hour, so BOTH derived
+    /// values are projections and both wear the mark (V110).
     #[test]
     fn human_output_shape() {
         let out = human(&sample_tp(), &RateConfig::default(), false);
+        assert_eq!(out, "3k,46k/total,~13k/h,~280k/d\n");
+    }
+
+    /// The mark is about the DENOMINATOR reaching the period, so it
+    /// flips exactly at the period and nowhere else. Both boundaries
+    /// pinned from the side that still projects and the side that does
+    /// not -- B24 is what a fixture cut to the code costs.
+    #[test]
+    fn mark_flips_at_the_period_it_names() {
+        assert_eq!(mark(3599, HOUR), "~");
+        assert_eq!(mark(3600, HOUR), "");
+        assert_eq!(mark(86_399, DAY), "~");
+        assert_eq!(mark(86_400, DAY), "");
+    }
+
+    /// An age that covers the hour but not the day marks the day ALONE:
+    /// the two values are judged against their own periods, not against
+    /// one verdict for the badge.
+    #[test]
+    fn a_covered_period_drops_its_mark() {
+        let tp = Throughput {
+            age_seconds: 7_200,
+            ..sample_tp()
+        };
+        let out = human(&tp, &RateConfig::default(), false);
+        assert_eq!(out, "3k,46k/total,13k/h,~280k/d\n");
+    }
+
+    /// A full day of sample marks nothing -- the badge only tildes what
+    /// it had to extrapolate.
+    #[test]
+    fn a_day_long_sample_marks_nothing() {
+        let tp = Throughput {
+            age_seconds: 90_000,
+            ..sample_tp()
+        };
+        let out = human(&tp, &RateConfig::default(), false);
         assert_eq!(out, "3k,46k/total,13k/h,280k/d\n");
+    }
+
+    /// The mark rides INSIDE the colored span: a projected value keeps
+    /// its threshold color instead of trading one signal for the other.
+    #[test]
+    fn a_marked_value_keeps_its_color() {
+        let config = RateConfig {
+            hour: Some(Threshold {
+                green: 1_000,
+                amber: 100_000,
+            }),
+            ..RateConfig::default()
+        };
+        let out = human(&sample_tp(), &config, true);
+        assert!(out.contains("\x1b[33m~13k/h\x1b[0m"), "{out}");
     }
 
     fn sample_tp() -> Throughput {
@@ -612,6 +692,21 @@ mod tests {
         assert!(out.contains("\"total\":45305"));
         assert!(out.contains("\"per_hour\":12400"));
         assert!(out.contains("\"per_day\":280000"));
+    }
+
+    /// V110 in json is a boolean per metric (V9), and it tracks the same
+    /// boundary the tilde does.
+    #[test]
+    fn json_flags_each_projection() {
+        let short = json(&sample_tp());
+        assert!(short.contains("\"projected_hour\":true"), "{short}");
+        assert!(short.contains("\"projected_day\":true"), "{short}");
+        let long = json(&Throughput {
+            age_seconds: 90_000,
+            ..sample_tp()
+        });
+        assert!(long.contains("\"projected_hour\":false"), "{long}");
+        assert!(long.contains("\"projected_day\":false"), "{long}");
     }
 
     #[test]
