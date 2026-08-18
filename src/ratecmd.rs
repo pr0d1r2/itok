@@ -68,6 +68,7 @@ struct Throughput {
     per_day: u64,
     turns: usize,
     age_seconds: u64,
+    active_seconds: u64,
 }
 
 pub(crate) fn rate(rest: &[String], input: crate::cli::Input) -> Output {
@@ -181,36 +182,70 @@ fn throughput(session: &Session) -> Option<Throughput> {
     }
     let last = session.turns.last()?;
     let first = session.turns.first()?;
-    let total = session.billed_input();
-    let age = age_seconds(&first.ts, &last.ts);
-    tp_from(
-        last.billed_input().unwrap_or(0),
-        total,
-        age,
-        session.turns.len(),
-    )
+    Some(tp_from(Sample {
+        last_turn: last.billed_input().unwrap_or(0),
+        total: session.billed_input(),
+        span: age_seconds(&first.ts, &last.ts),
+        active: active_seconds(&session.turns),
+        turns: session.turns.len(),
+    }))
 }
 
-fn tp_from(
+/// What the badge is computed FROM: the two token totals and the two
+/// clocks. Grouped because `tp_from` would otherwise take five
+/// arguments, and because span and active are easy to swap by accident
+/// when they sit side by side as bare `u64`s.
+struct Sample {
     last_turn: u64,
     total: u64,
-    age: u64,
+    span: u64,
+    active: u64,
     turns: usize,
-) -> Option<Throughput> {
-    let age_clamped = if age == 0 { 1 } else { age };
-    Some(Throughput {
-        last_turn,
-        total,
-        per_hour: extrapolate(total, age_clamped, HOUR),
-        per_day: extrapolate(total, age_clamped, DAY),
-        turns,
-        age_seconds: age,
-    })
 }
 
-/// The two periods the badge projects onto (V110).
+fn tp_from(s: Sample) -> Throughput {
+    let clock = if s.active == 0 { 1 } else { s.active };
+    Throughput {
+        last_turn: s.last_turn,
+        total: s.total,
+        per_hour: extrapolate(s.total, clock, HOUR),
+        per_day: extrapolate(s.total, clock, DAY),
+        turns: s.turns,
+        age_seconds: s.span,
+        active_seconds: s.active,
+    }
+}
+
+/// V111: the working clock -- every gap between consecutive turns, each
+/// capped at `IDLE_CAP`, summed. The span between the first and last
+/// stamp counts sleep; this counts work, and truncates the gap where a
+/// human left rather than guessing whether they did.
+///
+/// N turns yield N-1 gaps, so the first turn is billed with no time
+/// credited and the rate runs high by 1/N -- stated here because a short
+/// session is exactly where that shows, and V110 already marks it.
+fn active_seconds(turns: &[crate::session::Turn]) -> u64 {
+    turns
+        .iter()
+        .zip(turns.iter().skip(1))
+        .map(|(a, b)| gap(&a.ts, &b.ts))
+        .fold(0u64, u64::saturating_add)
+}
+
+/// One inter-turn gap, credited up to the cap. An unreadable stamp
+/// reads 0 here, exactly as it does for the span (V5).
+fn gap(before: &str, after: &str) -> u64 {
+    parse_ts(after)
+        .saturating_sub(parse_ts(before))
+        .min(IDLE_CAP)
+}
+
+/// The two periods the badge projects onto (V110), and the longest gap
+/// credited as work rather than idle (V111 -- 300s is at or above the
+/// 95th percentile of the inter-turn gap in every session measured).
 const HOUR: u64 = 3_600;
 const DAY: u64 = 86_400;
+const IDLE_CAP: u64 = 300;
 
 fn extrapolate(total: u64, age: u64, period: u64) -> u64 {
     total
@@ -298,7 +333,7 @@ pub(crate) fn shorten(n: u64) -> String {
 }
 
 fn human(tp: &Throughput, config: &RateConfig, color: bool) -> String {
-    let age = tp.age_seconds;
+    let age = tp.active_seconds;
     let cells = [
         (tp.last_turn, "", "", config.turn),
         (tp.total, "/total", "", config.total),
@@ -363,18 +398,20 @@ fn ansi_for(value: u64, th: Threshold) -> &'static str {
 /// V110 lands here as a BOOLEAN per projected metric, not as a tilde in
 /// a numeric field -- json carries the same intent structurally (V9).
 fn json(tp: &Throughput) -> String {
-    let hour = tp.age_seconds < HOUR;
-    let day = tp.age_seconds < DAY;
+    let hour = tp.active_seconds < HOUR;
+    let day = tp.active_seconds < DAY;
     format!(
         "{{\"last_turn\":{},\"total\":{},\"per_hour\":{},\
          \"per_day\":{},\"turns\":{},\"age_seconds\":{},\
-         \"projected_hour\":{hour},\"projected_day\":{day}}}\n",
+         \"active_seconds\":{},\"projected_hour\":{hour},\
+         \"projected_day\":{day}}}\n",
         tp.last_turn,
         tp.total,
         tp.per_hour,
         tp.per_day,
         tp.turns,
         tp.age_seconds,
+        tp.active_seconds,
     )
 }
 
@@ -485,6 +522,7 @@ mod tests {
         per_day: 0,
         turns: 0,
         age_seconds: 0,
+        active_seconds: 0,
     };
 
     #[test]
@@ -565,13 +603,58 @@ mod tests {
         assert_eq!(tp.turns, 2);
     }
 
+    /// The span stays reported, but it is NOT what divides: one gap of
+    /// an hour is credited `IDLE_CAP`, so 3000 tokens over 300 working
+    /// seconds is 36k/h (V111).
     #[test]
-    fn throughput_computes_wallclock_rates() {
+    fn rates_divide_by_active_time_not_span() {
         let s = session_with_turns(&[(1_000, T0), (2_000, T1H)]);
         let tp = throughput(&s).unwrap_or(ZERO_TP);
-        assert_eq!(tp.age_seconds, 3600);
-        assert_eq!(tp.per_hour, 3_000);
-        assert_eq!(tp.per_day, 72_000);
+        assert_eq!(tp.age_seconds, 3600, "span still reported");
+        assert_eq!(tp.active_seconds, IDLE_CAP, "the gap is capped");
+        assert_eq!(tp.per_hour, 36_000);
+        assert_eq!(tp.per_day, 864_000);
+    }
+
+    /// Every gap is capped on its own, so a session is the SUM of its
+    /// working gaps and one long absence cannot swamp the rest.
+    #[test]
+    fn each_gap_is_capped_on_its_own() {
+        let turns = session_with_turns(&[
+            (1, "2026-08-15T06:00:00.000Z"),
+            (1, "2026-08-15T06:00:30.000Z"),
+            (1, "2026-08-15T06:02:00.000Z"),
+            (1, "2026-08-16T06:02:00.000Z"),
+            (1, "2026-08-16T06:03:00.000Z"),
+        ]);
+        let active = active_seconds(&turns.turns);
+        assert_eq!(active, 30 + 90 + IDLE_CAP + 60);
+    }
+
+    /// A day away counts as `IDLE_CAP`, not as a day: this is the
+    /// 337.9h-span session in miniature, whose wall-clock rate
+    /// understated the working rate ~20x.
+    #[test]
+    fn an_absence_is_truncated_not_counted() {
+        let s = session_with_turns(&[
+            (1_000, "2026-08-15T06:00:00.000Z"),
+            (2_000, "2026-08-18T06:00:00.000Z"),
+        ]);
+        let tp = throughput(&s).unwrap_or(ZERO_TP);
+        assert_eq!(tp.age_seconds, 3 * 86_400, "three days of span");
+        assert_eq!(tp.active_seconds, IDLE_CAP, "five minutes of work");
+    }
+
+    /// Unreadable stamps leave no working time at all. The clock clamps
+    /// so nothing divides by zero, and V110 marks every period the
+    /// non-existent sample cannot cover.
+    #[test]
+    fn an_unreadable_clock_leaves_no_active_time() {
+        let s = session_with_turns(&[(1_000, "nope"), (2_000, "also-nope")]);
+        let tp = throughput(&s).unwrap_or(ZERO_TP);
+        assert_eq!(tp.active_seconds, 0);
+        let out = human(&tp, &RateConfig::default(), false);
+        assert!(out.contains("~"), "a clockless rate is all projection");
     }
 
     /// The stamp shape pinned against a value computed elsewhere, so a
@@ -633,7 +716,7 @@ mod tests {
     #[test]
     fn a_covered_period_drops_its_mark() {
         let tp = Throughput {
-            age_seconds: 7_200,
+            active_seconds: 7_200,
             ..sample_tp()
         };
         let out = human(&tp, &RateConfig::default(), false);
@@ -645,7 +728,7 @@ mod tests {
     #[test]
     fn a_day_long_sample_marks_nothing() {
         let tp = Throughput {
-            age_seconds: 90_000,
+            active_seconds: 90_000,
             ..sample_tp()
         };
         let out = human(&tp, &RateConfig::default(), false);
@@ -675,6 +758,7 @@ mod tests {
             per_day: 280_000,
             turns: 22,
             age_seconds: 3120,
+            active_seconds: 3120,
         }
     }
 
@@ -702,7 +786,7 @@ mod tests {
         assert!(short.contains("\"projected_hour\":true"), "{short}");
         assert!(short.contains("\"projected_day\":true"), "{short}");
         let long = json(&Throughput {
-            age_seconds: 90_000,
+            active_seconds: 90_000,
             ..sample_tp()
         });
         assert!(long.contains("\"projected_hour\":false"), "{long}");
@@ -903,5 +987,19 @@ total = { green = 1000000, amber = 5000000 }
         assert_eq!(rate(&["--nope".to_owned()]).code, 2);
         assert_eq!(rate(&["--color".to_owned(), "rainbow".to_owned()]).code, 2);
         assert_eq!(rate(&["--format".to_owned(), "yaml".to_owned()]).code, 2);
+    }
+
+    /// Both clocks are in json: the span the session covered, and the
+    /// working time that divides (V111). A reader who wants to know why
+    /// a rate looks high can see the two apart.
+    #[test]
+    fn json_carries_both_clocks() {
+        let out = json(&Throughput {
+            age_seconds: 300_000,
+            active_seconds: 3_120,
+            ..sample_tp()
+        });
+        assert!(out.contains("\"age_seconds\":300000"), "{out}");
+        assert!(out.contains("\"active_seconds\":3120"), "{out}");
     }
 }
