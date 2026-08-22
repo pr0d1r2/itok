@@ -91,6 +91,33 @@ band is for; `0.4.0`'s telemetry rung stays open.
 
 ### Fixed
 
+- **An unmeasurable rate is absent, not amplified** (`§B26`). `tp_from`
+  floored the denominator at one second, so a session with no measured
+  working time published `total × 3600` and `total × 86400` -- two turns
+  inside one wall-clock second reported 104 tokens as `375k/h`, printed
+  beside an `active_seconds` of 0 that contradicted it. B24 had named this
+  exact amplifier and fixed only the stamp reader feeding it. `per_hour`
+  and `per_day` are now optional: `-/h` and `-/d` in the badge, `null` in
+  json, because an absent number is a dash and never a zero (V47/V92).
+- **`--color auto` probes stdout**, the stream the badge is printed to. It
+  probed stderr, so `itok rate > badge.txt` from a terminal wrote ANSI
+  escapes into the file and `itok rate 2>/dev/null` stripped colour from a
+  tty.
+- **`--format json` answers a short session** with one object and `null`
+  where nothing was measured, instead of zero bytes at exit 0. The
+  "0-1 turns = empty output" rule governs the badge, not the machine
+  readable shape; `calibrate` already answered this way under its own `n`.
+- **`docs/THIRD-PARTY-NOTICES.md` re-measured** -- default tier 25 → 32,
+  ollama tier 44 → 50. `basic-toml` plus a direct `serde` with `derive`
+  brings `serde_derive`, `proc-macro2`, `quote`, `syn` and `unicode-ident`
+  into the runtime closure. `unicode-ident` carries
+  `(MIT OR Apache-2.0) AND Unicode-3.0`, so the Unicode obligation the
+  `0.3.0` notices recorded as gone is back, and the file says so.
+- **`V109`'s "dep cost = 0" corrected to +7, measured.** `serde` is
+  transitive via `serde_json`, which made the claim true of the crate list
+  and false of the closure -- a proc-macro crate is a normal dependency of
+  whatever derives with it.
+
 - **`rate` read transcript timestamps as epoch digits** (`§B24`). Every
   transcript writes RFC 3339 (`2026-08-15T06:55:39.102Z`), so the parse
   failed silently and `age_seconds` was 0 for every real session -- which
