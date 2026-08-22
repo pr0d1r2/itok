@@ -117,9 +117,49 @@ fn run(raw: &Raw) -> Output {
         Err(o) => return o,
     };
     let Some(tp) = throughput(&session) else {
-        return Output::ok(String::new());
+        return too_few(raw, &session);
     };
     format_output(raw, &tp, &origin)
+}
+
+/// A session too short to have a rate, answered in the SHAPE the caller
+/// asked for.
+///
+/// The badge hides (SPEC section I: 0-1 turns = empty output) because a
+/// statusline widget announcing its own silence is worse than no widget.
+/// That rule is about the BADGE, and it was governing json too: `rate
+/// <session> --format json` emitted zero bytes at exit 0, so a consumer
+/// piping into `jq` got a parse error rather than an answer.
+///
+/// json therefore gets one object with the keys it always has and `null`
+/// where nothing was measured -- V9's one-shape rule, and the same answer
+/// `calibrate` already gives when its sample cannot support a fit ("keys
+/// stay so a parser learns one shape, and `null` is json's own word for
+/// not measured"). One verb answering this differently from its sibling is
+/// B11's class, and this is the sibling it had not reached.
+fn too_few(raw: &Raw, session: &Session) -> Output {
+    match raw.format {
+        Format::Json => Output::ok(json(&unmeasured(session))),
+        Format::Human => Output::ok(String::new()),
+    }
+}
+
+/// What a session too short to have a rate DID show: its turn count and
+/// the tokens it billed. Everything the sample cannot support is `None`.
+fn unmeasured(session: &Session) -> Throughput {
+    Throughput {
+        last_turn: session
+            .turns
+            .last()
+            .and_then(crate::session::Turn::billed_input)
+            .unwrap_or(0),
+        total: session.billed_input(),
+        per_hour: None,
+        per_day: None,
+        turns: session.turns.len(),
+        age_seconds: 0,
+        active_seconds: 0,
+    }
 }
 
 fn format_output(raw: &Raw, tp: &Throughput, origin: &Origin) -> Output {
@@ -625,6 +665,38 @@ mod tests {
     /// while `age_seconds` was 0 on every real session.
     const T0: &str = "2026-08-15T06:00:00.000Z";
     const T1H: &str = "2026-08-15T07:00:00.000Z";
+
+    /// The badge hides on a short session; json still answers (V9).
+    ///
+    /// `--format json` used to emit ZERO BYTES here, so a consumer piping
+    /// into `jq` got a parse error while the exit code said success. The
+    /// keys are the ones every other `rate` object carries, `null` where
+    /// nothing was measured -- the shape `calibrate` already returns when
+    /// its own sample is too short.
+    #[test]
+    fn json_answers_a_short_session_with_an_object() {
+        let one = session_with_turns(&[(1_111, "2026-08-22T10:00:00.000Z")]);
+        let raw = Raw {
+            format: Format::Json,
+            ..Raw::default()
+        };
+        let out = too_few(&raw, &one).out;
+        assert!(out.starts_with('{'), "one object, not silence: {out}");
+        assert!(out.contains("\"turns\":1"), "{out}");
+        assert!(out.contains("\"last_turn\":1111"), "{out}");
+        assert!(out.contains("\"total\":1111"), "{out}");
+        assert!(out.contains("\"per_hour\":null"), "{out}");
+        assert!(out.contains("\"per_day\":null"), "{out}");
+    }
+
+    /// The human badge keeps its silence: a widget rendering `(itok:)`
+    /// around nothing announces only itself (V3, section I).
+    #[test]
+    fn the_badge_stays_hidden_on_a_short_session() {
+        let one = session_with_turns(&[(1_111, "2026-08-22T10:00:00.000Z")]);
+        let out = too_few(&Raw::default(), &one).out;
+        assert!(out.is_empty(), "badge hides: {out}");
+    }
 
     #[test]
     fn throughput_needs_at_least_two_turns() {
