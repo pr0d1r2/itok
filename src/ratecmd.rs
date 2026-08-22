@@ -496,8 +496,16 @@ fn read_global_config() -> Option<String> {
     std::fs::read_to_string(path).ok()
 }
 
+/// `auto` asks about the stream the BADGE lands on, which is stdout.
+///
+/// It probed stderr, and both directions were wrong: `itok rate > badge`
+/// from a terminal wrote ANSI escapes into the file, because stderr was
+/// still a tty; `itok rate 2>/dev/null` in a terminal stripped the color
+/// from a tty stdout. `main.rs` prints `o.out` to stdout and `o.err` to
+/// stderr, so the question "will anything render these escapes" is a
+/// question about stdout and nothing else.
 fn is_tty() -> bool {
-    std::io::IsTerminal::is_terminal(&std::io::stderr())
+    std::io::IsTerminal::is_terminal(&std::io::stdout())
 }
 
 fn parse(rest: &[String]) -> Result<Raw, String> {
@@ -885,6 +893,22 @@ mod tests {
     fn color_absent_without_threshold() {
         let out = colored("1k".to_owned(), 1_000, None, true);
         assert!(!out.contains('\x1b'), "no ANSI without threshold");
+    }
+
+    /// `auto` follows STDOUT, which is where the badge is printed.
+    ///
+    /// Under the test harness stdout is captured, never a terminal, so the
+    /// verdict is a known false -- and that is the direction that matters:
+    /// escapes must not land in a pipe or a file. The probe used to read
+    /// stderr, which is a different stream with a different answer, and
+    /// nothing asserted the verdict at all (only that the branch ran).
+    #[test]
+    fn auto_reads_the_stream_the_badge_is_written_to() {
+        let piped = !std::io::IsTerminal::is_terminal(&std::io::stdout());
+        assert!(piped, "the harness captures stdout");
+        assert!(!want_color(ColorMode::Auto), "no escapes into a pipe");
+        assert!(want_color(ColorMode::Always));
+        assert!(!want_color(ColorMode::Never));
     }
 
     #[test]
