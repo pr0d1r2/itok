@@ -3,13 +3,13 @@
 //! orchestration lives in its own module. The next verbs follow this
 //! shape.
 
-use crate::args::{parse, Format, Opts};
+use crate::args::{Format, Opts, parse};
 use crate::cli::Output;
-use crate::estimate::{measure, over_budget, Estimate};
+use crate::estimate::{Estimate, measure, over_budget};
 use crate::json;
 #[cfg(feature = "bpe")]
 use crate::render::O200K;
-use crate::render::{report, Method, Style, DUMMY};
+use crate::render::{DUMMY, Method, Style, report};
 #[cfg(feature = "ollama")]
 use std::path::Path;
 use std::path::PathBuf;

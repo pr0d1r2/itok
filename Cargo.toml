@@ -31,7 +31,18 @@ name = "itok"
 # `release.toml` rather than eight remembered commands. That is what makes
 # this number safe to spend.
 version = "0.3.1"
-edition = "2021"
+# Edition 2024, standardised across the fleet. It needs 1.85 and the gate
+# runs 1.95.0, so the MSRV below is the binding constraint and the edition
+# costs nothing in reach.
+#
+# The migration was not free of meaning: `std::env::set_var` is `unsafe`
+# from this edition on, and two tests in `tracecmd.rs` set `HOME` and put it
+# back. `unsafe_code = "forbid"` below is not negotiable, so the rule those
+# tests exercise now takes the home directory as an ARGUMENT and the tests
+# hand it the tree they planted. The edition asked the right question -- a
+# process-wide mutation to answer a question about one call is unsound under
+# a parallel runner regardless of which edition names it (B3).
+edition = "2024"
 # MSRV, matched to `microlith` and to the toolchain this gate actually runs
 # (`flake.lock` pins rustc 1.95.0). Both halves of that matter.
 #

@@ -25,7 +25,7 @@
 use crate::args::Format;
 use crate::cli::Output;
 use crate::render::human;
-use crate::session::{Fit, Session, MIN_FIT_TURNS};
+use crate::session::{Fit, MIN_FIT_TURNS, Session};
 use crate::tracecmd::value;
 
 #[derive(Default)]
@@ -136,11 +136,7 @@ fn band_str(permille: u64) -> String {
 }
 
 fn size(n: u64, h: bool) -> String {
-    if h {
-        human(n)
-    } else {
-        n.to_string()
-    }
+    if h { human(n) } else { n.to_string() }
 }
 
 /// One object (V9). `null` for every field when the sample cannot support
@@ -198,12 +194,12 @@ fn apply<'a>(
     match a {
         "-h" => raw.human = true,
         "--bpe" | "--ollama" => {
-            return Err(crate::tracecmd::no_real_tier(a, "calibrate"))
+            return Err(crate::tracecmd::no_real_tier(a, "calibrate"));
         }
         "--format" => raw.format = crate::tracecmd::format_of(&value(it, a)?)?,
         "-C" => raw.chdir = Some(value(it, a)?),
         other if other.starts_with('-') => {
-            return Err(format!("unknown flag {other}"))
+            return Err(format!("unknown flag {other}"));
         }
         other => raw.session = Some(other.to_owned()),
     }

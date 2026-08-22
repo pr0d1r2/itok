@@ -5,7 +5,7 @@
 use crate::args::Format;
 use crate::cli::Output;
 use crate::session::Session;
-use crate::tracecmd::{value, Origin};
+use crate::tracecmd::{Origin, value};
 
 #[derive(Default)]
 struct Raw {
@@ -74,10 +74,10 @@ struct Throughput {
 pub(crate) fn rate(rest: &[String], input: crate::cli::Input) -> Output {
     match parse(rest) {
         Ok(mut raw) => {
-            if raw.statusline {
-                if let Err(o) = adopt_payload(&mut raw, input) {
-                    return o;
-                }
+            if raw.statusline
+                && let Err(o) = adopt_payload(&mut raw, input)
+            {
+                return o;
             }
             run(&raw)
         }
@@ -351,11 +351,7 @@ fn human(tp: &Throughput, config: &RateConfig, color: bool) -> String {
 /// Empty once the age covers the period -- the mark says the sample is
 /// short, so it must disappear when the sample stops being short.
 fn mark(age: u64, period: u64) -> &'static str {
-    if age < period {
-        "~"
-    } else {
-        ""
-    }
+    if age < period { "~" } else { "" }
 }
 
 /// One badge value: the number, its suffix, its projection mark, and the
@@ -482,7 +478,7 @@ fn apply<'a>(
 ) -> Result<(), String> {
     match a {
         "--bpe" | "--ollama" => {
-            return Err(crate::tracecmd::no_real_tier(a, "rate"))
+            return Err(crate::tracecmd::no_real_tier(a, "rate"));
         }
         "--color" => raw.color = Some(parse_color(&value(it, a)?)?),
         "--format" => raw.format = crate::tracecmd::format_of(&value(it, a)?)?,

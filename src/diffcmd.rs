@@ -15,10 +15,10 @@
 
 use crate::args::Format;
 use crate::cli::Output;
-use crate::diffargs::{breach_msg, parse, signed, Raw};
+use crate::diffargs::{Raw, breach_msg, parse, signed};
 use crate::estimate;
 use crate::gitref;
-use crate::render::{Method, DUMMY, O200K};
+use crate::render::{DUMMY, Method, O200K};
 use std::path::{Path, PathBuf};
 
 /// One side of a diff.
@@ -106,11 +106,7 @@ fn delta(root: &Path, c: &Cmp, path: &str) -> i64 {
 }
 
 fn method(bpe: bool) -> &'static Method {
-    if bpe {
-        &O200K
-    } else {
-        &DUMMY
-    }
+    if bpe { &O200K } else { &DUMMY }
 }
 
 /// Total added tokens (positive deltas only): the `--budget` quantity.
@@ -136,10 +132,10 @@ fn verdict(raw: &Raw, cmp: &Cmp, rows: &[(String, i64)]) -> Output {
 
 /// Apply the requested gate (--budget, then --exit-code) to the report.
 fn gate(raw: &Raw, rows: &[(String, i64)], out: String) -> Output {
-    if let Some(b) = raw.budget {
-        if added(rows) > b {
-            return Output::breach(out, breach_msg(added(rows), b));
-        }
+    if let Some(b) = raw.budget
+        && added(rows) > b
+    {
+        return Output::breach(out, breach_msg(added(rows), b));
     }
     if raw.exit_code && total(rows) != 0 {
         return Output {

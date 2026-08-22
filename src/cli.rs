@@ -8,7 +8,7 @@
 //! lives in `args`, each verb's orchestration in its own module
 //! (`estcmd` for `estimate`). Split at the byte ceiling (V483).
 
-use crate::verb::{resolve, Resolution, Verb};
+use crate::verb::{Resolution, Verb, resolve};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 

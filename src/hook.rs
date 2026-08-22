@@ -217,7 +217,9 @@ mod tests {
         for (d, word) in [(Decision::Allow, "allow"), (Decision::Deny, "deny")]
         {
             let out = response(d, "");
-            assert!(out.contains(&format!("\"permissionDecision\":\"{word}\"")));
+            assert!(
+                out.contains(&format!("\"permissionDecision\":\"{word}\""))
+            );
         }
     }
 

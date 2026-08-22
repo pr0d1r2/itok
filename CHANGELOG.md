@@ -78,6 +78,16 @@ band is for; `0.4.0`'s telemetry rung stays open.
   open overnight was reporting the sleep as work: the badge that prompted
   this read `3m/h` and reads `57m/h` measured the same way. `age_seconds`
   stays in the json beside `active_seconds` so both clocks remain visible.
+- **Rust edition 2024**, with the MSRV unchanged at 1.95. The two halves
+  fit: nixos 26.05 carries rustc 1.95.0 and edition 2024 needs 1.85, so the
+  MSRV is the binding constraint and the edition costs nothing in reach.
+  Standardised across the fleet.
+- **`resolve_session` takes its ambient inputs as arguments.** Edition 2024
+  makes `std::env::set_var` `unsafe`, and `unsafe_code = "forbid"` is not
+  negotiable here, so the two tests that set `HOME` (and put it back) now
+  hand the planted tree to a `resolve_with` seam instead. The lint asked the
+  right question: a process-wide mutation made to answer a question about
+  one call is unsound under a parallel runner in any edition.
 
 ### Fixed
 

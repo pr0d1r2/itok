@@ -119,11 +119,7 @@ pub struct Style {
 }
 
 fn show(n: u64, human_flag: bool) -> String {
-    if human_flag {
-        human(n)
-    } else {
-        n.to_string()
-    }
+    if human_flag { human(n) } else { n.to_string() }
 }
 
 /// One count cell: `~166k itok` (dummy) or `166k itok` (bpe/exact).
@@ -216,9 +212,11 @@ mod tests {
     #[test]
     fn https_survives_while_plain_http_is_dropped() {
         assert!(exact_via("m", "http://h:1").label().ends_with("m@h:1"));
-        assert!(exact_via("m", "https://h:1")
-            .label()
-            .ends_with("https://h:1"));
+        assert!(
+            exact_via("m", "https://h:1")
+                .label()
+                .ends_with("https://h:1")
+        );
     }
 
     /// No collateral: the local tiers are their own names, byte for byte.

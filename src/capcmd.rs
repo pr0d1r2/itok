@@ -173,11 +173,7 @@ fn count(n: usize) -> u64 {
 /// The estimate marker, read from the tier rather than hardcoded so a
 /// change of tier here cannot silently drop the `~` (V3).
 fn mark() -> &'static str {
-    if DUMMY.approximate {
-        "~"
-    } else {
-        ""
-    }
+    if DUMMY.approximate { "~" } else { "" }
 }
 
 /// The human footer -- one bracketed line, ALWAYS emitted.
@@ -243,11 +239,7 @@ fn span(tokens: u64, lines: u64, bytes: u64) -> String {
 /// The rungs APPLIED (V50) -- empty when nothing was cut, since no rung
 /// ran. A list, so T40's ladder appends rather than reshapes the field.
 fn rungs(c: &Cut) -> &'static str {
-    if c.elided() {
-        "\"cap\""
-    } else {
-        ""
-    }
+    if c.elided() { "\"cap\"" } else { "" }
 }
 
 /// The resume selector (V51), ABSENT when nothing was elided: no key
@@ -298,7 +290,7 @@ fn apply(
             return Err(format!(
                 "unexpected argument '{extra}' -- cap filters stdin, so it \
                  takes one budget and no paths"
-            ))
+            ));
         }
     }
     Ok(())
@@ -444,7 +436,9 @@ mod tests {
         let j = json_footer(&cut(&input(), None), None);
         assert!(!j.contains("\"resume\""), "nothing to resume from: {j}");
         assert!(!j.contains("\"budget\""), "no budget was given: {j}");
-        assert!(j.contains("\"elided\":{\"tokens\":0,\"lines\":0,\"bytes\":0}"));
+        assert!(
+            j.contains("\"elided\":{\"tokens\":0,\"lines\":0,\"bytes\":0}")
+        );
     }
 
     /// A budget too small for even the first line yields an empty body --
