@@ -30,7 +30,7 @@ name = "itok"
 # Each has a runner now, and the release itself is `cargo-release` driven by
 # `release.toml` rather than eight remembered commands. That is what makes
 # this number safe to spend.
-version = "0.3.0"
+version = "0.3.1"
 edition = "2021"
 # MSRV, matched to `microlith` and to the toolchain this gate actually runs
 # (`flake.lock` pins rustc 1.95.0). Both halves of that matter.

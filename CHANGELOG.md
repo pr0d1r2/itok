@@ -35,6 +35,62 @@ same guarantee; the suffix said only that the publishing pipeline was
 unproven. It is proven now, so the suffix is gone and the ladder is
 unchanged.
 
+## [0.3.1] - 2026-08-22
+
+**A badge that reports itself.** `itok rate` turns a session's throughput
+into one pre-formatted string a statusline hook can print, so context spend
+is visible while it happens instead of in a postmortem. The guarantee level
+is unchanged -- this is additive and report-only, which is what the `0.3.x`
+band is for; `0.4.0`'s telemetry rung stays open.
+
+### Added
+
+- **`itok rate [<session>]`** -- `last_turn,total/total,rate/h,rate/d`, each
+  value shortened with ceiling rounding so 900 tokens reads `1k` and never
+  `0k`. `--format json` returns the same numbers unrounded, plus `turns`,
+  `age_seconds` and `active_seconds`. 0-1 turns emits nothing, so a fresh
+  session shows no badge rather than a zero one.
+- **`itok rate --statusline`** -- reads the harness statusline payload on
+  stdin and takes `transcript_path` and `cwd` from it, then emits the
+  wrapped badge `(itok:...)`. The badge therefore names the session it is
+  drawn beside; inferring the newest transcript in the directory showed a
+  concurrent session's numbers whenever more than one was open on the same
+  repo. The mapping lives in `hook.rs` with every other harness-shaped
+  thing, so no `jq` wrapper and no new dependency. Stdin is touched only
+  under the flag -- bare `rate` never blocks on a terminal. Colour defaults
+  to `always` here, because the harness captures stdout and leaves no tty to
+  detect.
+- **`itok.toml`** -- optional `[rate]` thresholds driving per-metric ANSI
+  colour (green/amber/red, decided independently per value). A metric with
+  no threshold gets no colour opinion, so no config file means plain text
+  rather than an accent nobody asked for.
+- **Projection is marked, not implied.** `/h` and `/d` carry `~` when the
+  sample does not cover the period they name -- an hour-rate off twenty
+  minutes is an extrapolation. json carries `projected_hour` and
+  `projected_day` booleans instead, because a tilde does not belong inside
+  a number.
+
+### Changed
+
+- **Rates divide by working time, not by the calendar.** The denominator is
+  the sum of inter-turn gaps with each gap credited at most 300 seconds,
+  rather than the wall-clock span from first turn to last. A session left
+  open overnight was reporting the sleep as work: the badge that prompted
+  this read `3m/h` and reads `57m/h` measured the same way. `age_seconds`
+  stays in the json beside `active_seconds` so both clocks remain visible.
+
+### Fixed
+
+- **`rate` read transcript timestamps as epoch digits** (`§B24`). Every
+  transcript writes RFC 3339 (`2026-08-15T06:55:39.102Z`), so the parse
+  failed silently and `age_seconds` was 0 for every real session -- which
+  the one-second floor turned into `132590m/h` on a 22-hour session. The
+  reader is now a fixed-offset RFC 3339 parser pinned against values
+  computed outside the crate, and the fixtures were re-cut into the shape
+  the producer actually emits. Twenty-five green tests missed it because
+  the fixture stamps had been hand-written to match the parser: the suite
+  proved the code agreed with itself.
+
 ## [0.3.0] - 2026-08-14
 
 **The rc's number, spent.** Everything below under `0.3.0-rc.1` ships here
