@@ -7,7 +7,7 @@
 
 #![cfg(feature = "session")]
 
-use itok::session::{claude_code, Source};
+use itok::session::{Source, claude_code};
 use std::path::Path;
 
 fn read(name: &str) -> String {

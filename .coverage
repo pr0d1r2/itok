@@ -24,5 +24,5 @@
 # compared it exactly could not pass on both (B20). Truncated, not rounded:
 # rounding puts 98.04 and 98.06 on OPPOSITE sides of 98.05. The floor in
 # hk.pkl keeps full precision; only the DISPLAYED figure is truncated.
-key b8b8ff7d9f583a3f5bdea1495404d926ad370475
-lines 98.04
+key 011e36690695571eaf214a696a53f83cf0d06f54
+lines 98.3

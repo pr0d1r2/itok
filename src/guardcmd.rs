@@ -55,10 +55,10 @@ fn decide(p: &Policy, req: &Request, root: &Path) -> (Decision, String) {
     if p.is_empty() {
         return (Decision::Allow, String::new()); // V53
     }
-    if let Some(path) = req.path.as_deref() {
-        if pinned(p, root, path) {
-            return (Decision::Allow, String::new()); // V56, absolute
-        }
+    if let Some(path) = req.path.as_deref()
+        && pinned(p, root, path)
+    {
+        return (Decision::Allow, String::new()); // V56, absolute
     }
     over_budget(p, req, root)
         .map_or((Decision::Allow, String::new()), |m| (Decision::Deny, m))
@@ -111,8 +111,7 @@ fn glob_breach(p: &Policy, rel: &str, cost: u64) -> Option<String> {
 /// A denial NAMES a cheaper route, because a bare refusal costs more than
 /// the waste: the agent retries and rephrases, burning the turns the gate
 /// was meant to save (V54's reasoning, which T44 will extend to tiers).
-const ALTERNATIVE: &str =
-    "Read a line range, narrow with `rg -m`, or bundle under budget with \
+const ALTERNATIVE: &str = "Read a line range, narrow with `rg -m`, or bundle under budget with \
      `itok fit --window N`.";
 
 /// What this path costs, by the pinned local tier (V5/V36). A file that is

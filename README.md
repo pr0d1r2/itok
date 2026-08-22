@@ -5,13 +5,13 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![crates.io](https://img.shields.io/crates/v/itok.svg)](https://crates.io/crates/itok)
 [![docs.rs](https://docs.rs/itok/badge.svg)](https://docs.rs/itok)
-[![edition 2021](https://img.shields.io/badge/edition-2021-000000?logo=rust&logoColor=white)](Cargo.toml)
+[![edition 2024](https://img.shields.io/badge/edition-2024-000000?logo=rust&logoColor=white)](Cargo.toml)
 [![MSRV 1.95](https://img.shields.io/badge/MSRV-1.95-000000?logo=rust&logoColor=white)](Cargo.toml)
-[![direct dependencies 3](https://img.shields.io/badge/direct_dependencies-3-brightgreen)](docs/THIRD-PARTY-NOTICES.md)
+[![direct dependencies 5](https://img.shields.io/badge/direct_dependencies-5-brightgreen)](docs/THIRD-PARTY-NOTICES.md)
 [![minimal tier 0 dependencies](https://img.shields.io/badge/minimal_tier-0_dependencies-brightgreen)](docs/THIRD-PARTY-NOTICES.md)
 [![unsafe forbidden](https://img.shields.io/badge/unsafe-forbidden-brightgreen)](Cargo.toml)
 [![gate hk](https://img.shields.io/badge/gate-hk-6E4AFF)](hk.pkl)
-[![coverage 98.0%](https://img.shields.io/badge/coverage-98.0%25-brightgreen)](hk.pkl)
+[![coverage 98.3%](https://img.shields.io/badge/coverage-98.3%25-brightgreen)](hk.pkl)
 [![floor 98%](https://img.shields.io/badge/floor-%E2%89%A598%25-brightgreen)](hk.pkl)
 
 [![nix flake](https://img.shields.io/badge/nix-flake-5277C3?logo=nixos&logoColor=white)](flake.nix)
@@ -264,6 +264,14 @@ calibrate [<session>] [-h] [--format human|json] [-C dir]
 ```
 
 What this session's context actually cost, against what itok estimated: a fixed overhead the transcript cannot see (system prompt + tool schemas) and a scale from `bytes/4` to real tokens. Reports the error BAND measured on turns the fit never saw, plus `n` -- never a bare factor. Too few turns reports `n` and no factor. The scale absorbs message framing and unrecorded reasoning, so it is not a tokenizer ratio and is derived per session. Report-only.
+
+### `rate`
+
+```text
+rate [<session>] [--statusline] [--color auto|always|never] [--format human|json] [-C dir]
+```
+
+Pre-formatted throughput string for a statusline badge: last turn's billed input, cumulative total, tokens per hour and per day -- each shortened with ceiling rounding (900 tokens shows as `1k`, never `0k`). A value whose period the sample does not cover carries `~`: an hour-rate off twenty minutes is a projection, not a measurement, and the mark says so -- in json it is a `projected_hour`/`projected_day` boolean instead. Rates divide by ACTIVE time, every gap between turns credited up to 300 seconds and no further, rather than by the wall-clock span between the first and last turn: a session left open overnight counts the work, not the sleep. json carries both clocks, `age_seconds` for the span and `active_seconds` for what divides. `--color` reads `[rate]` thresholds from `itok.toml` for per-metric ANSI coloring (green/amber/red independently per value); without a config file all values are uncolored. `--statusline` reads the harness statusline payload on stdin, taking the transcript and directory from it and emitting the wrapped badge `(itok:...)` -- so the badge reports the session it is drawn beside instead of guessing the newest one in the directory; color defaults to `always` there, since the harness captures the string and no tty is left to detect. 0-1 turns = empty output (badge hidden). Report-only.
 
 ### `cap`
 

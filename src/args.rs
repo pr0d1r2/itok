@@ -141,11 +141,11 @@ fn ollama_arg(a: &str) -> Option<Option<&str>> {
 /// path (`estimate --ollama SPEC.md`) stays a path, not a host (V24/V25).
 #[cfg(feature = "ollama")]
 fn take_ollama_hosts(o: &mut Opts, rest: &[String], i: &mut usize) {
-    if let Some(next) = rest.get(i.saturating_add(1)) {
-        if next == "-" || next.contains(',') || next.contains(':') {
-            o.ollama_hosts = Some(next.clone());
-            *i = i.saturating_add(1);
-        }
+    if let Some(next) = rest.get(i.saturating_add(1))
+        && (next == "-" || next.contains(',') || next.contains(':'))
+    {
+        o.ollama_hosts = Some(next.clone());
+        *i = i.saturating_add(1);
     }
 }
 

@@ -6,9 +6,9 @@
 //! advises, `check` gates. A thin composer; it grows no tentacles. This
 //! module gathers the signals; `doctorfmt` renders them.
 
-use crate::args::{parse, Format, Opts};
+use crate::args::{Format, Opts, parse};
 use crate::cli::Output;
-use crate::doctorfmt::{human, json, Health};
+use crate::doctorfmt::{Health, human, json};
 use crate::estimate::dummy;
 use crate::render::Method;
 use crate::walk::bytes;

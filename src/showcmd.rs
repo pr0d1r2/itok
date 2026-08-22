@@ -7,7 +7,7 @@ use crate::args::Format;
 use crate::cli::Output;
 use crate::diffargs::signed;
 use crate::gitref;
-use crate::render::{Method, DUMMY, O200K};
+use crate::render::{DUMMY, Method, O200K};
 use std::path::{Path, PathBuf};
 
 #[derive(Default)]
@@ -40,11 +40,7 @@ fn run(raw: &Raw) -> Output {
 }
 
 fn method(bpe: bool) -> &'static Method {
-    if bpe {
-        &O200K
-    } else {
-        &DUMMY
-    }
+    if bpe { &O200K } else { &DUMMY }
 }
 
 /// A single blob's cost at a ref (`<commit>:<path>`).

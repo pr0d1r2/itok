@@ -32,7 +32,7 @@
 use crate::args::Format;
 use crate::cli::Output;
 use crate::json::escape;
-use crate::render::{human, Style};
+use crate::render::{Style, human};
 use crate::session::{LoadEvent, Session};
 use crate::tracecmd::value;
 use std::collections::BTreeMap;
@@ -210,8 +210,7 @@ fn report(rows: &[Row], parsed: &Session, style: &Style) -> String {
 ///
 /// No advice, no verdict: the arithmetic and its premise, nothing else
 /// (V59).
-const CARRIED_LEGEND: &str =
-    "  carried = itok x turns since entry (cache re-billing; \
+const CARRIED_LEGEND: &str = "  carried = itok x turns since entry (cache re-billing; \
      assumes no compaction)\n";
 
 /// The accounted/unaccounted split (V44). Each number names its method
@@ -319,11 +318,7 @@ fn tilde(n: u64, style: &Style) -> String {
 }
 
 fn size(n: u64, style: &Style) -> String {
-    if style.human {
-        human(n)
-    } else {
-        n.to_string()
-    }
+    if style.human { human(n) } else { n.to_string() }
 }
 
 /// One JSON object per row (V9), same field vocabulary as every other
@@ -430,7 +425,7 @@ fn apply<'a>(
         "-h" => raw.style.human = true,
         "-s" => raw.style.summarize = true,
         "--bpe" | "--ollama" => {
-            return Err(crate::tracecmd::no_real_tier(a, "top"))
+            return Err(crate::tracecmd::no_real_tier(a, "top"));
         }
         _ => return with_value(a, it, raw),
     }
@@ -449,7 +444,7 @@ fn with_value<'a>(
         "--" => raw.path = Some(value(it, a)?),
         "--format" => raw.format = crate::tracecmd::format_of(&value(it, a)?)?,
         other if other.starts_with('-') => {
-            return Err(format!("unknown flag {other}"))
+            return Err(format!("unknown flag {other}"));
         }
         other => raw.session = Some(other.to_owned()),
     }

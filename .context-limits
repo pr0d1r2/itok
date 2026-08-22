@@ -22,8 +22,22 @@
 # machine pays the debt -- two jobs, and conflating them made the ceiling
 # useless at both.
 #
+#
+# The EIGHTH covers V110 and V111 with their records (T96, T97, B25): the
+# rate badge published two projections unmarked, then divided them by a
+# wall-clock span that counted sleep. Both invariants carry the
+# measurement that justifies them, and that is the part that had to stay
+# -- the inter-turn gap percentiles across 11 transcripts are what make a
+# 300s idle cap auditable instead of a magic constant, while V26 keeps
+# the method in the commit. Decoration was trimmed first (the per-session
+# turn list, the argument-count rationale); the numbers were not.
+#
+# Worth recording: the seventh had already drifted to 0.5% slack before
+# this landed -- 35,813 against 36,000 -- which is the same "fires on the
+# next legitimate sentence" state the seventh raise was itself
+# correcting. 41,000 against 36,400 is ~12.6%, inside the band.
 # History: 19,542 -> 20,500 (T49) -> 21,500 -> 25,000 -> 27,500 -> 31,000
-# -> 34,000 -> 36,000. Seven raises, every addition correct: the spec grows
+# -> 34,000 -> 36,000 -> 41,000. Eight raises, every addition correct: the spec grows
 # because the project does (103 invariants). Why each raise was justified
 # lives in its commit, not here (V26).
 #
@@ -70,5 +84,5 @@
 # commit rather than here (V26). A README that grows because the project went
 # public is the project growing; a README that grows every week is not, and
 # the next raise should be asked to prove which it is.
-SPEC.md    36000
-README.md  5k
+SPEC.md    41000
+README.md  5700

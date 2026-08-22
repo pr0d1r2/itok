@@ -30,8 +30,19 @@ name = "itok"
 # Each has a runner now, and the release itself is `cargo-release` driven by
 # `release.toml` rather than eight remembered commands. That is what makes
 # this number safe to spend.
-version = "0.3.0"
-edition = "2021"
+version = "0.3.1"
+# Edition 2024, standardised across the fleet. It needs 1.85 and the gate
+# runs 1.95.0, so the MSRV below is the binding constraint and the edition
+# costs nothing in reach.
+#
+# The migration was not free of meaning: `std::env::set_var` is `unsafe`
+# from this edition on, and two tests in `tracecmd.rs` set `HOME` and put it
+# back. `unsafe_code = "forbid"` below is not negotiable, so the rule those
+# tests exercise now takes the home directory as an ARGUMENT and the tests
+# hand it the tree they planted. The edition asked the right question -- a
+# process-wide mutation to answer a question about one call is unsound under
+# a parallel runner regardless of which edition names it (B3).
+edition = "2024"
 # MSRV, matched to `microlith` and to the toolchain this gate actually runs
 # (`flake.lock` pins rustc 1.95.0). Both halves of that matter.
 #
@@ -160,7 +171,7 @@ bpe = ["dep:tiktoken-rs"]
 # feature-gated like every other tier (V23's shape). Default-on, because
 # the runtime verbs are the point of installing at 0.4; and
 # `--no-default-features` stays genuinely zero-dep, which the gate proves.
-session = ["dep:serde_json"]
+session = ["dep:serde_json", "dep:serde", "dep:basic-toml"]
 # The exact tier (V4) is a LAN-local backend: ollama's own tokenizer over
 # plain HTTP on :11434 -- keyless, free, on-LAN (V22). Behind its own
 # feature (V23) so the core ships ZERO network deps and runs in a
@@ -178,6 +189,8 @@ ollama = ["dep:ureq"]
 tiktoken-rs = { version = "0.6", optional = true }
 ureq = { version = "3", default-features = false, features = ["rustls"], optional = true }
 serde_json = { version = "1", optional = true }
+serde = { version = "1", features = ["derive"], optional = true }
+basic-toml = { version = "0.1", optional = true }
 
 # assert_cmd/predicates are dev-only and already in the workspace lockfile.
 [dev-dependencies]

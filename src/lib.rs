@@ -37,6 +37,8 @@ mod models;
 #[cfg(feature = "ollama")]
 mod ollama;
 mod policy;
+#[cfg(feature = "session")]
+mod ratecmd;
 pub mod render;
 #[cfg(feature = "session")]
 pub mod session;

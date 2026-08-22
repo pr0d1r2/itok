@@ -16,7 +16,7 @@
 use crate::args::Format;
 use crate::cli::Output;
 use crate::json::escape;
-use crate::session::{claude_code, LoadEvent, Session, Source};
+use crate::session::{LoadEvent, Session, Source, claude_code};
 use std::path::{Path, PathBuf};
 
 #[derive(Default)]
@@ -126,11 +126,30 @@ pub(crate) fn resolve_session(
     session: Option<&str>,
     chdir: Option<&str>,
 ) -> Result<(PathBuf, Origin), Missing> {
+    resolve_with(session, chdir, env_home(), harness_session())
+}
+
+/// The resolution rule with its two AMBIENT inputs -- the home directory
+/// and the id a harness offered -- passed IN rather than read here.
+///
+/// The seam exists so the rule can be tested against a planted tree
+/// without writing to the process environment. Those tests used to set
+/// `HOME` and put it back, which edition 2024 correctly calls `unsafe`
+/// (a mutation every other thread can observe mid-read) and this crate
+/// forbids unsafe outright. Passing the value is not a workaround for the
+/// lint: it is the thing the lint was asking for, and it also makes the
+/// tests hermetic under a parallel runner (B3).
+fn resolve_with(
+    session: Option<&str>,
+    chdir: Option<&str>,
+    home: Option<PathBuf>,
+    offered: Option<String>,
+) -> Result<(PathBuf, Origin), Missing> {
     if let Some(s) = session {
-        return named_session(s, chdir);
+        return named_session(s, chdir, home.as_deref());
     }
-    let dir = project_dir(chdir).ok_or(Missing::Inferred)?;
-    if let Some(id) = harness_session() {
+    let dir = project_dir(chdir, home.as_deref()).ok_or(Missing::Inferred)?;
+    if let Some(id) = offered {
         let named = dir.join(format!("{id}.jsonl"));
         if named.is_file() {
             return Ok((named, Origin::Harness));
@@ -145,8 +164,9 @@ pub(crate) fn resolve_session(
 fn named_session(
     s: &str,
     chdir: Option<&str>,
+    home: Option<&Path>,
 ) -> Result<(PathBuf, Origin), Missing> {
-    let dir = project_dir(chdir);
+    let dir = project_dir(chdir, home);
     match found(s, dir.as_deref()) {
         Some(p) => Ok((p, Origin::Argument)),
         None => Err(Missing::Named(no_session(s, dir.as_deref()))),
@@ -219,14 +239,20 @@ pub(crate) fn session_at(
 }
 
 /// The harness's transcript directory for this project.
-fn project_dir(chdir: Option<&str>) -> Option<PathBuf> {
+fn project_dir(chdir: Option<&str>, home: Option<&Path>) -> Option<PathBuf> {
     let cwd = chdir.map_or_else(
         || std::env::current_dir().ok(),
         |d| Some(PathBuf::from(d)),
     )?;
-    let home = std::env::var("HOME").ok().map(PathBuf::from)?;
+    let home = home?;
     let project = std::fs::canonicalize(&cwd).unwrap_or(cwd);
-    Some(claude_code::project_dir(&home, &project))
+    Some(claude_code::project_dir(home, &project))
+}
+
+/// `HOME`, read in ONE place so the seam above has a single ambient
+/// source to stand in for.
+fn env_home() -> Option<PathBuf> {
+    std::env::var("HOME").ok().map(PathBuf::from)
 }
 
 fn newest_in(dir: &Path) -> Option<PathBuf> {
@@ -333,22 +359,21 @@ mod origin_tests {
         (home, cwd, file)
     }
 
-    /// Resolve with `HOME` pointed at the planted tree, then put it back --
-    /// an ambient variable left changed would break whatever runs next
-    /// (B3's lesson).
+    /// Resolve with the planted tree HANDED IN as the home directory.
+    ///
+    /// It used to set `HOME`, call, and put it back. That is a process-wide
+    /// mutation made to answer a question about one call -- unsound under a
+    /// parallel runner (B3's lesson), and `unsafe` from edition 2024 on,
+    /// which this crate forbids outright. `resolve_with` takes the value
+    /// instead, so the test reads exactly what it planted and touches
+    /// nothing ambient.
     fn resolve_under_home(
         home: &Path,
         cwd: &Path,
         arg: Option<&str>,
     ) -> Result<(PathBuf, Origin), Missing> {
-        let prev = std::env::var("HOME").ok();
-        std::env::set_var("HOME", home);
-        let got = resolve_session(arg, Some(&cwd.to_string_lossy()));
-        match prev {
-            Some(h) => std::env::set_var("HOME", h),
-            None => std::env::remove_var("HOME"),
-        }
-        got
+        let dir = cwd.to_string_lossy();
+        resolve_with(arg, Some(&dir), Some(home.to_path_buf()), None)
     }
 
     /// A session ID resolves against the project directory, which is what
@@ -360,6 +385,60 @@ mod origin_tests {
         let got = resolve_under_home(&home, &cwd, Some("abc-123"));
         assert_eq!(got, Ok((file.clone(), Origin::Argument)), "id resolved");
         let _ = std::fs::remove_file(&file);
+    }
+
+    /// The harness-offered id RESOLVING, which is V96's whole point: an id
+    /// the harness knows beats a guess from the filesystem.
+    ///
+    /// Planted, and hermetic. This branch used to be reached only through
+    /// the dogfood tests, which read whatever transcripts the machine
+    /// holds -- so it was covered on a laptop with sessions and uncovered
+    /// on a CI runner without them, and the coverage number differed by
+    /// machine (B27).
+    #[test]
+    fn a_harness_id_that_resolves_wins_over_newest() {
+        let (home, cwd, file) = planted_transcript("harness-wins");
+        let got = resolve_with(
+            None,
+            Some(&cwd.to_string_lossy()),
+            Some(home.clone()),
+            Some("harness-wins".to_owned()),
+        );
+        assert_eq!(
+            got,
+            Ok((file.clone(), Origin::Harness)),
+            "the id the harness offered, not a guess by mtime"
+        );
+        let _ = std::fs::remove_file(&file);
+    }
+
+    /// The diagnostic when there is no project directory to have searched.
+    /// The other half (a directory that WAS searched) is pinned above; this
+    /// is the branch where `chdir` resolves to nothing.
+    #[test]
+    fn a_miss_with_no_project_dir_says_so() {
+        let msg = no_session("ghost", None);
+        assert!(msg.contains("ghost"), "{msg}");
+        assert!(msg.contains("no project directory"), "{msg}");
+    }
+
+    /// A source that resolved and then could not be READ is a named
+    /// failure, not silence: it existed a moment ago, so an I/O fault must
+    /// not read as an empty session. A directory is the portable way to
+    /// hold a path that exists and is not readable as text.
+    #[test]
+    fn a_source_that_cannot_be_read_names_the_path() {
+        let dir = std::env::temp_dir();
+        let out = read_source(&dir)
+            .err()
+            .unwrap_or_else(|| Output::ok(String::new()));
+        assert_eq!(out.code, 2, "a read fault is a usage error");
+        assert!(out.err.contains("cannot read"), "{}", out.err);
+        assert!(
+            out.err.contains(&dir.display().to_string()),
+            "names the path: {}",
+            out.err
+        );
     }
 
     /// An id the harness offers wins over newest-by-mtime -- but only if the
@@ -382,13 +461,13 @@ mod origin_tests {
     #[test]
     fn a_stale_harness_id_falls_back_instead_of_failing() {
         let (home, cwd, file) = planted_transcript("stale-fallback");
-        let prev = std::env::var("ITOK_SESSION_ID").ok();
-        std::env::set_var("ITOK_SESSION_ID", "no-such-session-id-xyz");
-        let got = resolve_under_home(&home, &cwd, None);
-        match prev {
-            Some(v) => std::env::set_var("ITOK_SESSION_ID", v),
-            None => std::env::remove_var("ITOK_SESSION_ID"),
-        }
+        let dir = cwd.to_string_lossy();
+        let got = resolve_with(
+            None,
+            Some(&dir),
+            Some(home.clone()),
+            Some("no-such-session-id-xyz".to_owned()),
+        );
         // Unconditional now: the planted transcript is the only candidate,
         // so the stale id MUST lose to newest-by-mtime and the answer is
         // known rather than whatever the machine happened to hold.
@@ -537,7 +616,7 @@ fn apply<'a>(
         "--format" => raw.format = format_of(&value(it, "--format")?)?,
         "--bpe" | "--ollama" => return Err(no_real_tier(a, "trace")),
         other if other.starts_with('-') => {
-            return Err(format!("unknown flag {other}"))
+            return Err(format!("unknown flag {other}"));
         }
         other => raw.session = Some(other.to_owned()),
     }
@@ -648,9 +727,11 @@ mod tests {
     #[test]
     fn the_tilde_is_human_only() {
         assert!(run_on("tool-shapes.jsonl", &[]).out.contains('~'));
-        assert!(!run_on("tool-shapes.jsonl", &["--format", "json"])
-            .out
-            .contains('~'));
+        assert!(
+            !run_on("tool-shapes.jsonl", &["--format", "json"])
+                .out
+                .contains('~')
+        );
     }
 
     /// V3/V45: a real tokenizer is REJECTED rather than accepted and

@@ -30,7 +30,7 @@ use crate::args::Format;
 use crate::cli::Output;
 use crate::render::human;
 use crate::session::Session;
-use crate::tracecmd::{value, Origin};
+use crate::tracecmd::{Origin, value};
 
 /// The rate windows, in turns -- loadavg's three, on a turn clock (V91).
 /// Ordered shortest-first, which is also the order `turns left` prefers.
@@ -182,11 +182,7 @@ impl Room {
 }
 
 fn size(n: u64, h: bool) -> String {
-    if h {
-        human(n)
-    } else {
-        n.to_string()
-    }
+    if h { human(n) } else { n.to_string() }
 }
 
 /// An absent number is a dash, never a zero (V47/V92).
@@ -355,7 +351,7 @@ fn apply<'a>(
     match a {
         "-h" => raw.human = true,
         "--bpe" | "--ollama" => {
-            return Err(crate::tracecmd::no_real_tier(a, "headroom"))
+            return Err(crate::tracecmd::no_real_tier(a, "headroom"));
         }
         _ => return with_value(a, it, raw),
     }
@@ -374,7 +370,7 @@ fn with_value<'a>(
         "-C" => raw.chdir = Some(value(it, a)?),
         "--format" => raw.format = crate::tracecmd::format_of(&value(it, a)?)?,
         other if other.starts_with('-') => {
-            return Err(format!("unknown flag {other}"))
+            return Err(format!("unknown flag {other}"));
         }
         other => raw.session = Some(other.to_owned()),
     }

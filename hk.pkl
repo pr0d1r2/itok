@@ -511,6 +511,25 @@ local all = (fast) {
   //
   // The floor keeps its full precision: `--fail-under-lines 98` is a
   // threshold, not a displayed claim, so sub-decimal jitter cannot move it.
+  //
+  // ONE-SIDED, because truncation NARROWED the platform spread and did not
+  // remove it (B27). Two decimals apart is still two decimals apart: 98.18
+  // on macOS and 98.21 on ubuntu straddle a truncation boundary exactly as
+  // 98.04 and 98.06 straddled a rounding one, and the deadlock came back at
+  // one decimal down. An equality check between two machines that measure
+  // differently has no fixed point to find.
+  //
+  // What the badge must never do is OVERSTATE, so that is what is checked:
+  // a measurement BELOW the cache fails, and a measurement above it passes.
+  // The cache is then written by the most pessimistic machine that runs the
+  // gate and every other machine agrees with it, which is a rule with a
+  // fixed point. This is the same reasoning that chose truncation over
+  // rounding -- the badge may understate and may not overstate -- applied
+  // to the comparison rather than to the digit.
+  //
+  // A SECOND BOUND keeps that from becoming permission to ignore the cache:
+  // more than half a point above it and the step fails too, because a badge
+  // that far behind is stale even though it is not a lie.
   ["coverage"] {
     glob = List("**/*.rs", "SPEC.md", "tests/fixtures/**", ".coverage")
     depends = List("rustdoc")
@@ -520,7 +539,15 @@ local all = (fast) {
       cat target/coverage.txt
       measured=$(awk '/^TOTAL/{gsub("%","",$10); printf "%.1f", int($10*10)/10}' target/coverage.txt)
       cached=$(awk '/^lines /{printf "%.1f", int($2*10)/10}' .coverage)
-      [ "$measured" = "$cached" ] || { echo "hk: .coverage says $cached% but the measurement is $measured%, so the README badge is rendering a stale number. Run 'hk run refresh' to update the cache and the badge, then amend." >&2; exit 1; }
+      if awk -v m="$measured" -v c="$cached" 'BEGIN{exit !(m+0 < c+0)}'; then
+        echo "hk: .coverage says $cached% but this machine measures $measured%, so the README badge OVERSTATES coverage. Run 'hk run refresh' to update the cache and the badge, then amend." >&2
+        exit 1
+      fi
+      if awk -v m="$measured" -v c="$cached" 'BEGIN{exit !(m+0 - c+0 > 0.5)}'; then
+        echo "hk: .coverage says $cached% and this machine measures $measured%, more than half a point above it. The badge is not wrong, but it is far enough behind to be worth refreshing: 'hk run refresh', then amend." >&2
+        exit 1
+      fi
+      exit 0
       """
     fix = """
       mkdir -p target
