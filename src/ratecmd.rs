@@ -64,8 +64,8 @@ struct TomlThreshold {
 struct Throughput {
     last_turn: u64,
     total: u64,
-    per_hour: u64,
-    per_day: u64,
+    per_hour: Option<u64>,
+    per_day: Option<u64>,
     turns: usize,
     age_seconds: u64,
     active_seconds: u64,
@@ -204,12 +204,11 @@ struct Sample {
 }
 
 fn tp_from(s: Sample) -> Throughput {
-    let clock = if s.active == 0 { 1 } else { s.active };
     Throughput {
         last_turn: s.last_turn,
         total: s.total,
-        per_hour: extrapolate(s.total, clock, HOUR),
-        per_day: extrapolate(s.total, clock, DAY),
+        per_hour: rate_over(s.total, s.active, HOUR),
+        per_day: rate_over(s.total, s.active, DAY),
         turns: s.turns,
         age_seconds: s.span,
         active_seconds: s.active,
@@ -246,6 +245,24 @@ fn gap(before: &str, after: &str) -> u64 {
 const HOUR: u64 = 3_600;
 const DAY: u64 = 86_400;
 const IDLE_CAP: u64 = 300;
+
+/// A rate, or NOTHING when no working time was measured.
+///
+/// The floor this replaces was `if active == 0 { 1 }`, and a fabricated
+/// one-second denominator is not a conservative default: it multiplies the
+/// session total by 3600 and by 86400, so two turns inside one wall-clock
+/// second published 104 tokens as `375k/h`. B24 already recorded that exact
+/// amplifier -- "the 1-second floor turned that into `132590m/h`" -- and
+/// fixed only the stamp reader feeding it. B26 is the floor itself.
+///
+/// `None` rather than 0, because 0 is a MEASUREMENT (a session that billed
+/// nothing) and this is the absence of one. V47/V92 is the rule already
+/// written for the case: an absent number is a dash, never a zero. V110's
+/// tilde cannot cover it either -- a mark on a fabricated value still asks
+/// the reader to believe the digits.
+fn rate_over(total: u64, active: u64, period: u64) -> Option<u64> {
+    (active > 0).then(|| extrapolate(total, active, period))
+}
 
 fn extrapolate(total: u64, age: u64, period: u64) -> u64 {
     total
@@ -335,8 +352,8 @@ pub(crate) fn shorten(n: u64) -> String {
 fn human(tp: &Throughput, config: &RateConfig, color: bool) -> String {
     let age = tp.active_seconds;
     let cells = [
-        (tp.last_turn, "", "", config.turn),
-        (tp.total, "/total", "", config.total),
+        (Some(tp.last_turn), "", "", config.turn),
+        (Some(tp.total), "/total", "", config.total),
         (tp.per_hour, "/h", mark(age, HOUR), config.hour),
         (tp.per_day, "/d", mark(age, DAY), config.day),
     ];
@@ -354,13 +371,22 @@ fn mark(age: u64, period: u64) -> &'static str {
     if age < period { "~" } else { "" }
 }
 
-/// One badge value: the number, its suffix, its projection mark, and the
-/// thresholds that color it. Grouped because the limit on arguments is
-/// four and the mark is the fifth thing every value carries.
-type Cell = (u64, &'static str, &'static str, Option<Threshold>);
+/// One badge value: the number or its ABSENCE, its suffix, its projection
+/// mark, and the thresholds that color it. Grouped because the limit on
+/// arguments is four and the mark is the fifth thing every value carries.
+type Cell = (Option<u64>, &'static str, &'static str, Option<Threshold>);
 
+/// An absent value renders as `-`, uncolored and unmarked (V47/V92).
+///
+/// Uncolored because a threshold sorts a MEASUREMENT into a band and there
+/// is nothing here to sort. Unmarked because V110's `~` says a sample is
+/// too short for the period it names, which is a claim about a number that
+/// exists.
 fn metric(cell: Cell, color: bool) -> String {
     let (value, suffix, mark, threshold) = cell;
+    let Some(value) = value else {
+        return format!("-{suffix}");
+    };
     let text = format!("{mark}{}{suffix}", shorten(value));
     colored(text, value, threshold, color)
 }
@@ -391,8 +417,20 @@ fn ansi_for(value: u64, th: Threshold) -> &'static str {
     }
 }
 
+/// An unmeasurable rate is `null`, which is what the human badge's `-`
+/// says in the shape json has for it (V9/V47). The alternative was a
+/// number derived from a one-second denominator nobody measured, sitting
+/// beside an `active_seconds` of 0 that contradicts it -- a reader could
+/// not reproduce `per_hour` from the object publishing it (B26).
+fn or_null(v: Option<u64>) -> String {
+    v.map_or_else(|| "null".to_owned(), |n| n.to_string())
+}
+
 /// V110 lands here as a BOOLEAN per projected metric, not as a tilde in
 /// a numeric field -- json carries the same intent structurally (V9).
+///
+/// The booleans describe the SAMPLE, not the value, so they stay honest
+/// beside a `null`: zero working time covers neither period.
 fn json(tp: &Throughput) -> String {
     let hour = tp.active_seconds < HOUR;
     let day = tp.active_seconds < DAY;
@@ -403,8 +441,8 @@ fn json(tp: &Throughput) -> String {
          \"projected_day\":{day}}}\n",
         tp.last_turn,
         tp.total,
-        tp.per_hour,
-        tp.per_day,
+        or_null(tp.per_hour),
+        or_null(tp.per_day),
         tp.turns,
         tp.age_seconds,
         tp.active_seconds,
@@ -514,8 +552,8 @@ mod tests {
     const ZERO_TP: Throughput = Throughput {
         last_turn: 0,
         total: 0,
-        per_hour: 0,
-        per_day: 0,
+        per_hour: Some(0),
+        per_day: Some(0),
         turns: 0,
         age_seconds: 0,
         active_seconds: 0,
@@ -608,8 +646,8 @@ mod tests {
         let tp = throughput(&s).unwrap_or(ZERO_TP);
         assert_eq!(tp.age_seconds, 3600, "span still reported");
         assert_eq!(tp.active_seconds, IDLE_CAP, "the gap is capped");
-        assert_eq!(tp.per_hour, 36_000);
-        assert_eq!(tp.per_day, 864_000);
+        assert_eq!(tp.per_hour, Some(36_000));
+        assert_eq!(tp.per_day, Some(864_000));
     }
 
     /// Every gap is capped on its own, so a session is the SUM of its
@@ -649,8 +687,48 @@ mod tests {
         let s = session_with_turns(&[(1_000, "nope"), (2_000, "also-nope")]);
         let tp = throughput(&s).unwrap_or(ZERO_TP);
         assert_eq!(tp.active_seconds, 0);
+        assert_eq!(tp.per_hour, None, "no working time, no rate");
+        assert_eq!(tp.per_day, None);
         let out = human(&tp, &RateConfig::default(), false);
-        assert!(out.contains("~"), "a clockless rate is all projection");
+        assert!(out.contains("-/h") && out.contains("-/d"), "{out}");
+        assert!(!out.contains('~'), "nothing to project from: {out}");
+    }
+
+    /// B26: a fabricated denominator is not a conservative default.
+    ///
+    /// The floor here was `if active == 0 { 1 }`, which multiplied the
+    /// session total by 3600 and by 86400 -- so 3000 tokens over an
+    /// unmeasurable clock published as `10m/h`. This test asserts the
+    /// MAGNITUDE, which is what the assertions above it never did: the old
+    /// test checked `active_seconds == 0` and that a tilde was present, and
+    /// both were true of the garbage.
+    #[test]
+    fn a_clockless_rate_never_publishes_an_amplified_number() {
+        let s = session_with_turns(&[(1_000, "nope"), (2_000, "also-nope")]);
+        let tp = throughput(&s).unwrap_or(ZERO_TP);
+        let out = human(&tp, &RateConfig::default(), false);
+        assert!(!out.contains('m'), "no megatoken rate anywhere: {out}");
+        let js = json(&tp);
+        assert!(js.contains("\"per_hour\":null"), "{js}");
+        assert!(js.contains("\"per_day\":null"), "{js}");
+        assert!(js.contains("\"active_seconds\":0"), "{js}");
+    }
+
+    /// The reachable case, with no broken clock in sight: `parse_ts`
+    /// truncates to seconds, so two turns inside one wall-clock second --
+    /// ordinary at session start -- leave zero active time. Under the old
+    /// floor that was the amplifier, not an edge case.
+    #[test]
+    fn two_turns_in_one_second_publish_no_rate() {
+        let s = session_with_turns(&[
+            (52, "2026-08-22T10:00:00.100Z"),
+            (52, "2026-08-22T10:00:00.900Z"),
+        ]);
+        let tp = throughput(&s).unwrap_or(ZERO_TP);
+        assert_eq!(tp.active_seconds, 0, "same second, no gap credited");
+        assert_eq!(tp.total, 104);
+        assert_eq!(tp.per_hour, None, "104 tokens are not 375k/h");
+        assert_eq!(tp.per_day, None);
     }
 
     /// The stamp shape pinned against a value computed elsewhere, so a
@@ -750,8 +828,8 @@ mod tests {
         Throughput {
             last_turn: 2_117,
             total: 45_305,
-            per_hour: 12_400,
-            per_day: 280_000,
+            per_hour: Some(12_400),
+            per_day: Some(280_000),
             turns: 22,
             age_seconds: 3120,
             active_seconds: 3120,
