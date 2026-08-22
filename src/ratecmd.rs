@@ -1015,6 +1015,47 @@ total = { green = 1000000, amber = 5000000 }
         assert!(parsed.is_err());
     }
 
+    /// The whole verb over a real one-turn transcript, so `run`'s short
+    /// session branch is exercised by a PLANTED file rather than by
+    /// whichever transcripts the machine running coverage happens to hold
+    /// (B3, and B27's spread).
+    #[test]
+    fn a_one_turn_transcript_answers_in_both_formats() {
+        let path = fixture("minimal.jsonl");
+        let human = super::rate(std::slice::from_ref(&path), &nothing);
+        assert!(human.out.is_empty(), "badge hides: {:?}", human.out);
+        assert_eq!(human.code, 0);
+        let js = super::rate(
+            &[path, "--format".to_owned(), "json".to_owned()],
+            &nothing,
+        );
+        assert!(js.out.starts_with('{'), "one object: {:?}", js.out);
+        assert!(js.out.contains("\"per_hour\":null"), "{}", js.out);
+    }
+
+    /// The two config fallbacks that are NOT a missing file: malformed
+    /// TOML, and valid TOML with no `[rate]` table. Both degrade to the
+    /// default silently, because colour is cosmetic and a broken config
+    /// must not break the measurement (V109).
+    #[test]
+    fn a_broken_or_rateless_config_degrades_to_the_default() {
+        let broken = parse_config("[rate\nturn = oops");
+        assert!(broken.turn.is_none() && broken.hour.is_none());
+        let rateless = parse_config("[limits]\nsrc = 1000\n");
+        assert!(rateless.turn.is_none() && rateless.day.is_none());
+    }
+
+    /// `rate` has no tokenizer tiers to pick from, so the flags that name
+    /// one are a usage error naming the verb (V64's shared message).
+    #[test]
+    fn tier_flags_are_rejected_by_name() {
+        for flag in ["--bpe", "--ollama"] {
+            let out = super::rate(&[flag.to_owned()], &nothing);
+            assert_eq!(out.code, 2, "{flag} is a usage error");
+            assert!(out.err.contains("rate"), "names the verb: {}", out.err);
+        }
+    }
+
     fn fixture(name: &str) -> String {
         format!(
             "{}/tests/fixtures/session/{name}",

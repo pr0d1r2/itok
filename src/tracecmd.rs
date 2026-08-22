@@ -387,6 +387,60 @@ mod origin_tests {
         let _ = std::fs::remove_file(&file);
     }
 
+    /// The harness-offered id RESOLVING, which is V96's whole point: an id
+    /// the harness knows beats a guess from the filesystem.
+    ///
+    /// Planted, and hermetic. This branch used to be reached only through
+    /// the dogfood tests, which read whatever transcripts the machine
+    /// holds -- so it was covered on a laptop with sessions and uncovered
+    /// on a CI runner without them, and the coverage number differed by
+    /// machine (B27).
+    #[test]
+    fn a_harness_id_that_resolves_wins_over_newest() {
+        let (home, cwd, file) = planted_transcript("harness-wins");
+        let got = resolve_with(
+            None,
+            Some(&cwd.to_string_lossy()),
+            Some(home.clone()),
+            Some("harness-wins".to_owned()),
+        );
+        assert_eq!(
+            got,
+            Ok((file.clone(), Origin::Harness)),
+            "the id the harness offered, not a guess by mtime"
+        );
+        let _ = std::fs::remove_file(&file);
+    }
+
+    /// The diagnostic when there is no project directory to have searched.
+    /// The other half (a directory that WAS searched) is pinned above; this
+    /// is the branch where `chdir` resolves to nothing.
+    #[test]
+    fn a_miss_with_no_project_dir_says_so() {
+        let msg = no_session("ghost", None);
+        assert!(msg.contains("ghost"), "{msg}");
+        assert!(msg.contains("no project directory"), "{msg}");
+    }
+
+    /// A source that resolved and then could not be READ is a named
+    /// failure, not silence: it existed a moment ago, so an I/O fault must
+    /// not read as an empty session. A directory is the portable way to
+    /// hold a path that exists and is not readable as text.
+    #[test]
+    fn a_source_that_cannot_be_read_names_the_path() {
+        let dir = std::env::temp_dir();
+        let out = read_source(&dir)
+            .err()
+            .unwrap_or_else(|| Output::ok(String::new()));
+        assert_eq!(out.code, 2, "a read fault is a usage error");
+        assert!(out.err.contains("cannot read"), "{}", out.err);
+        assert!(
+            out.err.contains(&dir.display().to_string()),
+            "names the path: {}",
+            out.err
+        );
+    }
+
     /// An id the harness offers wins over newest-by-mtime -- but only if the
     /// transcript EXISTS. A stale variable pointing at a deleted session must
     /// fall back rather than resolve to nothing.
