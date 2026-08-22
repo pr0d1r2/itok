@@ -13,8 +13,8 @@ in anything you run.
 | build | runtime dependencies | licences involved |
 |---|---|---|
 | `--no-default-features` | **0** | none — nothing to acknowledge |
-| default (`bpe` + `session`) | 25 | 5 permissive expressions |
-| `--all-features` (adds `ollama`) | 44 | the above plus ISC, BSD-3-Clause, CDLA-Permissive-2.0 |
+| default (`bpe` + `session`) | 32 | 6 permissive expressions |
+| `--all-features` (adds `ollama`) | 50 | the above plus ISC, BSD-3-Clause, CDLA-Permissive-2.0 |
 
 ### The zero tier is genuinely zero
 
@@ -27,11 +27,18 @@ later.
 If you install that tier, this file does not apply to you. Nothing below is
 being distributed to you.
 
-### The default tier — 25 packages
+### The default tier — 32 packages
 
 Pulled in by `tiktoken-rs` (the `bpe` feature: a real tokenizer, with the
-`o200k` ranks embedded so it stays offline) and `serde_json` (the `session`
-feature, which parses harness transcripts).
+`o200k` ranks embedded so it stays offline) and, for the `session` feature,
+`serde_json` plus `serde` and `basic-toml`.
+
+**It was 25 in `0.3.0`.** `rate`'s `itok.toml` added `basic-toml`, and reading
+its `[rate]` table with `serde`'s `derive` brought `serde_derive` and the macro
+machinery it needs — `proc-macro2`, `quote`, `syn`, `unicode-ident` — into the
+*runtime* closure, because a proc-macro crate is a normal dependency of the
+crate that derives with it. Seven packages, none of which ship code that runs
+in the binary, and all of which you are nonetheless entitled to know about.
 
 Every package resolves to a permissive licence, in these expressions:
 
@@ -40,13 +47,22 @@ Every package resolves to a permissive licence, in these expressions:
 - `Apache-2.0/MIT` *(older syntax, same meaning)*
 - `MIT`
 - `Unlicense OR MIT`
+- `(MIT OR Apache-2.0) AND Unicode-3.0` — `unicode-ident` only, see below
 
 Where an expression offers a choice, `itok` is distributed under MIT and takes
 the MIT option.
 
-### The `ollama` tier — 44 packages
+**`Unicode-3.0` is back, and it is an AND.** `unicode-ident` carries
+`(MIT OR Apache-2.0) AND Unicode-3.0`: the choice applies to the first half
+only, so the Unicode licence obligation holds however you take the rest. It
+arrived with the `syn` chain described above, which means the `0.3.0` note
+further down — that the obligation had gone to zero — is true of `0.3.0` and
+no longer true here. One package, in the default tier, and
+`https://www.unicode.org/license.txt` is the text it points at.
 
-Enabling `ollama` adds 19 packages over the default tier, and brings three
+### The `ollama` tier — 50 packages
+
+Enabling `ollama` adds 18 packages over the default tier, and brings three
 licences the other tiers do not carry. `ureq` is taken with `rustls`, so this
 tier includes a TLS implementation and a root certificate bundle:
 
@@ -64,6 +80,10 @@ depended on `url`, `url` on `idna`, and `idna` pulled the whole ICU stack.
 Moving to `ureq 3` dropped that chain, so adding a TLS implementation made
 the tier **smaller**: 60 to 44, and the `Unicode-3.0` obligation went to
 zero. Worth recording because the intuition runs the other way.
+
+Both halves of that have since moved: the tier is 50 as of `0.3.1`, and
+`Unicode-3.0` returned via `unicode-ident` — one package rather than
+nineteen, and from the macro machinery rather than from a URL parser.
 
 ## Reproducing these numbers
 
