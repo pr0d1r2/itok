@@ -81,8 +81,15 @@
       # lock you out of the very shell you need to fix it. `cargo run` is a
       # no-op when the build is fresh and rebuilds only on change, so the
       # shim always matches the working tree, which a pinned package never
-      # does. (A real `packages.default` for consumers is a separate
-      # output and needs `Cargo.lock` committed -- it is not wired yet.)
+      # does.
+      #
+      # The real `packages.default` for consumers is a SECOND output, not
+      # a replacement (T99) -- see `itokPkg` below. Both exist because
+      # they answer different questions: the shim answers "what does the
+      # tree I am editing do", the package answers "what does the version
+      # I depend on do". A consumer wants the second and must never be
+      # handed the first; a contributor wants the first and would be
+      # locked out of the shell by the second.
       # ITOK_MANIFEST is exported by the shellHook; ITOK_PROFILE=release
       # is the escape hatch when a debug tiktoken (--bpe) is too slow on a
       # large tree.

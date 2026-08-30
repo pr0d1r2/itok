@@ -279,4 +279,30 @@ jobs:
           primary-key: nix-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('flake.nix', 'flake.lock') }}
           restore-prefixes-first-match: nix-${{ runner.os }}-${{ runner.arch }}-
 
+      # PUSH, not merely READ. Every cache line above this one made CI a
+      # CONSUMER; nothing made it a PRODUCER -- so `packages.default`
+      # EXISTED and nobody could substitute it, and a consumer flake that
+      # gates on `itok` still built itok AND tiktoken from source to lint
+      # one file. That is the cost T99 names, and it survives the package
+      # being defined: defining an output and publishing one are two
+      # different jobs, and only the second is what "callable" means.
+      #
+      # BEFORE the build, not after: cachix-action installs a nix
+      # post-build-hook, so it pushes paths realised WHILE IT IS ARMED.
+      # Placed after `nix build` it would arm on a store that already has
+      # everything and push nothing -- silently, and green.
+      #
+      # GUARDED on the token by cachix-action itself: with `authToken`
+      # empty it configures the substituter and skips the push rather than
+      # failing. That is what makes it safe here, because a `pull_request`
+      # from a FORK gets no secrets, and a hard-required push would turn
+      # every outside contribution red for a reason having nothing to do
+      # with the contribution. No token = still built, still gated, just
+      # not shared. The cache stays a SPEEDUP and is never a gate: nothing
+      # in this file may depend on a push having happened.
+      - uses: cachix/cachix-action@5f2d7c5294214f71b873db4b969586b980625e71 # v17
+        with:
+          name: pr0d1r2
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+
       - run: nix build .#${{ matrix.package }}
