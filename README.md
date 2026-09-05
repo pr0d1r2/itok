@@ -237,7 +237,7 @@ Runtime load events for a session, one line each, chronologically -- what entere
 top [<session>] [-- <path>] [-h] [-s] [--top N] [--format human|json]
 ```
 
-Ranked context occupancy for a session, `du`-shaped: how much each thing cost, how many times it was loaded, how many turns have passed since, and how much cache re-billing it has `carried` since it entered (`size x turns remaining` -- the number that makes early reduction's leverage visible; assumes no compaction). `-- <path>` narrows to one path's loads. Ends with the accounted-vs-unaccounted split: what itok can attribute against what the model actually received, each naming its method. Report-only; per-load sizes are estimates (`bytes/4`).
+Ranked context occupancy for a session, `du`-shaped: how much each thing cost, how many times it was loaded, how many turns have passed since, and how much cache re-billing it has `carried` since it entered (`size x turns remaining` -- the number that makes early reduction's leverage visible). Whether that product is exact is read off the session rather than assumed: a transcript carrying a compaction boundary had items leave, so its `carried` is labelled an upper bound and the report names when they left; one carrying none keeps the exact reading. `-- <path>` narrows to one path's loads. Ends with the accounted-vs-unaccounted split: what itok can attribute against what the model actually received, each naming its method. Report-only; per-load sizes are estimates (`bytes/4`).
 
 ### `headroom`
 
