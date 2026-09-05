@@ -89,6 +89,16 @@ which gives you a verdict about code you are not committing.
 
 ## What runs on which files
 
+The two hooks differ in SCOPE, and the difference is load-bearing. `pre-commit`
+selects the staged files, which is exactly the change being committed.
+`pre-push` selects **all** files, because a push publishes the whole tree
+rather than whatever delta happens to be staged — and at push time nothing is
+staged at all, since committing is what emptied the index. Installing both
+hooks with one command left the push side selecting an empty set, so every
+step carrying a glob was skipped and the hook exited 0 with `all` declared
+(`§B32`). The step count below describes the DEFINITION; only a run's own
+report describes what executed.
+
 Most steps take `{{files}}` — only what changed. Three deliberately do not:
 
 - **`package`** globs `**/*` because *deleting* a required file must trip it,
