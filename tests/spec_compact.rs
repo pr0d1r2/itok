@@ -429,3 +429,59 @@ mod tests {
         );
     }
 }
+
+/// Every `section T` and `section B` row splits into exactly four fields.
+///
+/// B28: thirteen rows carried a literal `|` -- `--color auto|always|never`,
+/// `` `u64 | table` ``, a prose "either/or" -- and the positional split
+/// moved, so the LAST field stopped being what the author wrote. `T94`'s
+/// citations read `always`; twelve section B rows lost the tail of their `fix`,
+/// because eleven of them had appended a citation field the section's shape
+/// (`id|date|cause|fix`) does not have.
+///
+/// It was latent: the flake pins a microlith whose own check ships after
+/// the rule, so the gate was green and would have gone red at the next pin
+/// bump. That is the whole reason to carry the rule HERE too (V31: a rule
+/// the host enforces, the traveling guard must enforce as well), and B28's
+/// own record says nothing enforced it until now.
+///
+/// Counted rather than parsed: a pipe not preceded by a backslash is a
+/// separator, and three of them is the shape. That is the same arithmetic
+/// mth does, which is the point -- a guard that reasons differently from
+/// the checker it stands in for eventually disagrees with it.
+#[test]
+fn every_row_has_exactly_three_field_separators() {
+    let spec = spec_now();
+    let mut bad = Vec::new();
+    for line in spec.lines() {
+        let Some(id) = row_id(line) else { continue };
+        let n = separators(line);
+        if n != 3 {
+            bad.push(format!("{id}: {n} separators, expected 3"));
+        }
+    }
+    assert!(bad.is_empty(), "escape literal pipes as `\\|`:\n{bad:#?}");
+}
+
+/// The row id, when this line is one: `T99|x|...` or `B28|2026-08-30|...`.
+fn row_id(line: &str) -> Option<&str> {
+    let id = line.split('|').next()?;
+    let mut chars = id.chars();
+    let kind = chars.next()?;
+    let numbered = !id[1..].is_empty() && chars.all(|c| c.is_ascii_digit());
+    ((kind == 'T' || kind == 'B') && numbered).then_some(id)
+}
+
+/// Pipes that are NOT escaped. `\|` is a literal pipe in the text.
+fn separators(line: &str) -> usize {
+    let mut count: usize = 0;
+    let mut escaped = false;
+    for c in line.chars() {
+        match c {
+            '\\' => escaped = !escaped,
+            '|' if !escaped => count = count.saturating_add(1),
+            _ => escaped = false,
+        }
+    }
+    count
+}
