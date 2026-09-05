@@ -54,3 +54,9 @@ V35  REJECTED
 # DEFERRED -- trigger: a measured need for a signal only in-flight
 # interception can give.
 V58  DEFERRED
+
+# REJECTED -- "window minus a fixed reserve" as the red line of the gauge.
+# The measured points run from 83.5% of a 200k window to 100.1% of a 1M one,
+# so any single fraction is wrong by tens of thousands of tokens in one
+# direction or the other. The point is read from the harness's own record.
+V116  REJECTED as a default

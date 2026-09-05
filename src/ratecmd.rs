@@ -18,6 +18,11 @@ struct Raw {
     format: Format,
     chdir: Option<String>,
     statusline: bool,
+    /// The model the SESSION runs, from the statusline payload. Not a
+    /// flag: `rate` is handed a payload naming the session it renders,
+    /// so the capacity the gauge is drawn against is that session's and
+    /// never one the caller had to remember to pass (V114).
+    model: Option<String>,
 }
 
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
@@ -30,13 +35,17 @@ enum ColorMode {
 
 #[derive(Default)]
 struct RateConfig {
+    /// A compaction point declared by hand, which WINS over the one
+    /// observed in the session: a user who measured their own harness
+    /// has said something itok cannot contradict from one transcript.
+    compact: Option<u64>,
     turn: Option<Threshold>,
     total: Option<Threshold>,
     hour: Option<Threshold>,
     day: Option<Threshold>,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct Threshold {
     green: u64,
     amber: u64,
@@ -49,6 +58,7 @@ struct TomlConfig {
 
 #[derive(serde::Deserialize, Default)]
 struct TomlRate {
+    compact: Option<u64>,
     turn: Option<TomlThreshold>,
     total: Option<TomlThreshold>,
     hour: Option<TomlThreshold>,
@@ -69,6 +79,13 @@ struct Throughput {
     turns: usize,
     age_seconds: u64,
     active_seconds: u64,
+    /// The lowest auto-compaction point this session recorded, or
+    /// `None` when it has never compacted (V116).
+    compact_at: Option<u64>,
+    /// How many observations that point rests on. Published beside it
+    /// because a threshold from one sighting and one from six are
+    /// different claims (V3).
+    compact_n: usize,
 }
 
 pub(crate) fn rate(rest: &[String], input: crate::cli::Input) -> Output {
@@ -108,16 +125,17 @@ fn adopt_payload(
     if let Some(cwd) = payload.cwd {
         raw.chdir.get_or_insert(cwd);
     }
+    raw.model = payload.model;
     Ok(())
 }
 
 fn run(raw: &Raw) -> Output {
-    let (session, origin) = match session_of(raw) {
+    let (session, compactions, origin) = match session_of(raw) {
         Ok(v) => v,
         Err(o) => return o,
     };
-    let Some(tp) = throughput(&session) else {
-        return too_few(raw, &session);
+    let Some(tp) = throughput(&session, &compactions) else {
+        return too_few(raw, &session, &compactions);
     };
     format_output(raw, &tp, &origin)
 }
@@ -137,16 +155,23 @@ fn run(raw: &Raw) -> Output {
 /// stay so a parser learns one shape, and `null` is json's own word for
 /// not measured"). One verb answering this differently from its sibling is
 /// B11's class, and this is the sibling it had not reached.
-fn too_few(raw: &Raw, session: &Session) -> Output {
+fn too_few(
+    raw: &Raw,
+    session: &Session,
+    compactions: &[crate::session::Compaction],
+) -> Output {
     match raw.format {
-        Format::Json => Output::ok(json(&unmeasured(session))),
+        Format::Json => Output::ok(json(&unmeasured(session, compactions))),
         Format::Human => Output::ok(String::new()),
     }
 }
 
 /// What a session too short to have a rate DID show: its turn count and
 /// the tokens it billed. Everything the sample cannot support is `None`.
-fn unmeasured(session: &Session) -> Throughput {
+fn unmeasured(
+    session: &Session,
+    compactions: &[crate::session::Compaction],
+) -> Throughput {
     Throughput {
         last_turn: session
             .turns
@@ -159,6 +184,8 @@ fn unmeasured(session: &Session) -> Throughput {
         turns: session.turns.len(),
         age_seconds: 0,
         active_seconds: 0,
+        compact_at: crate::session::compact_point(compactions),
+        compact_n: crate::session::auto_compactions(compactions).count(),
     }
 }
 
@@ -169,9 +196,31 @@ fn format_output(raw: &Raw, tp: &Throughput, origin: &Origin) -> Output {
     Output::ok(match raw.format {
         Format::Json => json(tp),
         Format::Human if raw.statusline => {
-            badge(human(tp, &config, want_color))
+            badge(human(tp, &config, want_color, red_line(raw, tp, &config)))
         }
-        Format::Human => human(tp, &config, want_color) + &note,
+        Format::Human => {
+            human(tp, &config, want_color, red_line(raw, tp, &config)) + &note
+        }
+    })
+}
+
+/// Where the gauge turns full red: the point this level is heading for.
+///
+/// The ladder is V114's, most specific first. A hand-declared
+/// `[rate].compact` is a user's own measurement of their own harness. The
+/// session's own record is the harness's (V116). Capacity is the fallback
+/// that answers "how full is the tank" when nothing has said where the
+/// harness intervenes -- honest, and a different question, which is why it
+/// is last rather than first.
+///
+/// `None` all the way down means no gauge, and V115 then means no colour
+/// from it: the badge falls back to whatever `[rate].turn` was declared,
+/// and to plain text when that was nothing either.
+fn red_line(raw: &Raw, tp: &Throughput, config: &RateConfig) -> Option<u64> {
+    config.compact.or(tp.compact_at).or_else(|| {
+        let root =
+            std::path::PathBuf::from(raw.chdir.as_deref().unwrap_or("."));
+        crate::capacity::or_none(None, raw.model.as_deref(), &root)
     })
 }
 
@@ -212,11 +261,17 @@ fn want_color(mode: ColorMode) -> bool {
     }
 }
 
-fn session_of(raw: &Raw) -> Result<(Session, Origin), Output> {
-    crate::tracecmd::session_at(raw.session.as_deref(), raw.chdir.as_deref())
+fn session_of(raw: &Raw) -> Result<crate::tracecmd::Loaded, Output> {
+    crate::tracecmd::session_with_compactions(
+        raw.session.as_deref(),
+        raw.chdir.as_deref(),
+    )
 }
 
-fn throughput(session: &Session) -> Option<Throughput> {
+fn throughput(
+    session: &Session,
+    compactions: &[crate::session::Compaction],
+) -> Option<Throughput> {
     if session.turns.len() < 2 {
         return None;
     }
@@ -228,6 +283,8 @@ fn throughput(session: &Session) -> Option<Throughput> {
         span: age_seconds(&first.ts, &last.ts),
         active: active_seconds(&session.turns),
         turns: session.turns.len(),
+        compact_at: crate::session::compact_point(compactions),
+        compact_n: crate::session::auto_compactions(compactions).count(),
     }))
 }
 
@@ -241,6 +298,10 @@ struct Sample {
     span: u64,
     active: u64,
     turns: usize,
+    /// V116's red line, carried here so `tp_from` stays the ONE place a
+    /// `Throughput` is built from a session.
+    compact_at: Option<u64>,
+    compact_n: usize,
 }
 
 fn tp_from(s: Sample) -> Throughput {
@@ -252,6 +313,8 @@ fn tp_from(s: Sample) -> Throughput {
         turns: s.turns,
         age_seconds: s.span,
         active_seconds: s.active,
+        compact_at: s.compact_at,
+        compact_n: s.compact_n,
     }
 }
 
@@ -389,16 +452,42 @@ pub(crate) fn shorten(n: u64) -> String {
     }
 }
 
-fn human(tp: &Throughput, config: &RateConfig, color: bool) -> String {
+fn human(
+    tp: &Throughput,
+    config: &RateConfig,
+    color: bool,
+    limit: Option<u64>,
+) -> String {
     let age = tp.active_seconds;
     let cells = [
-        (Some(tp.last_turn), "", "", config.turn),
-        (Some(tp.total), "/total", "", config.total),
-        (tp.per_hour, "/h", mark(age, HOUR), config.hour),
-        (tp.per_day, "/d", mark(age, DAY), config.day),
+        (
+            Some(tp.last_turn),
+            "",
+            "",
+            level(tp.last_turn, limit, config),
+        ),
+        (Some(tp.total), "/total", "", band(config.total)),
+        (tp.per_hour, "/h", mark(age, HOUR), band(config.hour)),
+        (tp.per_day, "/d", mark(age, DAY), band(config.day)),
     ];
     let parts = cells.map(|cell| metric(cell, color));
     format!("{}\n", parts.join(","))
+}
+
+/// How the FIRST cell is painted. It is an occupancy level (V114), so it
+/// is drawn as a fraction of what holds it whenever anything can say what
+/// that is, and only then falls back to the absolute band a user declared.
+fn level(used: u64, limit: Option<u64>, config: &RateConfig) -> Paint {
+    match limit.and_then(|l| crate::gauge::fill(used, l)) {
+        Some(f) => Paint::Fill(f),
+        None => band(config.turn),
+    }
+}
+
+/// How every OTHER cell is painted: a flow, sorted into a band by the
+/// absolute threshold that governs it, and uncoloured without one (V109).
+fn band(threshold: Option<Threshold>) -> Paint {
+    threshold.map_or(Paint::None, Paint::Band)
 }
 
 /// V110: the `~` on a value whose period the SAMPLE does not cover.
@@ -414,7 +503,18 @@ fn mark(age: u64, period: u64) -> &'static str {
 /// One badge value: the number or its ABSENCE, its suffix, its projection
 /// mark, and the thresholds that color it. Grouped because the limit on
 /// arguments is four and the mark is the fifth thing every value carries.
-type Cell = (Option<u64>, &'static str, &'static str, Option<Threshold>);
+type Cell = (Option<u64>, &'static str, &'static str, Paint);
+
+/// What a value's colour MEANS, which is not the same question for every
+/// cell on this badge (V114). A flow is sorted into a band; a level is a
+/// fraction of a capacity; either can have nothing to say.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Paint {
+    None,
+    Band(Threshold),
+    /// Fill in per-mille, from `gauge::fill`.
+    Fill(u64),
+}
 
 /// An absent value renders as `-`, uncolored and unmarked (V47/V92).
 ///
@@ -423,27 +523,29 @@ type Cell = (Option<u64>, &'static str, &'static str, Option<Threshold>);
 /// too short for the period it names, which is a claim about a number that
 /// exists.
 fn metric(cell: Cell, color: bool) -> String {
-    let (value, suffix, mark, threshold) = cell;
+    let (value, suffix, mark, paint) = cell;
     let Some(value) = value else {
         return format!("-{suffix}");
     };
-    let text = format!("{mark}{}{suffix}", shorten(value));
-    colored(text, value, threshold, color)
+    let alarm = match paint {
+        Paint::Fill(fill) => crate::gauge::alarm(fill),
+        _ => "",
+    };
+    let text = format!("{alarm}{mark}{}{suffix}", shorten(value));
+    colored(text, value, paint, color)
 }
 
-fn colored(
-    text: String,
-    value: u64,
-    threshold: Option<Threshold>,
-    color: bool,
-) -> String {
+fn colored(text: String, value: u64, paint: Paint, color: bool) -> String {
     if !color {
         return text;
     }
-    let Some(th) = threshold else {
-        return text;
+    let code = match paint {
+        Paint::None => return text,
+        Paint::Band(th) => ansi_for(value, th).to_owned(),
+        Paint::Fill(fill) => {
+            crate::gauge::ansi(fill, crate::gauge::truecolor())
+        }
     };
-    let code = ansi_for(value, th);
     format!("{code}{text}\x1b[0m")
 }
 
@@ -472,20 +574,32 @@ fn or_null(v: Option<u64>) -> String {
 /// The booleans describe the SAMPLE, not the value, so they stay honest
 /// beside a `null`: zero working time covers neither period.
 fn json(tp: &Throughput) -> String {
-    let hour = tp.active_seconds < HOUR;
-    let day = tp.active_seconds < DAY;
     format!(
         "{{\"last_turn\":{},\"total\":{},\"per_hour\":{},\
-         \"per_day\":{},\"turns\":{},\"age_seconds\":{},\
-         \"active_seconds\":{},\"projected_hour\":{hour},\
-         \"projected_day\":{day}}}\n",
+         \"per_day\":{},\"turns\":{},{}}}\n",
         tp.last_turn,
         tp.total,
         or_null(tp.per_hour),
         or_null(tp.per_day),
         tp.turns,
+        json_clocks(tp),
+    )
+}
+
+/// The two clocks, V110's projection booleans, and the compaction point
+/// the gauge was drawn against with the `n` behind it (V116). Split out
+/// so neither half outgrows a function anyone can hold in their head.
+fn json_clocks(tp: &Throughput) -> String {
+    format!(
+        "\"age_seconds\":{},\"active_seconds\":{},\
+         \"projected_hour\":{},\"projected_day\":{},\
+         \"compact_at\":{},\"compact_n\":{}",
         tp.age_seconds,
         tp.active_seconds,
+        tp.active_seconds < HOUR,
+        tp.active_seconds < DAY,
+        or_null(tp.compact_at),
+        tp.compact_n,
     )
 }
 
@@ -508,6 +622,7 @@ fn parse_config(text: &str) -> RateConfig {
 
 fn config_from(rate: TomlRate) -> RateConfig {
     RateConfig {
+        compact: rate.compact,
         turn: rate.turn.map(to_threshold),
         total: rate.total.map(to_threshold),
         hour: rate.hour.map(to_threshold),
@@ -605,6 +720,8 @@ mod tests {
         turns: 0,
         age_seconds: 0,
         active_seconds: 0,
+        compact_at: None,
+        compact_n: 0,
     };
 
     #[test]
@@ -680,7 +797,7 @@ mod tests {
             format: Format::Json,
             ..Raw::default()
         };
-        let out = too_few(&raw, &one).out;
+        let out = too_few(&raw, &one, &[]).out;
         assert!(out.starts_with('{'), "one object, not silence: {out}");
         assert!(out.contains("\"turns\":1"), "{out}");
         assert!(out.contains("\"last_turn\":1111"), "{out}");
@@ -694,22 +811,22 @@ mod tests {
     #[test]
     fn the_badge_stays_hidden_on_a_short_session() {
         let one = session_with_turns(&[(1_111, "2026-08-22T10:00:00.000Z")]);
-        let out = too_few(&Raw::default(), &one).out;
+        let out = too_few(&Raw::default(), &one, &[]).out;
         assert!(out.is_empty(), "badge hides: {out}");
     }
 
     #[test]
     fn throughput_needs_at_least_two_turns() {
         let s = session_with_turns(&[(1000, T0)]);
-        assert!(throughput(&s).is_none());
+        assert!(throughput(&s, &[]).is_none());
         let empty = Session::default();
-        assert!(throughput(&empty).is_none());
+        assert!(throughput(&empty, &[]).is_none());
     }
 
     #[test]
     fn throughput_computes_totals() {
         let s = session_with_turns(&[(1_000, T0), (2_000, T1H)]);
-        let tp = throughput(&s);
+        let tp = throughput(&s, &[]);
         assert!(tp.is_some());
         let tp = tp.unwrap_or(ZERO_TP);
         assert_eq!(tp.last_turn, 2_000);
@@ -723,7 +840,7 @@ mod tests {
     #[test]
     fn rates_divide_by_active_time_not_span() {
         let s = session_with_turns(&[(1_000, T0), (2_000, T1H)]);
-        let tp = throughput(&s).unwrap_or(ZERO_TP);
+        let tp = throughput(&s, &[]).unwrap_or(ZERO_TP);
         assert_eq!(tp.age_seconds, 3600, "span still reported");
         assert_eq!(tp.active_seconds, IDLE_CAP, "the gap is capped");
         assert_eq!(tp.per_hour, Some(36_000));
@@ -754,7 +871,7 @@ mod tests {
             (1_000, "2026-08-15T06:00:00.000Z"),
             (2_000, "2026-08-18T06:00:00.000Z"),
         ]);
-        let tp = throughput(&s).unwrap_or(ZERO_TP);
+        let tp = throughput(&s, &[]).unwrap_or(ZERO_TP);
         assert_eq!(tp.age_seconds, 3 * 86_400, "three days of span");
         assert_eq!(tp.active_seconds, IDLE_CAP, "five minutes of work");
     }
@@ -765,11 +882,11 @@ mod tests {
     #[test]
     fn an_unreadable_clock_leaves_no_active_time() {
         let s = session_with_turns(&[(1_000, "nope"), (2_000, "also-nope")]);
-        let tp = throughput(&s).unwrap_or(ZERO_TP);
+        let tp = throughput(&s, &[]).unwrap_or(ZERO_TP);
         assert_eq!(tp.active_seconds, 0);
         assert_eq!(tp.per_hour, None, "no working time, no rate");
         assert_eq!(tp.per_day, None);
-        let out = human(&tp, &RateConfig::default(), false);
+        let out = human(&tp, &RateConfig::default(), false, None);
         assert!(out.contains("-/h") && out.contains("-/d"), "{out}");
         assert!(!out.contains('~'), "nothing to project from: {out}");
     }
@@ -785,8 +902,8 @@ mod tests {
     #[test]
     fn a_clockless_rate_never_publishes_an_amplified_number() {
         let s = session_with_turns(&[(1_000, "nope"), (2_000, "also-nope")]);
-        let tp = throughput(&s).unwrap_or(ZERO_TP);
-        let out = human(&tp, &RateConfig::default(), false);
+        let tp = throughput(&s, &[]).unwrap_or(ZERO_TP);
+        let out = human(&tp, &RateConfig::default(), false, None);
         assert!(!out.contains('m'), "no megatoken rate anywhere: {out}");
         let js = json(&tp);
         assert!(js.contains("\"per_hour\":null"), "{js}");
@@ -804,7 +921,7 @@ mod tests {
             (52, "2026-08-22T10:00:00.100Z"),
             (52, "2026-08-22T10:00:00.900Z"),
         ]);
-        let tp = throughput(&s).unwrap_or(ZERO_TP);
+        let tp = throughput(&s, &[]).unwrap_or(ZERO_TP);
         assert_eq!(tp.active_seconds, 0, "same second, no gap credited");
         assert_eq!(tp.total, 104);
         assert_eq!(tp.per_hour, None, "104 tokens are not 375k/h");
@@ -848,7 +965,7 @@ mod tests {
     /// values are projections and both wear the mark (V110).
     #[test]
     fn human_output_shape() {
-        let out = human(&sample_tp(), &RateConfig::default(), false);
+        let out = human(&sample_tp(), &RateConfig::default(), false, None);
         assert_eq!(out, "3k,46k/total,~13k/h,~280k/d\n");
     }
 
@@ -873,7 +990,7 @@ mod tests {
             active_seconds: 7_200,
             ..sample_tp()
         };
-        let out = human(&tp, &RateConfig::default(), false);
+        let out = human(&tp, &RateConfig::default(), false, None);
         assert_eq!(out, "3k,46k/total,13k/h,~280k/d\n");
     }
 
@@ -885,7 +1002,7 @@ mod tests {
             active_seconds: 90_000,
             ..sample_tp()
         };
-        let out = human(&tp, &RateConfig::default(), false);
+        let out = human(&tp, &RateConfig::default(), false, None);
         assert_eq!(out, "3k,46k/total,13k/h,280k/d\n");
     }
 
@@ -900,8 +1017,130 @@ mod tests {
             }),
             ..RateConfig::default()
         };
-        let out = human(&sample_tp(), &config, true);
+        let out = human(&sample_tp(), &config, true, None);
         assert!(out.contains("\x1b[33m~13k/h\x1b[0m"), "{out}");
+    }
+
+    /// V114: with a capacity to read against, cell 1 is a GAUGE, and the
+    /// gauge is what colours it -- not `[rate].turn`, which is the same
+    /// number the old instrument would have called green.
+    #[test]
+    fn a_level_with_a_limit_is_painted_by_the_gauge() {
+        let config = RateConfig {
+            turn: Some(Threshold {
+                green: 50_000,
+                amber: 100_000,
+            }),
+            ..RateConfig::default()
+        };
+        let tp = Throughput {
+            last_turn: 963_000,
+            ..sample_tp()
+        };
+        let out = human(&tp, &config, true, Some(1_000_000));
+        assert!(!out.contains("\x1b[32m963k"), "band colour won: {out}");
+        assert!(out.contains("!963k"), "alarm mark missing: {out}");
+    }
+
+    /// The same level, the same declared threshold, no capacity: the
+    /// declared band still applies (V114 keeps it as the fallback rung).
+    #[test]
+    fn a_level_without_a_limit_falls_back_to_the_declared_band() {
+        let config = RateConfig {
+            turn: Some(Threshold {
+                green: 50_000,
+                amber: 100_000,
+            }),
+            ..RateConfig::default()
+        };
+        let tp = Throughput {
+            last_turn: 963_000,
+            ..sample_tp()
+        };
+        let out = human(&tp, &config, true, None);
+        assert!(out.contains("\x1b[31m963k\x1b[0m"), "{out}");
+    }
+
+    /// V115: a zero level is a measurement that went missing, and the
+    /// gauge must not paint it as an empty tank. This is the failure the
+    /// invariant exists for -- green is the reading nobody re-checks.
+    #[test]
+    fn a_zero_level_is_never_painted_green_by_the_gauge() {
+        let tp = Throughput {
+            last_turn: 0,
+            ..sample_tp()
+        };
+        let out = human(&tp, &RateConfig::default(), true, Some(1_000_000));
+        assert!(!out.contains("\x1b["), "absent level took a colour: {out}");
+    }
+
+    /// V115: nothing to say, nothing said.
+    #[test]
+    fn no_limit_and_no_threshold_leaves_the_level_plain() {
+        let out = human(&sample_tp(), &RateConfig::default(), true, None);
+        assert!(!out.contains("\x1b["), "{out}");
+    }
+
+    /// V116's ladder, in order. A hand-declared point wins over the
+    /// session's own record, which wins over a capacity.
+    #[test]
+    fn a_declared_compaction_point_wins_over_the_observed_one() {
+        let raw = Raw::default();
+        let tp = Throughput {
+            compact_at: Some(900_000),
+            ..sample_tp()
+        };
+        let config = RateConfig {
+            compact: Some(750_000),
+            ..RateConfig::default()
+        };
+        assert_eq!(red_line(&raw, &tp, &config), Some(750_000));
+        assert_eq!(
+            red_line(&raw, &tp, &RateConfig::default()),
+            Some(900_000),
+            "the session's own record is the next rung"
+        );
+    }
+
+    /// A session that has never compacted, on a model no table knows,
+    /// has no red line at all -- which V115 renders as no colour rather
+    /// than as a guess (V92).
+    #[test]
+    fn no_observation_and_no_table_leaves_no_red_line() {
+        let raw = Raw::default();
+        assert_eq!(red_line(&raw, &sample_tp(), &RateConfig::default()), None);
+    }
+
+    /// The point and the `n` behind it travel together in json (V116):
+    /// a threshold from one sighting and one from six are different
+    /// claims and a consumer has to be able to tell them apart.
+    #[test]
+    fn json_carries_the_compaction_point_and_its_n() {
+        let tp = Throughput {
+            compact_at: Some(968_887),
+            compact_n: 2,
+            ..sample_tp()
+        };
+        let js = json(&tp);
+        assert!(js.contains("\"compact_at\":968887"), "{js}");
+        assert!(js.contains("\"compact_n\":2"), "{js}");
+    }
+
+    /// An unobserved point is `null`, never 0 -- a zero would draw the
+    /// red line at the origin and paint every session red (V47).
+    #[test]
+    fn an_unobserved_compaction_point_is_null_in_json() {
+        let js = json(&sample_tp());
+        assert!(js.contains("\"compact_at\":null"), "{js}");
+        assert!(js.contains("\"compact_n\":0"), "{js}");
+    }
+
+    #[test]
+    fn toml_carries_a_compaction_point() {
+        let text = "[rate]\ncompact = 968887\n";
+        let parsed: TomlConfig = basic_toml::from_str(text).unwrap_or_default();
+        let rate = parsed.rate.unwrap_or_default();
+        assert_eq!(config_from(rate).compact, Some(968_887));
     }
 
     fn sample_tp() -> Throughput {
@@ -913,6 +1152,8 @@ mod tests {
             turns: 22,
             age_seconds: 3120,
             active_seconds: 3120,
+            compact_at: None,
+            compact_n: 0,
         }
     }
 
@@ -953,17 +1194,17 @@ mod tests {
             green: 50_000,
             amber: 100_000,
         });
-        let green = colored("1k".to_owned(), 1_000, th, true);
+        let green = colored("1k".to_owned(), 1_000, band(th), true);
         assert!(green.contains("\x1b[32m"), "green: {green}");
-        let amber = colored("60k".to_owned(), 60_000, th, true);
+        let amber = colored("60k".to_owned(), 60_000, band(th), true);
         assert!(amber.contains("\x1b[33m"), "amber: {amber}");
-        let red = colored("120k".to_owned(), 120_000, th, true);
+        let red = colored("120k".to_owned(), 120_000, band(th), true);
         assert!(red.contains("\x1b[31m"), "red: {red}");
     }
 
     #[test]
     fn color_absent_without_threshold() {
-        let out = colored("1k".to_owned(), 1_000, None, true);
+        let out = colored("1k".to_owned(), 1_000, Paint::None, true);
         assert!(!out.contains('\x1b'), "no ANSI without threshold");
     }
 
@@ -989,7 +1230,7 @@ mod tests {
             green: 50_000,
             amber: 100_000,
         });
-        let out = colored("1k".to_owned(), 1_000, th, false);
+        let out = colored("1k".to_owned(), 1_000, band(th), false);
         assert!(!out.contains('\x1b'), "no ANSI when color=false");
     }
 

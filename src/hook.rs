@@ -99,6 +99,10 @@ pub(crate) struct StatusLine {
     pub(crate) transcript: Option<String>,
     /// The session's directory, which is whose `itok.toml` applies.
     pub(crate) cwd: Option<String>,
+    /// The model this session runs, from `model.id`. It is what a
+    /// capacity table is keyed by, so the badge can size its gauge
+    /// against the session's OWN window instead of a flag's (V114).
+    pub(crate) model: Option<String>,
 }
 
 /// Read one statusline payload. Same contract as `request`: an unknown
@@ -112,7 +116,25 @@ pub(crate) fn statusline(stdin: &str) -> StatusLine {
     StatusLine {
         transcript: string_field(stdin, "transcript_path"),
         cwd: string_field(stdin, "cwd"),
+        model: nested_string_field(stdin, "model", "id"),
     }
+}
+
+/// One string field inside a nested object, or `None`.
+///
+/// The search is BOUNDED to the object it was told to look in: the
+/// tail is cut at the first `}` before `inner` is looked up, so a
+/// `model` carrying no `id` yields `None` rather than reaching past
+/// its own closing brace and returning some later top-level `id`.
+/// That failure would be silent and plausible, which is the shape
+/// this file's hand-rolled reader has to be most careful about.
+fn nested_string_field(text: &str, outer: &str, inner: &str) -> Option<String> {
+    let at = text.find(&format!("\"{outer}\":"))?;
+    let tail = text.get(at..)?;
+    let open = tail.find('{')?;
+    let body = tail.get(open..)?;
+    let end = body.find('}')?;
+    string_field(body.get(..end)?, inner)
 }
 
 /// One string field's value, or `None` when absent or not a string.
@@ -151,7 +173,7 @@ mod tests {
         "tool_name":"Read","tool_input":{"file_path":"/repo/big.rs"}}"#;
 
     /// The statusline payload, in the shape the harness sends it: the
-    /// two fields the badge needs, out of a body carrying much more.
+    /// three fields the badge needs, out of a body carrying much more.
     #[test]
     fn a_statusline_payload_names_its_transcript() {
         let text = r#"{"hook_event_name":"Status","session_id":"s1",
@@ -163,8 +185,27 @@ mod tests {
             StatusLine {
                 transcript: Some("/p/s1.jsonl".to_owned()),
                 cwd: Some("/repo".to_owned()),
+                model: Some("claude".to_owned()),
             }
         );
+    }
+
+    /// A payload with no `model` object at all: no name, no guess. The
+    /// gauge simply has no capacity to size itself against (V115).
+    #[test]
+    fn a_statusline_payload_without_a_model_names_none() {
+        let got = statusline(r#"{"transcript_path":"/p/s1.jsonl"}"#);
+        assert_eq!(got.model, None);
+    }
+
+    /// The bounded search, which is the whole reason `nested_string_field`
+    /// exists: a `model` object carrying no `id` must not reach past its
+    /// own `}` and return the `id` of whatever object follows it.
+    #[test]
+    fn a_model_without_an_id_does_not_borrow_a_later_one() {
+        let text = r#"{"model":{"display_name":"Opus"},
+        "workspace":{"id":"not-a-model"}}"#;
+        assert_eq!(statusline(text).model, None);
     }
 
     /// A field the mapping needs and cannot find is `None`, never a

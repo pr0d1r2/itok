@@ -12,6 +12,7 @@ mod args;
 pub mod bpe;
 #[cfg(feature = "session")]
 mod calibrate;
+mod capacity;
 mod capcmd;
 mod checkcmd;
 pub mod cli;
@@ -25,6 +26,8 @@ mod doctorfmt;
 mod estcmd;
 pub mod estimate;
 mod fitcmd;
+#[cfg(feature = "session")]
+mod gauge;
 mod gitref;
 mod glob;
 mod guardcmd;
