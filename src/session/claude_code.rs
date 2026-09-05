@@ -13,7 +13,7 @@
 //! of aborting the parse. A reader that stopped at the first bad line
 //! would silently report less rather than fail, which is worse.
 
-use super::{LoadEvent, Session, Source, Turn};
+use super::{Compaction, LoadEvent, Session, Source, Turn};
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 
@@ -22,7 +22,19 @@ use std::path::{Path, PathBuf};
 /// "this session did nothing" are both legitimate answers here.
 #[must_use]
 pub fn parse(text: &str) -> Session {
+    parse_with(text).0
+}
+
+/// The same pass, keeping the compaction boundaries beside the session.
+///
+/// They travel SEPARATELY rather than inside `Session` because that type
+/// is public and constructible by literal: a new field on it breaks every
+/// downstream construction, and the badge's red line is not worth a
+/// version rung (V39). The parse itself is one pass either way.
+#[must_use]
+pub fn parse_with(text: &str) -> (Session, Vec<Compaction>) {
     let mut out = Session::default();
+    let mut compactions = Vec::new();
     for line in text.lines() {
         if line.trim().is_empty() {
             continue;
@@ -33,16 +45,16 @@ pub fn parse(text: &str) -> Session {
             // (V43). It still counts as skipped -- the number is the
             // honest signal that something was not read.
             Err(_) => out.skipped = out.skipped.saturating_add(1),
-            Ok(v) => absorb(&v, &mut out),
+            Ok(v) => absorb(&v, &mut out, &mut compactions),
         }
     }
-    out
+    (out, compactions)
 }
 
 /// Route one record. An unknown `type` is ignored, not an error: the
 /// harness adds record kinds without warning, and a reader that rejected
 /// them would break on every upgrade.
-fn absorb(v: &Value, out: &mut Session) {
+fn absorb(v: &Value, out: &mut Session, compactions: &mut Vec<Compaction>) {
     // Every record contributes to the CONTEXT, not just the ones that
     // become load events: the conversation itself is re-sent each turn and
     // is the bulk of a long window (V102). Counted as byte LENGTHS only --
@@ -52,8 +64,33 @@ fn absorb(v: &Value, out: &mut Session) {
         Some("assistant") => out.turns.extend(turn(v, out.content_bytes)),
         Some("user") => out.events.extend(tool_event(v)),
         Some("attachment") => out.events.extend(attachment_event(v)),
+        Some("system") => compactions.extend(compaction(v)),
         _ => {}
     }
+}
+
+/// One compaction boundary. The record is `type:"system"` with
+/// `subtype:"compact_boundary"`, and the numbers under `compactMetadata`
+/// are the HARNESS's own, which is what makes the auto-compact point a
+/// measurement rather than a guess (V116).
+///
+/// Keyed off the metadata OBJECT, not the subtype string: the subtype is
+/// a label the harness may rename, while a record carrying
+/// `compactMetadata` is a compaction whatever it calls itself. A record
+/// without `preTokens` is skipped rather than defaulted -- an absent
+/// trigger point read as 0 would draw the red line at the origin and
+/// paint every session red (V47).
+fn compaction(v: &Value) -> Option<Compaction> {
+    let meta = v.get("compactMetadata")?;
+    Some(Compaction {
+        trigger: str_at(meta, "trigger").unwrap_or_default().to_owned(),
+        pre_tokens: meta.get("preTokens")?.as_u64()?,
+        post_tokens: meta
+            .get("postTokens")
+            .and_then(Value::as_u64)
+            .unwrap_or_default(),
+        ts: ts_of(v),
+    })
 }
 
 fn str_at<'a>(v: &'a Value, key: &str) -> Option<&'a str> {
@@ -334,6 +371,53 @@ mod tests {
     }
 
     /// The harness encodes a project path by replacing separators.
+    /// The harness's own record of where auto-compact fired (V116).
+    /// Parsed off `compactMetadata` rather than off the subtype label,
+    /// which is the harness's to rename.
+    #[test]
+    fn a_compact_boundary_becomes_a_compaction() {
+        let line = r#"{"type":"system","subtype":"compact_boundary","timestamp":"2026-09-05T12:29:54.086Z","compactMetadata":{"trigger":"auto","preTokens":968887,"postTokens":11503,"cumulativeDroppedTokens":957384}}"#;
+        let (_, got) = super::parse_with(line);
+        assert_eq!(got.len(), 1);
+        assert_eq!(super::super::compact_point(&got), Some(968_887));
+        assert_eq!(super::super::auto_compactions(&got).count(), 1);
+    }
+
+    /// V116: a human compacting early says what that human wanted, not
+    /// where the machine would have fired. Excluded from the point, and
+    /// still RECORDED, because it did happen to this context.
+    #[test]
+    fn a_manual_compaction_is_recorded_but_never_sets_the_point() {
+        let line = r#"{"type":"system","subtype":"compact_boundary","compactMetadata":{"trigger":"manual","preTokens":120000,"postTokens":9000}}"#;
+        let (_, got) = super::parse_with(line);
+        assert_eq!(got.len(), 1);
+        assert_eq!(super::super::compact_point(&got), None);
+    }
+
+    /// The lowest auto point wins: it is the one that fired earliest, so
+    /// a line drawn there warns before every point actually seen.
+    #[test]
+    fn the_lowest_auto_point_is_the_one_reported() {
+        let text = concat!(
+            r#"{"type":"system","compactMetadata":{"trigger":"auto","preTokens":1000418,"postTokens":1}}"#,
+            "\n",
+            r#"{"type":"system","compactMetadata":{"trigger":"auto","preTokens":968887,"postTokens":1}}"#,
+        );
+        let (_, got) = super::parse_with(text);
+        assert_eq!(super::super::compact_point(&got), Some(968_887));
+        assert_eq!(super::super::auto_compactions(&got).count(), 2);
+    }
+
+    /// A boundary with no `preTokens` is skipped, not defaulted: a zero
+    /// trigger point would draw the red line at the origin (V47).
+    #[test]
+    fn a_boundary_without_a_pre_count_is_not_a_zero() {
+        let line = r#"{"type":"system","compactMetadata":{"trigger":"auto"}}"#;
+        let (_, got) = super::parse_with(line);
+        assert!(got.is_empty());
+        assert_eq!(super::super::compact_point(&got), None);
+    }
+
     #[test]
     fn project_dir_encodes_the_path() {
         let got = project_dir(Path::new("/home/u"), Path::new("/w/proj"));

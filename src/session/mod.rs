@@ -112,6 +112,30 @@ impl Turn {
 /// that silently discarded malformed records would report a total that
 /// looks complete, which is the honesty failure this axis exists to
 /// avoid.
+/// One compaction, as the HARNESS recorded it -- not as itok inferred
+/// it. The transcript writes this at every boundary, so where
+/// auto-compact fires is DATA rather than a fraction someone picked
+/// (V116).
+///
+/// `pre_tokens` is the harness's own count of the context that tripped
+/// it, which runs slightly ABOVE what [`window`] reports for the same
+/// moment (measured: 516-3,441 tokens over six compactions) because it
+/// includes the turn that crossed the line and the transcript has not
+/// billed that turn yet. Kept as two numbers, never reconciled: they
+/// are counts of different things (V2).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Compaction {
+    /// `auto` when the harness fired it, `manual` when a human asked.
+    /// Only `auto` says anything about where the threshold IS (V116).
+    pub trigger: String,
+    /// The context size that tripped it.
+    pub pre_tokens: u64,
+    /// What survived into the next turn.
+    pub post_tokens: u64,
+    /// When, in the transcript's own stamp.
+    pub ts: String,
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Session {
     pub events: Vec<LoadEvent>,
@@ -120,6 +144,35 @@ pub struct Session {
     pub skipped: usize,
     /// Total transcript content bytes seen (V45: a count, never text).
     pub content_bytes: u64,
+}
+
+/// The LOWEST auto-compaction point in a set of boundaries (V116).
+///
+/// Lowest, because it is the one that fired EARLIEST: a red line drawn at
+/// the smallest observed trigger warns before every point that has
+/// actually been seen, and warning early is the side of this a reader can
+/// act on (V108's ceiling logic).
+///
+/// `manual` boundaries are EXCLUDED. A human compacting at 200k says what
+/// that human wanted, not where the machine would have fired, and mixing
+/// the two would drag the line down to whatever the most impatient
+/// session did.
+///
+/// A FREE function over the records rather than a method on `Session`,
+/// because `Session` is a struct-literal-constructible public type: a new
+/// field on it is a breaking change for every downstream literal, and a
+/// red line for one badge is not worth spending a version rung on (V39).
+#[must_use]
+pub fn compact_point(compactions: &[Compaction]) -> Option<u64> {
+    auto_compactions(compactions).map(|c| c.pre_tokens).min()
+}
+
+/// The auto compactions, which is what [`compact_point`] is drawn from
+/// and what a report has to state an `n` for (V116).
+pub fn auto_compactions(
+    compactions: &[Compaction],
+) -> impl Iterator<Item = &Compaction> {
+    compactions.iter().filter(|c| c.trigger == "auto")
 }
 
 impl Session {

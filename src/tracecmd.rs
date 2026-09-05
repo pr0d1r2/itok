@@ -229,13 +229,32 @@ pub(crate) fn session_at(
     session: Option<&str>,
     chdir: Option<&str>,
 ) -> Result<(Session, Origin), Output> {
+    let (session, _, origin) = session_with_compactions(session, chdir)?;
+    Ok((session, origin))
+}
+
+/// The same load, keeping the harness's compaction records (V116).
+///
+/// A SECOND entry point rather than a wider return for all five verbs:
+/// only `rate` draws a red line today, and `Session` cannot carry the
+/// records without breaking its public shape. Both go through the ONE
+/// resolve-read-parse above, so B14's four silences cannot come back as
+/// two.
+/// A loaded session, the harness's compaction records, and where the
+/// session came from -- named because the triple appears on both sides of
+/// the call and a bare tuple of three is where an argument gets swapped.
+pub(crate) type Loaded = (Session, Vec<crate::session::Compaction>, Origin);
+
+pub(crate) fn session_with_compactions(
+    session: Option<&str>,
+    chdir: Option<&str>,
+) -> Result<Loaded, Output> {
     let (path, origin) =
         resolve_session(session, chdir).map_err(|m| missing_output(&m))?;
     let text = read_source(&path)?;
-    Ok((
-        claude_code::parse(crate::session::complete_prefix(&text)),
-        origin,
-    ))
+    let (session, compactions) =
+        claude_code::parse_with(crate::session::complete_prefix(&text));
+    Ok((session, compactions, origin))
 }
 
 /// The harness's transcript directory for this project.

@@ -120,16 +120,11 @@ fn task_cost(raw: &Raw) -> Result<Option<u64>, String> {
     }
 }
 
-/// Capacity from `--window`, else `--model` via `.context-models`.
-/// Explicit `--window` WINS over the table (V18), and an unknown model is
-/// an error rather than a default, so a wrong capacity can never be
-/// silently assumed (V11).
+/// This verb's capacity: the shared ladder (V114), given this run's
+/// flags and root. The rules it enforces live with it in `capacity`.
 fn capacity(raw: &Raw) -> Result<Option<u64>, String> {
-    if let Some(w) = raw.window.as_deref() {
-        return crate::units::parse(w).map(Some);
-    }
     let root = std::path::PathBuf::from(raw.chdir.as_deref().unwrap_or("."));
-    Ok(crate::models::tier(raw.model.as_deref(), &root)?.window)
+    crate::capacity::resolve(raw.window.as_deref(), raw.model.as_deref(), &root)
 }
 
 impl Room {
