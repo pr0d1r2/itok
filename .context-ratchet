@@ -1,0 +1,30 @@
+# Raises since the last measured reduction, per registered path (V123).
+#
+# WHY THIS FILE EXISTS. `.context-limits` sets a ceiling, and a ceiling's
+# remedy when it fires is a raise -- one line, versus a day of compaction.
+# So the cheap move wins every time, and it has: SPEC.md's ceiling has been
+# raised ten times and the file compacted twice. The eighth, ninth and
+# tenth raises each wrote "the next one should be refused until a
+# compaction runs" into that file's prose, and nothing read it.
+#
+# This is that sentence, as data. The guard in `tests/spec_compact.rs`
+# refuses an increment past the number below, so the next raise fails until
+# a reduction resets the count to 0.
+#
+# WHAT COUNTS AS A REDUCTION: the file's own token count FELL against the
+# base. Not a promise, not an intention -- a measurement, of the same kind
+# `itok check` already makes. T107 did it to README: 5,753 -> 5,110 tokens,
+# and 6,500 -> 5,800 on the ceiling, which is the first reduction this
+# repo records.
+#
+# THE NUMBER ONLY EVER COMES DOWN, like `.coverage` and the ceilings
+# themselves. Raising the cap here is not a fix; it is the thing this file
+# exists to stop being done quietly.
+#
+# WHY NOT A THIRD COLUMN in `.context-limits`: that parser SKIPS a row it
+# cannot read (B7), silently, so a widened shape would risk disabling the
+# ceiling to save a file. A separate registry costs one more read and
+# cannot break the gate it stands beside.
+
+SPEC.md    8
+README.md  0
