@@ -60,3 +60,12 @@ V58  DEFERRED
 # so any single fraction is wrong by tens of thousands of tokens in one
 # direction or the other. The point is read from the harness's own record.
 V116  REJECTED as a default
+
+# REJECTED -- a second language for the command reference, and extraction of
+# the prose to files. Both measured: 文言 buys ~18% on pure prose and modern
+# Chinese costs ~6% more, while a third of a blurb is ASCII identifiers that
+# cost the same in any script; extraction shrinks nothing and grows
+# `must-package` by fourteen files. Recorded because both are the plausible
+# move, and a byte-cutting pass reads "we weighed it and said no" as the most
+# deletable text in the file.
+T107  REJECTED, both with measurements
