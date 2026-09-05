@@ -306,12 +306,16 @@ A fifth cell appears when a red line resolved and the context is growing: time t
 ### `cap`
 
 ```text
-cap [N] [--footer human|json]
+cap [N] [--strip] [--dedup] [--elide] [--outline] [--footer human|json]
 ```
 
 Token-budget filter for a pipe: the longest whole-line prefix that fits N tokens, and it announces the cut.
 
 The footer says what was kept, what was elided, and the line and byte offset to resume from, so the next read continues rather than restarting. The line number is exact on any stream; the byte offset is of the decoded text, so it is for UTF-8 input. `head` truncates silently by lines or bytes; this truncates by tokens and says so. Without N nothing is cut and the footer just reports the cost.
+
+The reduction ladder is four opt-in rungs, ordered by what they cost a reader: `--strip` (ANSI escapes, trailing whitespace), `--dedup` (runs of identical lines collapse, keeping the count), `--elide` (long dense base64 and minified lines replaced by their size) and `--outline` (indented bodies dropped, signature-shaped lines kept). They run in LADDER order whatever order you pass them, stopping at the first rung that meets the budget, and the footer names every rung that ran. Order is the invariant, not your flag order: letting the caller put structural loss ahead of whitespace removal is the failure the ladder exists to prevent.
+
+A rung above `cap` rewrites the text, so line and byte offsets no longer index your stream: the resume selector is absent and the footer says why. The `input` totals stay your own bytes, so the elision is measured against what you handed in rather than against what the ladder left.
 
 ### `docs`
 

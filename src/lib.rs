@@ -39,6 +39,7 @@ mod guardcmd;
 mod headroom;
 mod hook;
 pub mod json;
+mod ladder;
 mod logcmd;
 mod models;
 #[cfg(feature = "ollama")]

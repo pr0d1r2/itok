@@ -29,26 +29,6 @@ const DIR: &str = env!("CARGO_MANIFEST_DIR");
 /// A row saying PLANNED is a promise dated, not a promise broken.
 const EXEMPT: &[(&str, &str, &str)] = &[
     (
-        "cap",
-        "--strip",
-        "PLANNED, not BUILT (T40); the line says so",
-    ),
-    (
-        "cap",
-        "--dedup",
-        "PLANNED, not BUILT (T40); the line says so",
-    ),
-    (
-        "cap",
-        "--elide",
-        "PLANNED, not BUILT (T40); the line says so",
-    ),
-    (
-        "cap",
-        "--outline",
-        "PLANNED, not BUILT (T40); the line says so",
-    ),
-    (
         "headroom",
         "--task",
         "PLANNED, not BUILT (T76); the line says so",

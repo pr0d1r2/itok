@@ -35,6 +35,10 @@ use crate::units;
 struct Req {
     budget: Option<u64>,
     footer: Kind,
+    /// Rungs the caller ASKED for. Stored as a set, applied in ladder
+    /// order (V50): the flag order is the caller's convenience and the
+    /// ladder order is the invariant.
+    asked: Vec<crate::ladder::Rung>,
 }
 
 /// Which footer to emit. `--footer`, not `--format`: the body is the
@@ -58,17 +62,47 @@ pub(crate) fn cap(rest: &[String], input: &str) -> Output {
 /// a body without a trailing newline gets one -- an OUTPUT newline only,
 /// never counted into the resume offset, which indexes the original input.
 fn run(req: &Req, input: &str) -> String {
-    let c = cut(input, req.budget);
+    let (reduced, ran) = climb(req, input);
+    let c = cut(&reduced, input, req.budget);
     let mut out = c.body.clone();
     if !out.is_empty() && !out.ends_with('\n') {
         out.push('\n');
     }
     match req.footer {
-        Kind::Human => out.push_str(&human_footer(&c)),
-        Kind::Json => out.push_str(&json_footer(&c, req.budget)),
+        Kind::Human => out.push_str(&human_footer(&c, &ran)),
+        Kind::Json => out.push_str(&json_footer(&c, req.budget, &ran)),
     }
     out.push('\n');
     out
+}
+
+/// Climb the ladder until the budget is met, and report which rungs ran.
+///
+/// V50's two rules, and both are load-bearing. IN ORDER: the ladder is
+/// sorted lossless -> lossiest, so a caller writing `--outline --strip`
+/// still gets strip first; letting the flag order win would put structural
+/// loss ahead of whitespace removal, which is the failure the ladder
+/// exists to prevent. STOP AT THE BUDGET: the cheapest sufficient rung
+/// wins, so a text that fits after `strip` is never deduped, and the
+/// footer says only `strip` ran.
+///
+/// No budget means no rung runs at all. `cap` with no N is a
+/// pass-through that reports (V49), and reducing text nobody asked to fit
+/// would be a filter rewriting bytes for its own reasons.
+fn climb(req: &Req, input: &str) -> (String, Vec<&'static str>) {
+    let mut text = input.to_owned();
+    let mut ran = Vec::new();
+    let mut asked = req.asked.clone();
+    asked.sort_unstable();
+    asked.dedup();
+    for rung in asked {
+        if !over(len(&text), req.budget) {
+            break;
+        }
+        text = rung.apply(&text);
+        ran.push(rung.label());
+    }
+    (text, ran)
 }
 
 // ------------------------------------------------------------- the cut
@@ -120,12 +154,18 @@ impl Cut {
     }
 }
 
-fn cut(input: &str, budget: Option<u64>) -> Cut {
-    let body = kept_prefix(input, budget);
+/// The prefix comes from the text AFTER the ladder ran; the totals come
+/// from what the CALLER handed in.
+///
+/// Both, because "elided" has to mean "what your input had and this output
+/// does not" -- measuring the elision against the reduced text would
+/// report a file as whole while three rungs had rewritten it (V3).
+fn cut(reduced: &str, original: &str, budget: Option<u64>) -> Cut {
+    let body = kept_prefix(reduced, budget);
     Cut {
         kept_lines: lines(&body),
-        total_bytes: len(input),
-        total_lines: lines(input),
+        total_bytes: len(original),
+        total_lines: lines(original),
         body,
     }
 }
@@ -182,14 +222,14 @@ fn mark() -> &'static str {
 /// indistinguishable from itok never having been in the pipe, so a reader
 /// could not tell a whole document from a prefix. That is V44's
 /// accounted-vs-total honesty, applied to a filter.
-fn human_footer(c: &Cut) -> String {
+fn human_footer(c: &Cut, ran: &[&'static str]) -> String {
     let (t, m) = (mark(), DUMMY.label());
-    if c.elided() {
+    if c.elided() || !ran.is_empty() {
         return format!(
             "[itok cap: kept {t}{} of {t}{} itok ({m}); {}]",
             c.kept_tokens(),
             c.input_tokens(),
-            elision(c),
+            elision(c, ran),
         );
     }
     format!(
@@ -200,22 +240,42 @@ fn human_footer(c: &Cut) -> String {
 
 /// What was dropped and where to pick it up again (V50's named rung,
 /// V51's selector).
-fn elision(c: &Cut) -> String {
+fn elision(c: &Cut, ran: &[&'static str]) -> String {
+    let mut names: Vec<&str> = ran.to_vec();
+    if c.elided() {
+        names.push("cap");
+    }
     format!(
-        "elided {} of {} lines, {} bytes; rungs: cap; resume: line {} \
-         (byte offset {})",
+        "elided {} of {} lines, {} bytes; rungs: {}; {}",
         c.elided_lines(),
         c.total_lines,
         c.elided_bytes(),
+        names.join(", "),
+        resume_note(c, ran),
+    )
+}
+
+/// Where to pick the stream up again, or why there is nowhere (V51).
+///
+/// A reduced text has no offset into the original, and saying so beats a
+/// number that reads as usable.
+fn resume_note(c: &Cut, ran: &[&'static str]) -> String {
+    if !ran.is_empty() {
+        return "no resume point: the text was reduced, so offsets do not \
+                index the input"
+            .to_owned();
+    }
+    format!(
+        "resume: line {} (byte offset {})",
         c.resume_line(),
-        c.kept_bytes(),
+        c.kept_bytes()
     )
 }
 
 /// The json footer: the stable machine contract (V9). Numbers stay
 /// numeric -- the tilde is a human rendering and never appears here, the
 /// `estimated` flag carries that intent instead (V3).
-fn json_footer(c: &Cut, budget: Option<u64>) -> String {
+fn json_footer(c: &Cut, budget: Option<u64>, ran: &[&'static str]) -> String {
     format!(
         "{{\"tool\":\"cap\"{},\"unit\":\"{}\",\"method\":\"{}\",\
          \"estimated\":{},\"kept\":{},\"input\":{},\"elided\":{},\
@@ -227,8 +287,8 @@ fn json_footer(c: &Cut, budget: Option<u64>) -> String {
         span(c.kept_tokens(), c.kept_lines, c.kept_bytes()),
         span(c.input_tokens(), c.total_lines, c.total_bytes),
         span(c.elided_tokens(), c.elided_lines(), c.elided_bytes()),
-        rungs(c),
-        resume(c),
+        rungs(c, ran),
+        resume(c, ran),
     )
 }
 
@@ -238,15 +298,23 @@ fn span(tokens: u64, lines: u64, bytes: u64) -> String {
 
 /// The rungs APPLIED (V50) -- empty when nothing was cut, since no rung
 /// ran. A list, so T40's ladder appends rather than reshapes the field.
-fn rungs(c: &Cut) -> &'static str {
-    if c.elided() { "\"cap\"" } else { "" }
+fn rungs(c: &Cut, ran: &[&'static str]) -> String {
+    let mut all: Vec<String> = ran.iter().map(|r| format!("\"{r}\"")).collect();
+    if c.elided() {
+        all.push("\"cap\"".to_owned());
+    }
+    all.join(",")
 }
 
 /// The resume selector (V51), ABSENT when nothing was elided: no key
 /// rather than a null one, the shape json.rs already uses for the absent
 /// endpoint -- there is no resume point, not an unknown one.
-fn resume(c: &Cut) -> String {
-    if !c.elided() {
+fn resume(c: &Cut, ran: &[&'static str]) -> String {
+    // A rung above `cap` REWRITES the text, so a line and byte offset
+    // into it no longer index the caller's own stream. V51's promise is
+    // about truncation; publishing a selector that points into text the
+    // caller never had would be worse than publishing none (V47/V3).
+    if !c.elided() || !ran.is_empty() {
         return String::new();
     }
     format!(
@@ -284,6 +352,9 @@ fn apply(
 ) -> Result<(), String> {
     match a {
         "--footer" => r.footer = kind(&val(rest, i)?)?,
+        p if crate::ladder::Rung::parse(p).is_some() => {
+            r.asked.extend(crate::ladder::Rung::parse(p));
+        }
         p if p.starts_with('-') => return Err(format!("unknown flag '{p}'")),
         n if r.budget.is_none() => r.budget = Some(units::parse(n)?),
         extra => {
@@ -323,6 +394,107 @@ mod tests {
 
     /// Ten lines of exactly 8 bytes ("line Nx\n"): 80 bytes = 20 itok, so
     /// every line costs 2 and the boundaries land on round numbers.
+    /// Text that is dense in escapes and repeats, so each rung has
+    /// something to do and the order is observable.
+    fn noisy() -> String {
+        let mut t = String::new();
+        for _ in 0..6 {
+            t.push_str("\u{1b}[32mrepeated line with padding\u{1b}[0m   \n");
+        }
+        for n in 0..6 {
+            t.push_str(&format!("fn f{n}() {{\n    let body = {n};\n}}\n"));
+        }
+        t
+    }
+
+    /// V50: the LADDER order wins, not the flag order. `--outline
+    /// --strip` still runs strip first -- letting the caller reorder it
+    /// would put structural loss ahead of whitespace removal, which is
+    /// the failure the ladder exists to prevent.
+    #[test]
+    fn the_ladder_order_wins_over_the_flag_order() {
+        let out = cap(&args(&["4", "--outline", "--strip"]), &noisy()).out;
+        let strip = out.find("strip").unwrap_or(usize::MAX);
+        let outline = out.find("outline").unwrap_or(0);
+        assert!(strip < outline, "{out}");
+    }
+
+    /// V50: the CHEAPEST SUFFICIENT rung wins. Once the text fits, the
+    /// ladder stops, and the footer names only what ran.
+    ///
+    /// The budget is DERIVED from what strip leaves, rather than guessed:
+    /// a hand-picked number that happened to sit below it would have the
+    /// test asserting the opposite of its own name, which is the shape
+    /// B24 records.
+    #[test]
+    fn the_ladder_stops_at_the_first_rung_that_fits() {
+        let text = noisy();
+        let stripped = crate::ladder::Rung::Strip.apply(&text);
+        let budget = crate::estimate::dummy(len(&stripped)).to_string();
+        let asked = args(&[&budget, "--strip", "--dedup", "--outline"]);
+        let out = cap(&asked, &text).out;
+        assert!(out.contains("rungs: strip"), "{out}");
+        assert!(!out.contains("dedup"), "stopped after strip: {out}");
+        assert!(!out.contains("outline"), "{out}");
+    }
+
+    /// V49: no budget is a pass-through that reports. Reducing text
+    /// nobody asked to fit would be a filter rewriting bytes for its own
+    /// reasons.
+    #[test]
+    fn no_budget_runs_no_rung_however_many_were_asked_for() {
+        let text = noisy();
+        let out = cap(&args(&["--strip", "--dedup", "--outline"]), &text).out;
+        assert!(out.starts_with(&text), "body untouched: {out}");
+        assert!(out.contains("nothing elided"), "{out}");
+    }
+
+    /// V51: a rung above `cap` REWRITES the text, so an offset into it
+    /// does not index the caller's stream. Saying so beats a number that
+    /// reads as usable.
+    #[test]
+    fn a_reduced_text_publishes_no_resume_point() {
+        let reduced = cap(&args(&["4", "--outline"]), &noisy()).out;
+        assert!(reduced.contains("no resume point"), "{reduced}");
+        let truncated = cap(&args(&["4"]), &noisy()).out;
+        assert!(truncated.contains("resume: line"), "{truncated}");
+    }
+
+    /// The elision is measured against what the CALLER handed in, not
+    /// against the text the ladder left behind -- otherwise a file three
+    /// rungs had rewritten would report as whole (V3).
+    #[test]
+    fn the_totals_are_the_callers_own_input() {
+        let text = noisy();
+        let out =
+            cap(&args(&["4", "--outline", "--footer", "json"]), &text).out;
+        let bytes = format!("\"bytes\":{}", text.len());
+        assert!(out.contains(&bytes), "input span is the original: {out}");
+    }
+
+    /// V51: same input, same flags, same output. Every rung is a pure
+    /// function, and the ladder that drives them is too.
+    #[test]
+    fn the_same_cut_twice_is_the_same_cut() {
+        let once = cap(&args(&["4", "--strip", "--dedup"]), &noisy()).out;
+        let twice = cap(&args(&["4", "--strip", "--dedup"]), &noisy()).out;
+        assert_eq!(once, twice);
+    }
+
+    /// V50's rung names reach the machine contract too (V9).
+    #[test]
+    fn json_lists_every_rung_that_ran() {
+        let out = cap(
+            &args(&["4", "--strip", "--outline", "--footer", "json"]),
+            &noisy(),
+        )
+        .out;
+        assert!(
+            out.contains("\"rungs\":[\"strip\",\"outline\",\"cap\"]"),
+            "{out}"
+        );
+    }
+
     fn input() -> String {
         (0..10).map(|n| format!("line {n}x\n")).collect()
     }
@@ -332,7 +504,7 @@ mod tests {
     /// have taken a different amount.
     #[test]
     fn the_cut_is_by_tokens() {
-        let c = cut(&input(), Some(6));
+        let c = cut(&input(), &input(), Some(6));
         assert_eq!(c.kept_lines, 3);
         assert_eq!(c.kept_tokens(), 6);
         assert_eq!(c.body, "line 0x\nline 1x\nline 2x\n");
@@ -344,7 +516,7 @@ mod tests {
     /// selector to resume from).
     #[test]
     fn a_partial_line_is_never_emitted() {
-        let c = cut(&input(), Some(7));
+        let c = cut(&input(), &input(), Some(7));
         assert_eq!(c.kept_lines, 3, "a 4th line would cost 8, over 7");
         assert_eq!(c.kept_tokens(), 6, "the odd token is left unspent");
         assert!(c.body.ends_with('\n'));
@@ -364,10 +536,10 @@ mod tests {
     /// offset into the ORIGINAL input, so the next read continues.
     #[test]
     fn the_footer_carries_the_resume_selector() {
-        let c = cut(&input(), Some(6));
+        let c = cut(&input(), &input(), Some(6));
         assert_eq!(c.resume_line(), 4);
         assert_eq!(c.kept_bytes(), 24);
-        let f = human_footer(&c);
+        let f = human_footer(&c, &[]);
         assert!(f.contains("resume: line 4 (byte offset 24)"), "{f}");
     }
 
@@ -375,7 +547,7 @@ mod tests {
     /// minus kept, in lines and bytes both.
     #[test]
     fn the_elided_counts_complement_the_kept_ones() {
-        let c = cut(&input(), Some(6));
+        let c = cut(&input(), &input(), Some(6));
         assert_eq!(c.elided_lines(), 7);
         assert_eq!(c.elided_bytes(), 56);
         assert_eq!(c.kept_tokens().saturating_add(c.elided_tokens()), 20);
@@ -397,8 +569,11 @@ mod tests {
     /// input passed through untouched.
     #[test]
     fn the_applied_rung_is_named() {
-        assert!(human_footer(&cut(&input(), Some(6))).contains("rungs: cap"));
-        let whole = json_footer(&cut(&input(), None), None);
+        assert!(
+            human_footer(&cut(&input(), &input(), Some(6)), &[])
+                .contains("rungs: cap")
+        );
+        let whole = json_footer(&cut(&input(), &input(), None), None, &[]);
         assert!(whole.contains("\"rungs\":[]"), "no rung ran: {whole}");
     }
 
@@ -406,7 +581,7 @@ mod tests {
     /// the tilde of the crude tier.
     #[test]
     fn the_human_footer_names_unit_method_and_estimate() {
-        let f = human_footer(&cut(&input(), Some(6)));
+        let f = human_footer(&cut(&input(), &input(), Some(6)), &[]);
         assert!(f.contains("kept ~6 of ~20 itok"), "{f}");
         assert!(f.contains("(bytes/4)"), "{f}");
     }
@@ -415,7 +590,7 @@ mod tests {
     /// in a numeric field.
     #[test]
     fn the_json_footer_is_the_machine_contract() {
-        let j = json_footer(&cut(&input(), Some(6)), Some(6));
+        let j = json_footer(&cut(&input(), &input(), Some(6)), Some(6), &[]);
         for key in [
             "\"tool\":\"cap\"",
             "\"budget\":6",
@@ -433,7 +608,7 @@ mod tests {
     /// no-key-rather-than-null rule).
     #[test]
     fn json_omits_what_is_absent() {
-        let j = json_footer(&cut(&input(), None), None);
+        let j = json_footer(&cut(&input(), &input(), None), None, &[]);
         assert!(!j.contains("\"resume\""), "nothing to resume from: {j}");
         assert!(!j.contains("\"budget\""), "no budget was given: {j}");
         assert!(
@@ -465,7 +640,7 @@ mod tests {
     fn the_line_selector_survives_a_lossy_decode() {
         let raw = [0xffu8, b'\n', 0xfe, b'\n', 0xfd, b'\n'];
         let text = String::from_utf8_lossy(&raw).into_owned();
-        let c = cut(&text, Some(1));
+        let c = cut(&text, &text, Some(1));
         assert_eq!(c.total_lines, 3, "three newlines, three lines");
         assert_eq!(c.kept_lines, 1, "4 bytes decoded is 1 itok");
         assert_eq!(c.resume_line(), 2);
@@ -483,7 +658,7 @@ mod tests {
     /// the input's 6 bytes and not 7.
     #[test]
     fn an_unterminated_body_does_not_shift_the_offset() {
-        let c = cut("abcdef", None);
+        let c = cut("abcdef", "abcdef", None);
         assert_eq!(c.kept_bytes(), 6);
         assert!(run(&Req::default(), "abcdef").starts_with("abcdef\n[itok"));
     }
