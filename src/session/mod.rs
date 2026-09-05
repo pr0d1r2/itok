@@ -146,6 +146,39 @@ pub struct Session {
     pub content_bytes: u64,
 }
 
+/// How much this session GREW: the sum of positive window deltas, with
+/// the first window counted whole (V117).
+///
+/// The first turn's window IS growth -- system prompt, tool schemas and
+/// the opening message all entered the context, and starting the sum at
+/// the second turn would report a 30k entry cost as free.
+///
+/// A NEGATIVE delta is a compaction or an eviction. It is DROPPED rather
+/// than subtracted, because this measures what ENTERED; what left is
+/// V116's business, and netting the two would let a compaction cancel out
+/// the growth that caused it. `saturating_sub` is what drops it.
+///
+/// A zero window is EXCLUDED entirely (V93): one real turn reported 0,
+/// which a naive delta rendered as a -387,741 compaction that never
+/// happened -- and here it would also invent the whole window back as
+/// growth on the following turn.
+///
+/// MEASURED against the occupancy it explains: growth/peak is 1.00 at the
+/// median over 49 transcripts, and only a session that compacted exceeds
+/// it. Contrast `entered`, which runs 1.45-28.5x higher.
+#[must_use]
+pub fn growth(turns: &[Turn]) -> u64 {
+    let mut previous: Option<u64> = None;
+    let mut total = 0u64;
+    let windows = turns.iter().filter_map(Turn::billed_input);
+    for window in windows.filter(|w| *w > 0) {
+        let step = previous.map_or(window, |p| window.saturating_sub(p));
+        total = total.saturating_add(step);
+        previous = Some(window);
+    }
+    total
+}
+
 /// The LOWEST auto-compaction point in a set of boundaries (V116).
 ///
 /// Lowest, because it is the one that fired EARLIEST: a red line drawn at
@@ -277,6 +310,32 @@ impl Session {
             .iter()
             .map(|e| u64::try_from(e.bytes / 4).unwrap_or(u64::MAX))
             .fold(0u64, u64::saturating_add)
+    }
+
+    /// Content that ENTERED the window: fresh input plus what was
+    /// written into cache.
+    ///
+    /// NOT growth, and the difference is measured: a cache entry that
+    /// outlives its TTL is re-created and re-billed as fresh writing, so
+    /// this runs 1.45-28.5x above the occupancy it appears to explain
+    /// (median 3.60). It measures cache TRAFFIC (V117). Kept because
+    /// traffic is what the premium half of the bill is charged on.
+    #[must_use]
+    pub fn entered(&self) -> Option<u64> {
+        match (self.fresh_input(), self.cache_written()) {
+            (None, None) => None,
+            (fresh, written) => {
+                Some(fresh.unwrap_or(0).saturating_add(written.unwrap_or(0)))
+            }
+        }
+    }
+
+    /// Output tokens across the session -- the axis itok has never
+    /// counted (V118). Measured at 56,423-2,642,850 per session, billed
+    /// at a multiple of input, so absent is not small.
+    #[must_use]
+    pub fn output_tokens(&self) -> Option<u64> {
+        total_of(&self.turns, |t| t.output)
     }
 
     /// Window minus accounted: system prompt, tool schemas, project
@@ -570,4 +629,110 @@ fn worst_error(pts: &[(f64, f64)], slope: f64, intercept: f64) -> u64 {
         })
         .max()
         .unwrap_or(0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn windows(ws: &[Option<u64>]) -> Vec<Turn> {
+        ws.iter()
+            .map(|w| Turn {
+                input: *w,
+                ..Turn::default()
+            })
+            .collect()
+    }
+
+    /// The first window is growth in full -- system prompt, tool schemas
+    /// and the opening message all entered -- and each later turn
+    /// contributes only what it added.
+    #[test]
+    fn growth_counts_the_first_window_whole_and_then_the_deltas() {
+        let turns = windows(&[Some(30_000), Some(35_000), Some(50_000)]);
+        assert_eq!(growth(&turns), 50_000);
+    }
+
+    /// V117: a compaction is not negative growth. Dropping the delta
+    /// rather than subtracting it keeps the drop from cancelling the
+    /// growth that caused it.
+    #[test]
+    fn a_compaction_drops_out_of_growth_rather_than_subtracting() {
+        let turns = windows(&[Some(900_000), Some(12_000), Some(20_000)]);
+        assert_eq!(growth(&turns), 908_000);
+    }
+
+    /// V93: the turn that reported window 0 must not enter a delta at
+    /// all. Counted, it would invent the whole window back as growth on
+    /// the turn after it.
+    #[test]
+    fn a_zero_window_turn_is_excluded_from_every_delta() {
+        let turns = windows(&[Some(40_000), Some(0), Some(41_000)]);
+        assert_eq!(growth(&turns), 41_000);
+    }
+
+    /// A turn with no usage at all is skipped the same way, and a
+    /// session of nothing but those grows by nothing.
+    #[test]
+    fn turns_without_usage_contribute_no_growth() {
+        assert_eq!(growth(&windows(&[None, None])), 0);
+        assert_eq!(growth(&[]), 0);
+    }
+
+    /// Growth reconstructs the occupancy it explains: on a monotone
+    /// session it equals the final window, which is what the measured
+    /// growth/peak of 1.00 says on real transcripts (V117).
+    #[test]
+    fn growth_of_a_monotone_session_is_its_last_window() {
+        let turns = windows(&[Some(10), Some(20), Some(30), Some(31)]);
+        assert_eq!(growth(&turns), 31);
+    }
+
+    #[test]
+    fn entered_is_fresh_input_plus_what_was_written_to_cache() {
+        let session = Session {
+            turns: vec![Turn {
+                input: Some(100),
+                cache_creation: Some(2_000),
+                cache_read: Some(500_000),
+                ..Turn::default()
+            }],
+            ..Session::default()
+        };
+        assert_eq!(session.entered(), Some(2_100));
+        assert_eq!(session.cache_read(), Some(500_000));
+    }
+
+    /// V47 on both halves: a harness reporting neither field leaves
+    /// `None`, which is not the same claim as "nothing entered".
+    #[test]
+    fn entered_is_absent_when_neither_field_was_reported() {
+        let session = Session {
+            turns: vec![Turn {
+                cache_read: Some(500_000),
+                ..Turn::default()
+            }],
+            ..Session::default()
+        };
+        assert_eq!(session.entered(), None);
+    }
+
+    #[test]
+    fn output_is_summed_across_turns_and_absent_when_never_reported() {
+        let with = Session {
+            turns: vec![
+                Turn {
+                    output: Some(1_000),
+                    ..Turn::default()
+                },
+                Turn {
+                    output: Some(2_500),
+                    ..Turn::default()
+                },
+            ],
+            ..Session::default()
+        };
+        assert_eq!(with.output_tokens(), Some(3_500));
+        assert_eq!(Session::default().output_tokens(), None);
+    }
 }

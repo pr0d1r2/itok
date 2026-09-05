@@ -71,11 +71,34 @@ struct TomlThreshold {
     amber: u64,
 }
 
+/// The three quantities a reader keeps confusing, kept APART (V117/V118).
+/// Each is `None` when NO turn carried the field, never 0 (V47).
+#[derive(Default, Debug, Clone, Copy)]
+struct Split {
+    entered: Option<u64>,
+    cache_read: Option<u64>,
+    output: Option<u64>,
+}
+
+/// The two rate families. `growth_*` is what the badge shows and what
+/// predicts a compaction; `per_*` is the gross bill's rate, kept because
+/// json published it and a key's meaning does not move under a consumer
+/// (V9).
+#[derive(Default, Debug, Clone, Copy)]
+struct Rates {
+    per_hour: Option<u64>,
+    per_day: Option<u64>,
+    growth_hour: Option<u64>,
+    growth_day: Option<u64>,
+}
+
 struct Throughput {
     last_turn: u64,
     total: u64,
-    per_hour: Option<u64>,
-    per_day: Option<u64>,
+    /// Sum of positive window deltas: what actually entered (V117).
+    growth: u64,
+    rates: Rates,
+    split: Split,
     turns: usize,
     age_seconds: u64,
     active_seconds: u64,
@@ -173,14 +196,11 @@ fn unmeasured(
     compactions: &[crate::session::Compaction],
 ) -> Throughput {
     Throughput {
-        last_turn: session
-            .turns
-            .last()
-            .and_then(crate::session::Turn::billed_input)
-            .unwrap_or(0),
+        last_turn: last_billed(session),
         total: session.billed_input(),
-        per_hour: None,
-        per_day: None,
+        growth: crate::session::growth(&session.turns),
+        rates: Rates::default(),
+        split: split_of(session),
         turns: session.turns.len(),
         age_seconds: 0,
         active_seconds: 0,
@@ -275,17 +295,48 @@ fn throughput(
     if session.turns.len() < 2 {
         return None;
     }
-    let last = session.turns.last()?;
+    Some(tp_from(sample_of(session, compactions)?))
+}
+
+/// Everything the badge is computed from, read off the session ONCE.
+fn sample_of(
+    session: &Session,
+    compactions: &[crate::session::Compaction],
+) -> Option<Sample> {
     let first = session.turns.first()?;
-    Some(tp_from(Sample {
-        last_turn: last.billed_input().unwrap_or(0),
+    let last = session.turns.last()?;
+    Some(Sample {
+        last_turn: last_billed(session),
         total: session.billed_input(),
+        growth: crate::session::growth(&session.turns),
+        split: split_of(session),
         span: age_seconds(&first.ts, &last.ts),
         active: active_seconds(&session.turns),
         turns: session.turns.len(),
         compact_at: crate::session::compact_point(compactions),
         compact_n: crate::session::auto_compactions(compactions).count(),
-    }))
+    })
+}
+
+/// The bill's composition, which is what makes `/bill` readable as a bill
+/// rather than as content (V118).
+/// The occupancy the badge's first cell reports: the last turn's billed
+/// input, or 0 when the session carried no usage at all. Zero is what
+/// V115 then declines to paint, so the absence survives the cast.
+fn last_billed(session: &Session) -> u64 {
+    session
+        .turns
+        .last()
+        .and_then(crate::session::Turn::billed_input)
+        .unwrap_or(0)
+}
+
+fn split_of(session: &Session) -> Split {
+    Split {
+        entered: session.entered(),
+        cache_read: session.cache_read(),
+        output: session.output_tokens(),
+    }
 }
 
 /// What the badge is computed FROM: the two token totals and the two
@@ -295,6 +346,8 @@ fn throughput(
 struct Sample {
     last_turn: u64,
     total: u64,
+    growth: u64,
+    split: Split,
     span: u64,
     active: u64,
     turns: usize,
@@ -308,13 +361,26 @@ fn tp_from(s: Sample) -> Throughput {
     Throughput {
         last_turn: s.last_turn,
         total: s.total,
-        per_hour: rate_over(s.total, s.active, HOUR),
-        per_day: rate_over(s.total, s.active, DAY),
+        growth: s.growth,
+        rates: rates_of(&s),
+        split: s.split,
         turns: s.turns,
         age_seconds: s.span,
         active_seconds: s.active,
         compact_at: s.compact_at,
         compact_n: s.compact_n,
+    }
+}
+
+/// Both rate families over the SAME active clock (V111). Growth is the
+/// one the badge shows: it is what a reader can act on, and it is the
+/// only one whose sign matches the warning (V117).
+fn rates_of(s: &Sample) -> Rates {
+    Rates {
+        per_hour: rate_over(s.total, s.active, HOUR),
+        per_day: rate_over(s.total, s.active, DAY),
+        growth_hour: rate_over(s.growth, s.active, HOUR),
+        growth_day: rate_over(s.growth, s.active, DAY),
     }
 }
 
@@ -458,20 +524,28 @@ fn human(
     color: bool,
     limit: Option<u64>,
 ) -> String {
-    let age = tp.active_seconds;
-    let cells = [
-        (
-            Some(tp.last_turn),
-            "",
-            "",
-            level(tp.last_turn, limit, config),
-        ),
-        (Some(tp.total), "/total", "", band(config.total)),
-        (tp.per_hour, "/h", mark(age, HOUR), band(config.hour)),
-        (tp.per_day, "/d", mark(age, DAY), band(config.day)),
-    ];
-    let parts = cells.map(|cell| metric(cell, color));
+    let parts = cells_of(tp, config, limit).map(|c| metric(c, color));
     format!("{}\n", parts.join(","))
+}
+
+/// The four cells in badge order: the LEVEL, the bill, and the two GROWTH
+/// rates (V117). Cells 3 and 4 divide growth rather than the bill, so the
+/// number rises when the context is filling instead of when the session
+/// is merely long.
+fn cells_of(
+    tp: &Throughput,
+    config: &RateConfig,
+    limit: Option<u64>,
+) -> [Cell; 4] {
+    let age = tp.active_seconds;
+    let (hour, day) = (tp.rates.growth_hour, tp.rates.growth_day);
+    let gauge = level(tp.last_turn, limit, config);
+    [
+        (Some(tp.last_turn), "", "", gauge),
+        (Some(tp.total), "/bill", "", band(config.total)),
+        (hour, "/h", mark(age, HOUR), band(config.hour)),
+        (day, "/d", mark(age, DAY), band(config.day)),
+    ]
 }
 
 /// How the FIRST cell is painted. It is an occupancy level (V114), so it
@@ -576,13 +650,34 @@ fn or_null(v: Option<u64>) -> String {
 fn json(tp: &Throughput) -> String {
     format!(
         "{{\"last_turn\":{},\"total\":{},\"per_hour\":{},\
-         \"per_day\":{},\"turns\":{},{}}}\n",
+         \"per_day\":{},\"turns\":{},{},{}}}\n",
         tp.last_turn,
         tp.total,
-        or_null(tp.per_hour),
-        or_null(tp.per_day),
+        or_null(tp.rates.per_hour),
+        or_null(tp.rates.per_day),
         tp.turns,
+        json_growth(tp),
         json_clocks(tp),
+    )
+}
+
+/// Growth, its two rates, and the bill's composition (V117/V118).
+///
+/// `total` and `per_hour`/`per_day` keep their old meanings above: a
+/// consumer's key does not change what it counts under them (V9). The
+/// quantities that were being CONFUSED with each other get names of their
+/// own here, which is the whole point -- one number nobody could
+/// decompose was how the badge published a rate with the wrong sign.
+fn json_growth(tp: &Throughput) -> String {
+    format!(
+        "\"growth\":{},\"growth_per_hour\":{},\"growth_per_day\":{},\
+         \"entered\":{},\"cache_read\":{},\"output\":{}",
+        tp.growth,
+        or_null(tp.rates.growth_hour),
+        or_null(tp.rates.growth_day),
+        or_null(tp.split.entered),
+        or_null(tp.split.cache_read),
+        or_null(tp.split.output),
     )
 }
 
@@ -712,11 +807,25 @@ mod tests {
     use super::*;
     use crate::session::Turn;
 
+    const ZERO_RATES: Rates = Rates {
+        per_hour: Some(0),
+        per_day: Some(0),
+        growth_hour: Some(0),
+        growth_day: Some(0),
+    };
+
+    const ZERO_SPLIT: Split = Split {
+        entered: None,
+        cache_read: None,
+        output: None,
+    };
+
     const ZERO_TP: Throughput = Throughput {
         last_turn: 0,
         total: 0,
-        per_hour: Some(0),
-        per_day: Some(0),
+        growth: 0,
+        rates: ZERO_RATES,
+        split: ZERO_SPLIT,
         turns: 0,
         age_seconds: 0,
         active_seconds: 0,
@@ -843,8 +952,8 @@ mod tests {
         let tp = throughput(&s, &[]).unwrap_or(ZERO_TP);
         assert_eq!(tp.age_seconds, 3600, "span still reported");
         assert_eq!(tp.active_seconds, IDLE_CAP, "the gap is capped");
-        assert_eq!(tp.per_hour, Some(36_000));
-        assert_eq!(tp.per_day, Some(864_000));
+        assert_eq!(tp.rates.per_hour, Some(36_000));
+        assert_eq!(tp.rates.per_day, Some(864_000));
     }
 
     /// Every gap is capped on its own, so a session is the SUM of its
@@ -884,8 +993,8 @@ mod tests {
         let s = session_with_turns(&[(1_000, "nope"), (2_000, "also-nope")]);
         let tp = throughput(&s, &[]).unwrap_or(ZERO_TP);
         assert_eq!(tp.active_seconds, 0);
-        assert_eq!(tp.per_hour, None, "no working time, no rate");
-        assert_eq!(tp.per_day, None);
+        assert_eq!(tp.rates.per_hour, None, "no working time, no rate");
+        assert_eq!(tp.rates.per_day, None);
         let out = human(&tp, &RateConfig::default(), false, None);
         assert!(out.contains("-/h") && out.contains("-/d"), "{out}");
         assert!(!out.contains('~'), "nothing to project from: {out}");
@@ -924,8 +1033,8 @@ mod tests {
         let tp = throughput(&s, &[]).unwrap_or(ZERO_TP);
         assert_eq!(tp.active_seconds, 0, "same second, no gap credited");
         assert_eq!(tp.total, 104);
-        assert_eq!(tp.per_hour, None, "104 tokens are not 375k/h");
-        assert_eq!(tp.per_day, None);
+        assert_eq!(tp.rates.per_hour, None, "104 tokens are not 375k/h");
+        assert_eq!(tp.rates.per_day, None);
     }
 
     /// The stamp shape pinned against a value computed elsewhere, so a
@@ -966,7 +1075,7 @@ mod tests {
     #[test]
     fn human_output_shape() {
         let out = human(&sample_tp(), &RateConfig::default(), false, None);
-        assert_eq!(out, "3k,46k/total,~13k/h,~280k/d\n");
+        assert_eq!(out, "3k,46k/bill,~13k/h,~280k/d\n");
     }
 
     /// The mark is about the DENOMINATOR reaching the period, so it
@@ -991,7 +1100,7 @@ mod tests {
             ..sample_tp()
         };
         let out = human(&tp, &RateConfig::default(), false, None);
-        assert_eq!(out, "3k,46k/total,13k/h,~280k/d\n");
+        assert_eq!(out, "3k,46k/bill,13k/h,~280k/d\n");
     }
 
     /// A full day of sample marks nothing -- the badge only tildes what
@@ -1003,7 +1112,7 @@ mod tests {
             ..sample_tp()
         };
         let out = human(&tp, &RateConfig::default(), false, None);
-        assert_eq!(out, "3k,46k/total,13k/h,280k/d\n");
+        assert_eq!(out, "3k,46k/bill,13k/h,280k/d\n");
     }
 
     /// The mark rides INSIDE the colored span: a projected value keeps
@@ -1143,12 +1252,99 @@ mod tests {
         assert_eq!(config_from(rate).compact, Some(968_887));
     }
 
+    /// B30, as a test: a session that keeps taking turns without growing
+    /// bills more every turn, and the badge's rate must NOT rise with it.
+    /// The bill here is 3x the growth, and the two published rates say so
+    /// -- under the old numerator the badge showed the larger one.
+    #[test]
+    fn a_flat_window_publishes_no_growth_however_long_it_runs() {
+        let flat = session_with_turns(&[
+            (500_000, T0),
+            (500_000, "2026-08-15T06:01:00.000Z"),
+            (500_000, "2026-08-15T06:02:00.000Z"),
+        ]);
+        let tp = throughput(&flat, &[]).unwrap_or(ZERO_TP);
+        assert_eq!(tp.growth, 500_000, "only the entry window entered");
+        assert_eq!(tp.total, 1_500_000, "the bill counted every re-send");
+        let hour = tp.rates.growth_hour.unwrap_or(0);
+        let billed = tp.rates.per_hour.unwrap_or(0);
+        assert_eq!(billed, hour.saturating_mul(3), "the bill runs 3x here");
+        let out = human(&tp, &RateConfig::default(), false, None);
+        assert!(out.contains(&format!("{}/h", shorten(hour))), "{out}");
+        assert!(!out.contains(&format!("{}/h", shorten(billed))), "{out}");
+    }
+
+    /// The same clock, real growth: the rate follows the WINDOW, and with
+    /// nothing re-billed beyond it the two families coincide.
+    #[test]
+    fn a_growing_window_publishes_what_it_added() {
+        let rising = session_with_turns(&[
+            (100_000, T0),
+            (400_000, "2026-08-15T06:01:00.000Z"),
+        ]);
+        let tp = throughput(&rising, &[]).unwrap_or(ZERO_TP);
+        assert_eq!(tp.growth, 400_000, "the window it reached");
+        assert_eq!(tp.total, 500_000, "what it was billed on the way");
+        let out = human(&tp, &RateConfig::default(), false, None);
+        assert!(out.contains("500k/bill"), "{out}");
+    }
+
+    /// V9: the keys a consumer already parses keep counting what they
+    /// counted. `total` is still the gross bill and `per_hour` still its
+    /// rate -- the new quantities arrive under new names.
+    #[test]
+    fn json_keeps_the_old_keys_at_their_old_meaning() {
+        let js = json(&sample_tp());
+        assert!(js.contains("\"total\":45305"), "{js}");
+        assert!(js.contains("\"per_hour\":12400"), "{js}");
+        assert!(js.contains("\"per_day\":280000"), "{js}");
+    }
+
+    /// The three quantities that were being confused, each under its own
+    /// name (V117/V118): what grew, what entered, what was re-read.
+    #[test]
+    fn json_names_growth_and_the_bills_composition() {
+        let js = json(&sample_tp());
+        assert!(js.contains("\"growth\":6000"), "{js}");
+        assert!(js.contains("\"growth_per_hour\":13000"), "{js}");
+        assert!(js.contains("\"entered\":9000"), "{js}");
+        assert!(js.contains("\"cache_read\":36000"), "{js}");
+        assert!(js.contains("\"output\":1200"), "{js}");
+    }
+
+    /// V47 reaches the new keys too: a harness that never reported a
+    /// field publishes `null`, not 0.
+    #[test]
+    fn an_unreported_split_field_is_null_rather_than_zero() {
+        let tp = Throughput {
+            split: Split::default(),
+            ..sample_tp()
+        };
+        let js = json(&tp);
+        assert!(js.contains("\"entered\":null"), "{js}");
+        assert!(js.contains("\"output\":null"), "{js}");
+    }
+
+    const SAMPLE_RATES: Rates = Rates {
+        per_hour: Some(12_400),
+        per_day: Some(280_000),
+        growth_hour: Some(13_000),
+        growth_day: Some(280_000),
+    };
+
+    const SAMPLE_SPLIT: Split = Split {
+        entered: Some(9_000),
+        cache_read: Some(36_000),
+        output: Some(1_200),
+    };
+
     fn sample_tp() -> Throughput {
         Throughput {
             last_turn: 2_117,
             total: 45_305,
-            per_hour: Some(12_400),
-            per_day: Some(280_000),
+            growth: 6_000,
+            rates: SAMPLE_RATES,
+            split: SAMPLE_SPLIT,
             turns: 22,
             age_seconds: 3120,
             active_seconds: 3120,
