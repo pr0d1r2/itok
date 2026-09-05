@@ -296,10 +296,25 @@
             # every hook twice. The global install is the better setup, so
             # it wins when present.
             if ! git config --global --get-regexp '^hook\.hk-' >/dev/null 2>&1; then
+              # SCOPE DIFFERS BY EVENT, and it is the one thing this
+              # shared loop must not share (B32). `hk run` selects STAGED
+              # files. At commit time that is exactly the change. At push
+              # time it is NOTHING -- the commit emptied the index -- so
+              # every step carrying a glob was skipped and the hook exited
+              # 0 with `steps = all` declared and twelve of them never run.
+              # A push publishes the whole tree, so the push-side gate
+              # reads the whole tree (V120).
+              #
+              # `--from-hook` forwards git's own hook arguments, which hk
+              # then treats as a FILE list, and `--all` refuses to sit
+              # beside one. The push side does not need the refs anyway:
+              # the whole tree is the scope, so it takes no arguments.
               for ev in pre-commit pre-push; do
+                run="run $ev --from-hook \"\$@\""
+                if [ "$ev" = "pre-push" ]; then run="run pre-push --all"; fi
                 git config --local "hook.hk-$ev.event" "$ev"
                 git config --local "hook.hk-$ev.command" \
-                  "command -v hk >/dev/null 2>&1 || { echo 'hk not found -- gate skipped; enter the dev shell (direnv/nix develop) to run it' >&2; exit 0; }; test \"\''${HK:-1}\" = \"0\" || hk run $ev --from-hook \"\$@\""
+                  "command -v hk >/dev/null 2>&1 || { echo 'hk not found -- gate skipped; enter the dev shell (direnv/nix develop) to run it' >&2; exit 0; }; test \"\''${HK:-1}\" = \"0\" || hk $run"
               done
             fi
           '';
