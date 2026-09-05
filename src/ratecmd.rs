@@ -184,7 +184,9 @@ fn too_few(
     compactions: &[crate::session::Compaction],
 ) -> Output {
     match raw.format {
-        Format::Json => Output::ok(json(&unmeasured(session, compactions))),
+        Format::Json => {
+            Output::ok(json(&unmeasured(session, compactions), None))
+        }
         Format::Human => Output::ok(String::new()),
     }
 }
@@ -212,16 +214,35 @@ fn unmeasured(
 fn format_output(raw: &Raw, tp: &Throughput, origin: &Origin) -> Output {
     let note = crate::tracecmd::origin_note(origin);
     let config = load_config(raw.chdir.as_deref());
-    let want_color = want_color(color_of(raw));
+    let color = want_color(color_of(raw));
+    let gauge = gauge_of(raw, tp, &config);
     Output::ok(match raw.format {
-        Format::Json => json(tp),
+        Format::Json => json(tp, gauge.eta),
         Format::Human if raw.statusline => {
-            badge(human(tp, &config, want_color, red_line(raw, tp, &config)))
+            badge(human(tp, &config, color, gauge))
         }
-        Format::Human => {
-            human(tp, &config, want_color, red_line(raw, tp, &config)) + &note
-        }
+        Format::Human => human(tp, &config, color, gauge) + &note,
     })
+}
+
+/// What the gauge knows: where the red line is, and how much active work
+/// the context has before it gets there (V119).
+///
+/// Read ONCE and carried, because the badge and the json object must not
+/// disagree about the same session -- and they would, cheaply, if each
+/// re-derived it from a config file the other had also read.
+#[derive(Default, Debug, Clone, Copy)]
+struct Gauge {
+    limit: Option<u64>,
+    eta: Option<u64>,
+}
+
+fn gauge_of(raw: &Raw, tp: &Throughput, config: &RateConfig) -> Gauge {
+    let limit = red_line(raw, tp, config);
+    Gauge {
+        limit,
+        eta: crate::eta::seconds(tp.last_turn, limit, tp.rates.growth_hour),
+    }
 }
 
 /// Where the gauge turns full red: the point this level is heading for.
@@ -522,10 +543,22 @@ fn human(
     tp: &Throughput,
     config: &RateConfig,
     color: bool,
-    limit: Option<u64>,
+    gauge: Gauge,
 ) -> String {
-    let parts = cells_of(tp, config, limit).map(|c| metric(c, color));
+    let cells = cells_of(tp, config, gauge.limit);
+    let mut parts: Vec<String> =
+        cells.iter().map(|c| metric(*c, color)).collect();
+    parts.extend(gauge.eta.map(estimate));
     format!("{}\n", parts.join(","))
+}
+
+/// The 5th cell: time to the red line, floored and tilde'd (V119/V3).
+///
+/// Uncoloured on purpose. It annotates a cell that is ALREADY carrying
+/// the gauge's colour, and a second accent saying the same thing twice is
+/// what makes a badge stop being read (V71).
+fn estimate(seconds: u64) -> String {
+    format!("~{}", crate::eta::duration(seconds))
 }
 
 /// The four cells in badge order: the LEVEL, the bill, and the two GROWTH
@@ -647,10 +680,10 @@ fn or_null(v: Option<u64>) -> String {
 ///
 /// The booleans describe the SAMPLE, not the value, so they stay honest
 /// beside a `null`: zero working time covers neither period.
-fn json(tp: &Throughput) -> String {
+fn json(tp: &Throughput, eta: Option<u64>) -> String {
     format!(
         "{{\"last_turn\":{},\"total\":{},\"per_hour\":{},\
-         \"per_day\":{},\"turns\":{},{},{}}}\n",
+         \"per_day\":{},\"turns\":{},{},{},\"compact_in_active_seconds\":{}}}\n",
         tp.last_turn,
         tp.total,
         or_null(tp.rates.per_hour),
@@ -658,6 +691,7 @@ fn json(tp: &Throughput) -> String {
         tp.turns,
         json_growth(tp),
         json_clocks(tp),
+        or_null(eta),
     )
 }
 
@@ -995,7 +1029,7 @@ mod tests {
         assert_eq!(tp.active_seconds, 0);
         assert_eq!(tp.rates.per_hour, None, "no working time, no rate");
         assert_eq!(tp.rates.per_day, None);
-        let out = human(&tp, &RateConfig::default(), false, None);
+        let out = human(&tp, &RateConfig::default(), false, Gauge::default());
         assert!(out.contains("-/h") && out.contains("-/d"), "{out}");
         assert!(!out.contains('~'), "nothing to project from: {out}");
     }
@@ -1012,9 +1046,9 @@ mod tests {
     fn a_clockless_rate_never_publishes_an_amplified_number() {
         let s = session_with_turns(&[(1_000, "nope"), (2_000, "also-nope")]);
         let tp = throughput(&s, &[]).unwrap_or(ZERO_TP);
-        let out = human(&tp, &RateConfig::default(), false, None);
+        let out = human(&tp, &RateConfig::default(), false, Gauge::default());
         assert!(!out.contains('m'), "no megatoken rate anywhere: {out}");
-        let js = json(&tp);
+        let js = json(&tp, None);
         assert!(js.contains("\"per_hour\":null"), "{js}");
         assert!(js.contains("\"per_day\":null"), "{js}");
         assert!(js.contains("\"active_seconds\":0"), "{js}");
@@ -1074,7 +1108,12 @@ mod tests {
     /// values are projections and both wear the mark (V110).
     #[test]
     fn human_output_shape() {
-        let out = human(&sample_tp(), &RateConfig::default(), false, None);
+        let out = human(
+            &sample_tp(),
+            &RateConfig::default(),
+            false,
+            Gauge::default(),
+        );
         assert_eq!(out, "3k,46k/bill,~13k/h,~280k/d\n");
     }
 
@@ -1099,7 +1138,7 @@ mod tests {
             active_seconds: 7_200,
             ..sample_tp()
         };
-        let out = human(&tp, &RateConfig::default(), false, None);
+        let out = human(&tp, &RateConfig::default(), false, Gauge::default());
         assert_eq!(out, "3k,46k/bill,13k/h,~280k/d\n");
     }
 
@@ -1111,7 +1150,7 @@ mod tests {
             active_seconds: 90_000,
             ..sample_tp()
         };
-        let out = human(&tp, &RateConfig::default(), false, None);
+        let out = human(&tp, &RateConfig::default(), false, Gauge::default());
         assert_eq!(out, "3k,46k/bill,13k/h,280k/d\n");
     }
 
@@ -1126,7 +1165,7 @@ mod tests {
             }),
             ..RateConfig::default()
         };
-        let out = human(&sample_tp(), &config, true, None);
+        let out = human(&sample_tp(), &config, true, Gauge::default());
         assert!(out.contains("\x1b[33m~13k/h\x1b[0m"), "{out}");
     }
 
@@ -1146,7 +1185,7 @@ mod tests {
             last_turn: 963_000,
             ..sample_tp()
         };
-        let out = human(&tp, &config, true, Some(1_000_000));
+        let out = human(&tp, &config, true, gauge_at(1_000_000));
         assert!(!out.contains("\x1b[32m963k"), "band colour won: {out}");
         assert!(out.contains("!963k"), "alarm mark missing: {out}");
     }
@@ -1166,7 +1205,7 @@ mod tests {
             last_turn: 963_000,
             ..sample_tp()
         };
-        let out = human(&tp, &config, true, None);
+        let out = human(&tp, &config, true, Gauge::default());
         assert!(out.contains("\x1b[31m963k\x1b[0m"), "{out}");
     }
 
@@ -1179,14 +1218,15 @@ mod tests {
             last_turn: 0,
             ..sample_tp()
         };
-        let out = human(&tp, &RateConfig::default(), true, Some(1_000_000));
+        let out = human(&tp, &RateConfig::default(), true, gauge_at(1_000_000));
         assert!(!out.contains("\x1b["), "absent level took a colour: {out}");
     }
 
     /// V115: nothing to say, nothing said.
     #[test]
     fn no_limit_and_no_threshold_leaves_the_level_plain() {
-        let out = human(&sample_tp(), &RateConfig::default(), true, None);
+        let out =
+            human(&sample_tp(), &RateConfig::default(), true, Gauge::default());
         assert!(!out.contains("\x1b["), "{out}");
     }
 
@@ -1230,7 +1270,7 @@ mod tests {
             compact_n: 2,
             ..sample_tp()
         };
-        let js = json(&tp);
+        let js = json(&tp, None);
         assert!(js.contains("\"compact_at\":968887"), "{js}");
         assert!(js.contains("\"compact_n\":2"), "{js}");
     }
@@ -1239,7 +1279,7 @@ mod tests {
     /// red line at the origin and paint every session red (V47).
     #[test]
     fn an_unobserved_compaction_point_is_null_in_json() {
-        let js = json(&sample_tp());
+        let js = json(&sample_tp(), None);
         assert!(js.contains("\"compact_at\":null"), "{js}");
         assert!(js.contains("\"compact_n\":0"), "{js}");
     }
@@ -1269,7 +1309,7 @@ mod tests {
         let hour = tp.rates.growth_hour.unwrap_or(0);
         let billed = tp.rates.per_hour.unwrap_or(0);
         assert_eq!(billed, hour.saturating_mul(3), "the bill runs 3x here");
-        let out = human(&tp, &RateConfig::default(), false, None);
+        let out = human(&tp, &RateConfig::default(), false, Gauge::default());
         assert!(out.contains(&format!("{}/h", shorten(hour))), "{out}");
         assert!(!out.contains(&format!("{}/h", shorten(billed))), "{out}");
     }
@@ -1285,7 +1325,7 @@ mod tests {
         let tp = throughput(&rising, &[]).unwrap_or(ZERO_TP);
         assert_eq!(tp.growth, 400_000, "the window it reached");
         assert_eq!(tp.total, 500_000, "what it was billed on the way");
-        let out = human(&tp, &RateConfig::default(), false, None);
+        let out = human(&tp, &RateConfig::default(), false, Gauge::default());
         assert!(out.contains("500k/bill"), "{out}");
     }
 
@@ -1294,7 +1334,7 @@ mod tests {
     /// rate -- the new quantities arrive under new names.
     #[test]
     fn json_keeps_the_old_keys_at_their_old_meaning() {
-        let js = json(&sample_tp());
+        let js = json(&sample_tp(), None);
         assert!(js.contains("\"total\":45305"), "{js}");
         assert!(js.contains("\"per_hour\":12400"), "{js}");
         assert!(js.contains("\"per_day\":280000"), "{js}");
@@ -1304,7 +1344,7 @@ mod tests {
     /// name (V117/V118): what grew, what entered, what was re-read.
     #[test]
     fn json_names_growth_and_the_bills_composition() {
-        let js = json(&sample_tp());
+        let js = json(&sample_tp(), None);
         assert!(js.contains("\"growth\":6000"), "{js}");
         assert!(js.contains("\"growth_per_hour\":13000"), "{js}");
         assert!(js.contains("\"entered\":9000"), "{js}");
@@ -1320,7 +1360,7 @@ mod tests {
             split: Split::default(),
             ..sample_tp()
         };
-        let js = json(&tp);
+        let js = json(&tp, None);
         assert!(js.contains("\"entered\":null"), "{js}");
         assert!(js.contains("\"output\":null"), "{js}");
     }
@@ -1337,6 +1377,85 @@ mod tests {
         cache_read: Some(36_000),
         output: Some(1_200),
     };
+
+    /// `json` with no estimate, which is what a fixture built by hand
+    /// has: the red line comes from a config file and a session record,
+    /// neither of which a literal `Throughput` carries.
+    /// V119: the 5th cell annotates the gauge, so it appears with it.
+    /// Floored, tilde'd, and uncoloured -- the cell it annotates is
+    /// already carrying the gauge's colour.
+    #[test]
+    fn the_badge_grows_a_fifth_cell_when_the_gauge_can_date_it() {
+        let g = Gauge {
+            limit: Some(1_000_000),
+            eta: Some(5_400),
+        };
+        let out = human(&sample_tp(), &RateConfig::default(), false, g);
+        assert!(out.ends_with("~1h\n"), "floored to the hour: {out}");
+        assert_eq!(out.matches(',').count(), 4, "five cells: {out}");
+    }
+
+    /// No red line, no cell. A permanent `-` on a statusline is a widget
+    /// announcing its own silence (V71), and there is nothing to be early
+    /// for when nothing can say where the line is.
+    #[test]
+    fn the_badge_stays_four_cells_without_a_red_line() {
+        let out = human(
+            &sample_tp(),
+            &RateConfig::default(),
+            false,
+            Gauge::default(),
+        );
+        assert_eq!(out.matches(',').count(), 3, "four cells: {out}");
+        assert!(!out.contains('~') || out.contains("/h"), "{out}");
+    }
+
+    /// The estimate is read ONCE and carried, so the badge and the json
+    /// object cannot disagree about the same session.
+    #[test]
+    fn the_gauge_dates_the_red_line_from_the_growth_rate() {
+        let config = RateConfig {
+            compact: Some(1_000_000),
+            ..RateConfig::default()
+        };
+        let tp = Throughput {
+            last_turn: 900_000,
+            ..sample_tp()
+        };
+        let g = gauge_of(&Raw::default(), &tp, &config);
+        assert_eq!(g.limit, Some(1_000_000));
+        assert_eq!(g.eta, Some(27_692), "100k left at 13k per active hour");
+    }
+
+    /// V9: the key is always present, `null` where a refusal applies --
+    /// a consumer parses one shape whether or not the estimate exists.
+    #[test]
+    fn json_always_carries_the_estimate_key() {
+        let with = json(&sample_tp(), Some(3_600));
+        assert!(
+            with.contains("\"compact_in_active_seconds\":3600"),
+            "{with}"
+        );
+        let without = json(&sample_tp(), None);
+        assert!(
+            without.contains("\"compact_in_active_seconds\":null"),
+            "{without}"
+        );
+    }
+
+    /// A gauge with a red line and no estimate: the tests below are
+    /// about the LEVEL colour, and an estimate would put a fifth cell in
+    /// every assertion about the first four.
+    fn gauge_at(limit: u64) -> Gauge {
+        Gauge {
+            limit: Some(limit),
+            eta: None,
+        }
+    }
+
+    fn json_of(tp: Throughput) -> String {
+        json(&tp, None)
+    }
 
     fn sample_tp() -> Throughput {
         Throughput {
@@ -1355,14 +1474,14 @@ mod tests {
 
     #[test]
     fn json_is_one_line() {
-        let out = json(&sample_tp());
+        let out = json(&sample_tp(), None);
         assert_eq!(out.lines().count(), 1);
         assert!(!out.contains('~'), "no tilde in json (V9)");
     }
 
     #[test]
     fn json_carries_all_fields() {
-        let out = json(&sample_tp());
+        let out = json(&sample_tp(), None);
         assert!(out.contains("\"last_turn\":2117"));
         assert!(out.contains("\"total\":45305"));
         assert!(out.contains("\"per_hour\":12400"));
@@ -1373,10 +1492,10 @@ mod tests {
     /// boundary the tilde does.
     #[test]
     fn json_flags_each_projection() {
-        let short = json(&sample_tp());
+        let short = json(&sample_tp(), None);
         assert!(short.contains("\"projected_hour\":true"), "{short}");
         assert!(short.contains("\"projected_day\":true"), "{short}");
-        let long = json(&Throughput {
+        let long = json_of(Throughput {
             active_seconds: 90_000,
             ..sample_tp()
         });
@@ -1642,7 +1761,7 @@ total = { green = 1000000, amber = 5000000 }
     /// a rate looks high can see the two apart.
     #[test]
     fn json_carries_both_clocks() {
-        let out = json(&Throughput {
+        let out = json_of(Throughput {
             age_seconds: 300_000,
             active_seconds: 3_120,
             ..sample_tp()
