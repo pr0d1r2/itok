@@ -28,11 +28,6 @@ const DIR: &str = env!("CARGO_MANIFEST_DIR");
 ///
 /// A row saying PLANNED is a promise dated, not a promise broken.
 const EXEMPT: &[(&str, &str, &str)] = &[
-    (
-        "headroom",
-        "--task",
-        "PLANNED, not BUILT (T76); the line says so",
-    ),
     // DESCRIBED, not offered. `check` pins the tokenizer rather than
     // taking a flag for it, and section I names `--bpe` to say the
     // verdict is deterministic -- a sentence about behaviour, not a
@@ -93,6 +88,36 @@ fn the_advertised_surface_is_documented() {
     assert!(
         missing.is_empty(),
         "the binary advertises what section I never names:\n{missing:#?}"
+    );
+}
+
+/// The exemptions are audited too, and B36 is why.
+///
+/// `headroom --task` sat in this list marked "PLANNED, not BUILT" while
+/// the flag worked and had for weeks: the marker in section I was attached
+/// to the wrong subject -- the sentence's PLANNED clause was about the
+/// VERDICT beside it, which T76 then built -- and nothing looked again.
+///
+/// The forward test cannot see that. An exemption wrong in the BUILT
+/// direction skips a probe that would have passed, so both directions go
+/// quiet. A suppression list is a claim about the world and needs the same
+/// runner as the claims it suppresses; an escape hatch nothing audits is a
+/// second section I.
+#[test]
+fn no_exemption_hides_a_flag_the_build_accepts() {
+    let stale: Vec<String> = EXEMPT
+        .iter()
+        .filter(|(verb, flag, _)| {
+            !UNPROBED.contains(flag)
+                && !feature_gated(flag)
+                && !refuses(verb, flag)
+        })
+        .map(|(verb, flag, why)| format!("{verb} {flag} -- claims: {why}"))
+        .collect();
+    assert!(
+        stale.is_empty(),
+        "these flags WORK; delete their EXEMPT rows and let section I say \
+         so (B36):\n{stale:#?}"
     );
 }
 
