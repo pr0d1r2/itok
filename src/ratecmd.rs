@@ -38,11 +38,49 @@ struct RateConfig {
     /// A compaction point declared by hand, which WINS over the one
     /// observed in the session: a user who measured their own harness
     /// has said something itok cannot contradict from one transcript.
-    compact: Option<u64>,
+    ///
+    /// Keyed by model where the config says so (V121), because the point
+    /// is not one number: ~167k on a 200k window against ~969k-1,001k on
+    /// a 1M one.
+    compact: Option<Compact>,
     turn: Option<Threshold>,
     total: Option<Threshold>,
     hour: Option<Threshold>,
     day: Option<Threshold>,
+}
+
+/// A declared compaction point: one number for every model, or a table
+/// keyed by the model the payload names (V121).
+///
+/// Two forms rather than one, because each is obvious for its case: a
+/// repo pinned to a single model writes `compact = N`, and a repo that
+/// sees several writes the table. Untagged, which works because TOML is
+/// self-describing -- proven against `basic-toml` before this was
+/// specced, rather than assumed of it (V106's lesson, applied to a
+/// parser).
+#[derive(serde::Deserialize, Debug, Clone, PartialEq, Eq)]
+#[serde(untagged)]
+enum Compact {
+    /// `compact = 968887` -- every model, whatever the session runs.
+    Every(u64),
+    /// `[rate.compact]` -- only the models it names.
+    PerModel(std::collections::BTreeMap<String, u64>),
+}
+
+impl Compact {
+    /// The point for this session's model, or `None`.
+    ///
+    /// An UNLISTED model gets no opinion: not a nearest neighbour, not
+    /// the first entry, not a mean. It falls through to the session's own
+    /// record (V116), which is the honest answer and the one that cannot
+    /// go stale. A threshold guessed from a different model is V2 wearing
+    /// a config file.
+    fn point(&self, model: Option<&str>) -> Option<u64> {
+        match self {
+            Self::Every(n) => Some(*n),
+            Self::PerModel(table) => table.get(model?).copied(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -58,7 +96,7 @@ struct TomlConfig {
 
 #[derive(serde::Deserialize, Default)]
 struct TomlRate {
-    compact: Option<u64>,
+    compact: Option<Compact>,
     turn: Option<TomlThreshold>,
     total: Option<TomlThreshold>,
     hour: Option<TomlThreshold>,
@@ -258,7 +296,11 @@ fn gauge_of(raw: &Raw, tp: &Throughput, config: &RateConfig) -> Gauge {
 /// from it: the badge falls back to whatever `[rate].turn` was declared,
 /// and to plain text when that was nothing either.
 fn red_line(raw: &Raw, tp: &Throughput, config: &RateConfig) -> Option<u64> {
-    config.compact.or(tp.compact_at).or_else(|| {
+    let declared = config
+        .compact
+        .as_ref()
+        .and_then(|c| c.point(raw.model.as_deref()));
+    declared.or(tp.compact_at).or_else(|| {
         let root =
             std::path::PathBuf::from(raw.chdir.as_deref().unwrap_or("."));
         crate::capacity::or_none(None, raw.model.as_deref(), &root)
@@ -1240,7 +1282,7 @@ mod tests {
             ..sample_tp()
         };
         let config = RateConfig {
-            compact: Some(750_000),
+            compact: Some(Compact::Every(750_000)),
             ..RateConfig::default()
         };
         assert_eq!(red_line(&raw, &tp, &config), Some(750_000));
@@ -1249,6 +1291,62 @@ mod tests {
             Some(900_000),
             "the session's own record is the next rung"
         );
+    }
+
+    /// V121: the table applies only to the models it NAMES.
+    #[test]
+    fn a_per_model_table_answers_for_the_models_it_lists() {
+        let text = "[rate.compact]\n\
+             \"claude-opus-5\" = 968887\n\
+             \"claude-opus-4-6\" = 167028\n";
+        let parsed: TomlConfig = basic_toml::from_str(text).unwrap_or_default();
+        let compact = config_from(parsed.rate.unwrap_or_default()).compact;
+        let compact = compact.unwrap_or(Compact::Every(0));
+        assert_eq!(compact.point(Some("claude-opus-5")), Some(968_887));
+        assert_eq!(compact.point(Some("claude-opus-4-6")), Some(167_028));
+    }
+
+    /// The rule that matters: an unlisted model gets NO opinion, so it
+    /// falls through to the session's own record (V116). Not a nearest
+    /// neighbour, not the first entry -- a threshold guessed from a
+    /// different model is a wrong number wearing a config file.
+    #[test]
+    fn an_unlisted_model_gets_no_opinion_from_the_table() {
+        let mut table = std::collections::BTreeMap::new();
+        table.insert("claude-opus-5".to_owned(), 968_887);
+        let compact = Compact::PerModel(table);
+        assert_eq!(compact.point(Some("claude-opus-4-6")), None);
+        assert_eq!(compact.point(None), None, "no model named at all");
+    }
+
+    /// The scalar keeps meaning EVERY model, including a session whose
+    /// model the payload never named -- that is what it is for.
+    #[test]
+    fn the_scalar_form_answers_for_every_model() {
+        let compact = Compact::Every(968_887);
+        assert_eq!(compact.point(Some("anything")), Some(968_887));
+        assert_eq!(compact.point(None), Some(968_887));
+    }
+
+    /// End of the ladder, in one test: a table that does not name this
+    /// session's model leaves the session's own observation in charge.
+    #[test]
+    fn an_unlisted_model_falls_through_to_the_sessions_own_record() {
+        let mut table = std::collections::BTreeMap::new();
+        table.insert("claude-opus-5".to_owned(), 968_887);
+        let config = RateConfig {
+            compact: Some(Compact::PerModel(table)),
+            ..RateConfig::default()
+        };
+        let raw = Raw {
+            model: Some("claude-opus-4-6".to_owned()),
+            ..Raw::default()
+        };
+        let tp = Throughput {
+            compact_at: Some(167_028),
+            ..sample_tp()
+        };
+        assert_eq!(red_line(&raw, &tp, &config), Some(167_028));
     }
 
     /// A session that has never compacted, on a model no table knows,
@@ -1289,7 +1387,8 @@ mod tests {
         let text = "[rate]\ncompact = 968887\n";
         let parsed: TomlConfig = basic_toml::from_str(text).unwrap_or_default();
         let rate = parsed.rate.unwrap_or_default();
-        assert_eq!(config_from(rate).compact, Some(968_887));
+        let got = config_from(rate).compact;
+        assert_eq!(got.and_then(|c| c.point(None)), Some(968_887));
     }
 
     /// B30, as a test: a session that keeps taking turns without growing
@@ -1415,7 +1514,7 @@ mod tests {
     #[test]
     fn the_gauge_dates_the_red_line_from_the_growth_rate() {
         let config = RateConfig {
-            compact: Some(1_000_000),
+            compact: Some(Compact::Every(1_000_000)),
             ..RateConfig::default()
         };
         let tp = Throughput {
