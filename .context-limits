@@ -86,6 +86,26 @@
 # ceiling had drifted to 242, which is not a ceiling: it fires on the next
 # legitimate sentence and trains the reflex it exists to catch (V71).
 #
+# README 5,700 -> 6,500, ONE reviewed raise, and the review found something
+# worth writing down. What it buys is small and legitimate: `doctor
+# --session` and its advice block, plus the `rate` badge's gauge, growth
+# and `~to compaction` -- four verbs' worth of surface that landed in one
+# stretch, each of which the generated command reference must describe.
+#
+# What the review actually found is that the reference is no longer a
+# reference. The `rate` blurb alone runs ~2,600 characters and recites four
+# invariants in full; a first visitor reads it before anything else in that
+# section. That is V71's failure -- text that always appears is text nobody
+# reads -- and the ceiling is the thing that noticed. The fix is compacting
+# `src/docs.rs` back to what a command reference is for, and it is NOT this
+# commit's job; it is recorded here so the next raise meets a known cause
+# rather than treating the growth as inevitable.
+#
+# 6,500 against 5,753 is ~13%, at the top of the band this file asks for --
+# deliberately, because the blurb compaction above should REDUCE this
+# number, and a ceiling set tight against text about to shrink would fire
+# on the next legitimate sentence instead.
+#
 # README 4k -> 5k, ONE reviewed raise covering a documented set, not six
 # reflexive bumps as each section lands. What it buys, measured: the
 # LLM-provenance block (494), then `Why`, `Guarantees`, `Status`, `Use it as
@@ -100,4 +120,4 @@
 # public is the project growing; a README that grows every week is not, and
 # the next raise should be asked to prove which it is.
 SPEC.md    46000
-README.md  5700
+README.md  6500
