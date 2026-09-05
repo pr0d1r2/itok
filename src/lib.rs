@@ -25,6 +25,8 @@ mod doctor;
 mod doctorfmt;
 mod estcmd;
 pub mod estimate;
+#[cfg(feature = "session")]
+mod eta;
 mod fitcmd;
 #[cfg(feature = "session")]
 mod gauge;
