@@ -35,7 +35,13 @@ fn spread(dummy_total: u64, real_total: u64) -> (u64, char) {
     }
 }
 
-fn verdict(pct: u64, warn_at: u64) -> &'static str {
+/// Where occupancy stops being comfortable, as a percentage of the
+/// window. ONE number (V64): `fit` sorts a fileset by it, and
+/// `--session` fires V99's advice on it, so a session and a bundle agree
+/// about what "nearly full" means.
+pub(crate) const FIT_WARN: u64 = 80;
+
+pub(crate) fn verdict(pct: u64, warn_at: u64) -> &'static str {
     if pct > 100 {
         "OVER"
     } else if pct >= warn_at {
@@ -63,7 +69,7 @@ fn fit_line(h: &Health) -> String {
             format!(
                 "  fit         {} / {w}  {p}%  {}\n",
                 h.real_total,
-                verdict(p, 80)
+                verdict(p, FIT_WARN)
             )
         }
     }

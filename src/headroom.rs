@@ -135,7 +135,7 @@ impl Room {
 
     /// Percent full. A zero capacity yields `None`: it is not a capacity,
     /// and dividing by it would be a crash dressed as a column.
-    fn pct(&self) -> Option<u64> {
+    pub(crate) fn pct(&self) -> Option<u64> {
         let cap = self.capacity.filter(|c| *c > 0)?;
         self.used.saturating_mul(100).checked_div(cap)
     }

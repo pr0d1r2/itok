@@ -81,11 +81,13 @@ fn report(raw: &Raw, context: &Context<'_>, cap: Option<u64>) -> Output {
         return Output::ok(String::new());
     };
     let rows = projected(context.parsed, room.turns_left().map(|(n, _)| n));
+    let advice = advice_of(&room);
     Output::ok(match raw.format {
-        Format::Json => json(&room, &rows, context.caveat),
+        Format::Json => json(&room, &rows, context.caveat, advice),
         Format::Human => {
             crate::headroom::table(&room, raw.human)
                 + &human(&rows, context.caveat, raw.human, why(cap))
+                + &advice.map_or_else(String::new, |(l, p)| advice_lines(l, p))
                 + &crate::tracecmd::origin_note(context.origin)
         }
     })
@@ -194,17 +196,80 @@ fn claim(caveat: Caveat<'_>) -> &'static str {
     }
 }
 
+/// V97's TWO levers, and nothing else. The set is closed on purpose: a
+/// third suggestion here would be one nobody measured.
+const LEVERS: [&str; 2] = [
+    "cap what enters: `itok cap N` in the pipe, before a large read \
+     reaches the context",
+    "end the session, or fan out: a subagent's window dies with it",
+];
+
+/// The suggestion a visible `use%` invites, REJECTED rather than merely
+/// omitted (V99).
+///
+/// Omission would leave the reader to invent it, and here the reader's
+/// intuition is backwards: prompt caching makes the prefix append-only in
+/// practice, so deleting something early invalidates everything after it
+/// and forces a full re-write -- measured at ~250k, about 250x a normal
+/// turn (V97/V95). Saying nothing is how that costs someone a session.
+const TRAP: &str = "do NOT evict what is already in: the prefix is \
+     append-only in practice, so deleting something early re-writes \
+     everything after it (~250k measured)";
+
+/// The advice, or `None` when no level is crossed.
+///
+/// V71: it appears only when something is true of THIS session. Advice on
+/// every run is advice nobody reads, and then the one run that needed it
+/// looks like all the others.
+///
+/// A crossed level is NOT a fuse (V42). Ignorable advice costs about
+/// nothing when it is wrong, while a deny burns a turn, so this needs no
+/// tuning data and does not wait on enforcement.
+fn advice_of(room: &crate::headroom::Room) -> Option<(&'static str, u64)> {
+    let pct = room.pct()?;
+    let level = crate::doctorfmt::verdict(pct, crate::doctorfmt::FIT_WARN);
+    (level != "ok").then_some((level, pct))
+}
+
+fn advice_lines(level: &str, pct: u64) -> String {
+    let head = format!(
+        "  advice      use% is {pct} ({level}) -- two levers help here, \
+         and the obvious third does not\n"
+    );
+    let levers: String = LEVERS.iter().map(|l| format!("    {l}\n")).collect();
+    format!("{head}{levers}    {TRAP}\n")
+}
+
+fn json_advice(advice: Option<(&'static str, u64)>) -> String {
+    let Some((level, pct)) = advice else {
+        return "null".to_owned();
+    };
+    let levers: Vec<String> =
+        LEVERS.iter().map(|l| format!("\"{l}\"")).collect();
+    format!(
+        "{{\"level\":\"{level}\",\"use_pct\":{pct},\"levers\":[{}],\
+         \"rejected\":\"{TRAP}\"}}",
+        levers.join(",")
+    )
+}
+
 /// ONE object (V9). `headroom`'s row is NESTED verbatim rather than
 /// flattened, so the json says structurally what the module doc says in
 /// prose: these figures are that verb's, unchanged.
-fn json(room: &crate::headroom::Room, rows: &[Ahead], c: Caveat<'_>) -> String {
+fn json(
+    room: &crate::headroom::Room,
+    rows: &[Ahead],
+    c: Caveat<'_>,
+    advice: Option<(&'static str, u64)>,
+) -> String {
     let items: Vec<String> = rows.iter().take(SHOWN).map(json_item).collect();
     format!(
         "{{\"session\":true,\"headroom\":{},\"projected\":[{}],\
-         \"projected_method\":\"{}\"}}\n",
+         \"projected_method\":\"{}\",\"advice\":{}}}\n",
         crate::headroom::json(room).trim_end(),
         items.join(","),
         c.method().replace("turns-since-entry", "~turns-left"),
+        json_advice(advice),
     )
 }
 
@@ -334,6 +399,20 @@ mod tests {
         session(&argv)
     }
 
+    /// A room whose `use%` is exactly `pct`, so the threshold can be
+    /// pinned from both sides (B24: the fixture is not cut to the code).
+    fn room_at(pct: u64) -> crate::headroom::Room {
+        let session = Session {
+            turns: vec![Turn {
+                input: Some(pct.saturating_mul(100)),
+                ..Turn::default()
+            }],
+            ..Session::default()
+        };
+        let room = crate::headroom::room_of(&session, Some(10_000), None);
+        room.unwrap_or_else(|| unreachable!("the turn carries usage"))
+    }
+
     fn ahead(what: &str, tokens: u64, projected: u64) -> Ahead {
         Ahead {
             what: what.to_owned(),
@@ -427,16 +506,69 @@ mod tests {
         );
     }
 
-    /// V99's boundary, asserted BEFORE the advice block exists (T77):
-    /// this report computes, it does not judge. The forbidden suggestion
-    /// is the intuitive one, which is why omission alone is not enough.
+    /// V59's boundary: the PROJECTION computes, it does not judge. The
+    /// advice is a separate block that fires on a separate condition,
+    /// and mixing them would make every session read as a warning.
     #[test]
-    fn the_session_report_gives_no_advice() {
+    fn the_projection_block_gives_no_advice() {
         let rows = vec![ahead("big.rs", 8_000, 80_000)];
         let out = human(&rows, Caveat::of(&[]), false, why(Some(1)));
         for word in ["evict", "should", "consider", "reduce", "unhealthy"] {
             assert!(!out.to_lowercase().contains(word), "no advice: {word}");
         }
+    }
+
+    /// V99's closed set, and the reason it is a test rather than a
+    /// comment: a third lever is exactly the kind of helpful sentence
+    /// that gets added later by someone who did not measure it.
+    #[test]
+    fn exactly_two_levers_are_offered_and_neither_is_the_trap() {
+        assert_eq!(LEVERS.len(), 2);
+        for lever in LEVERS {
+            let l = lever.to_lowercase();
+            for forbidden in ["evict", "delete", "prune", "trim", "remove"] {
+                assert!(!l.contains(forbidden), "{forbidden} in: {lever}");
+            }
+        }
+    }
+
+    /// The trap is NAMED as a trap. Omitting it leaves the reader to
+    /// invent it, and here the intuition is backwards (V97/V99).
+    #[test]
+    fn the_rejected_suggestion_is_stated_and_marked_rejected() {
+        let out = advice_lines("warn", 93);
+        assert!(out.contains("do NOT evict"), "{out}");
+        assert!(out.contains("append-only"), "the reason: {out}");
+        assert!(out.contains("250k"), "the measurement: {out}");
+    }
+
+    /// V71: it fires when a level is crossed, and not otherwise. Advice
+    /// on every run is advice nobody reads.
+    #[test]
+    fn advice_fires_only_when_the_level_is_crossed() {
+        assert!(advice_of(&room_at(79)).is_none(), "under the line");
+        assert!(advice_of(&room_at(80)).is_some(), "at the line");
+        assert!(advice_of(&room_at(120)).is_some(), "over the line");
+    }
+
+    /// V92: no capacity, no `use%`, no level to cross -- so no advice,
+    /// rather than advice against a guessed window.
+    #[test]
+    fn without_a_capacity_there_is_no_level_and_no_advice() {
+        let session = session_of();
+        let room = crate::headroom::room_of(&session, None, None);
+        let room = room.unwrap_or_else(|| unreachable!("turns carry usage"));
+        assert!(advice_of(&room).is_none());
+    }
+
+    /// V9: the key is always there, `null` when nothing fired.
+    #[test]
+    fn json_carries_the_advice_or_null() {
+        assert_eq!(json_advice(None), "null");
+        let fired = json_advice(Some(("warn", 93)));
+        assert!(fired.contains("\"use_pct\":93"), "{fired}");
+        assert!(fired.contains("\"rejected\":"), "{fired}");
+        assert!(fired.contains("\"levers\":["), "{fired}");
     }
 
     /// End to end: the verb prints `headroom`'s row and then the
@@ -543,7 +675,7 @@ mod tests {
         let room = crate::headroom::room_of(&session, Some(1_000_000), None);
         let room = room.unwrap_or_else(|| unreachable!("turns carry usage"));
         let rows = vec![ahead("big.rs", 8_000, 80_000)];
-        let out = json(&room, &rows, Caveat::of(&[]));
+        let out = json(&room, &rows, Caveat::of(&[]), None);
         assert_eq!(out.lines().count(), 1, "{out}");
         assert!(out.contains("\"headroom\":{\"window\":1000000"), "{out}");
         assert!(out.contains("\"projected\":[{\"what\":\"big.rs\""), "{out}");
