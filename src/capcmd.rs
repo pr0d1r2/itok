@@ -149,6 +149,16 @@ impl Cut {
 
     /// The resume selector's line: 1-based, the FIRST line not emitted, so
     /// `sed -n '<line>,$p'` continues where this run stopped (V51).
+    /// Whether a published selector would MOVE.
+    ///
+    /// Keeping nothing means the first line alone is over budget, and a
+    /// selector at byte 0 sends the caller round the same bytes forever
+    /// -- worse than none, because it reads as usable (B37). V51's
+    /// promise is that the next read CONTINUES.
+    fn advances(&self) -> bool {
+        self.kept_bytes() > 0
+    }
+
     fn resume_line(&self) -> u64 {
         self.kept_lines.saturating_add(1)
     }
@@ -265,6 +275,11 @@ fn resume_note(c: &Cut, ran: &[&'static str]) -> String {
                 index the input"
             .to_owned();
     }
+    if !c.advances() {
+        return "no resume point: nothing fits this budget, so an offset \
+                would send the next read round the same bytes"
+            .to_owned();
+    }
     format!(
         "resume: line {} (byte offset {})",
         c.resume_line(),
@@ -314,7 +329,7 @@ fn resume(c: &Cut, ran: &[&'static str]) -> String {
     // into it no longer index the caller's own stream. V51's promise is
     // about truncation; publishing a selector that points into text the
     // caller never had would be worse than publishing none (V47/V3).
-    if !c.elided() || !ran.is_empty() {
+    if !c.elided() || !ran.is_empty() || !c.advances() {
         return String::new();
     }
     format!(
@@ -455,8 +470,11 @@ mod tests {
     #[test]
     fn a_reduced_text_publishes_no_resume_point() {
         let reduced = cap(&args(&["4", "--outline"]), &noisy()).out;
-        assert!(reduced.contains("no resume point"), "{reduced}");
-        let truncated = cap(&args(&["4"]), &noisy()).out;
+        assert!(reduced.contains("the text was reduced"), "{reduced}");
+        // A budget that KEEPS something, so the cap-only case still has a
+        // selector to publish -- 4 keeps nothing at all, which is B37's
+        // case and a different absence.
+        let truncated = cap(&args(&["20"]), &noisy()).out;
         assert!(truncated.contains("resume: line"), "{truncated}");
     }
 
@@ -493,6 +511,120 @@ mod tests {
             out.contains("\"rungs\":[\"strip\",\"outline\",\"cap\"]"),
             "{out}"
         );
+    }
+
+    /// Follow the footer's own selector to the end, collecting the body
+    /// of every chunk. This is the promise V51 makes and that nothing has
+    /// ever cashed: "resume at byte N" has to mean the caller reads the
+    /// rest, not the same bytes again.
+    ///
+    /// Reconstructs the input from the OFFSETS rather than from the
+    /// bodies: the selector is what is under test, and a body carries
+    /// formatting (`run` adds a trailing newline) that would make the
+    /// comparison about the renderer instead. `None` when a selector
+    /// fails to advance -- a loop, not a slow cut.
+    fn follow(input: &str, budget: &str) -> Option<String> {
+        let mut at = 0usize;
+        let mut whole = String::new();
+        for _ in 0..64 {
+            let rest = input.get(at..)?;
+            let Some(n) = step(rest, budget) else {
+                whole.push_str(rest);
+                return Some(whole);
+            };
+            if n == 0 {
+                return None;
+            }
+            whole.push_str(rest.get(..n)?);
+            at = at.checked_add(n)?;
+        }
+        None
+    }
+
+    /// One cut's advance, or `None` when the footer published no
+    /// selector -- which means that chunk was the tail.
+    fn step(rest: &str, budget: &str) -> Option<usize> {
+        resume_byte(&cap(&args(&[budget]), rest).out)
+    }
+
+    /// The byte offset the footer published, or the whole remainder when
+    /// it published none because nothing was elided.
+    /// The byte offset the footer published, or `None` when it published
+    /// none -- which means this chunk was the last one.
+    fn resume_byte(out: &str) -> Option<usize> {
+        let (_, tail) = out.rsplit_once("byte offset ")?;
+        tail.split(')').next()?.parse().ok()
+    }
+
+    /// V51, round-tripped: following the selector reconstructs the input.
+    #[test]
+    fn the_resume_selector_walks_the_whole_input() {
+        let text = input();
+        let walked = follow(&text, "6").unwrap_or_default();
+        assert_eq!(walked, text);
+    }
+
+    /// V51: the same input cut the same way twice is the same cut, body
+    /// and footer both.
+    #[test]
+    fn the_same_input_cuts_the_same_way_twice() {
+        let a = cap(&args(&["6"]), &input()).out;
+        let b = cap(&args(&["6"]), &input()).out;
+        assert_eq!(a, b);
+    }
+
+    /// A budget too small for the FIRST line keeps nothing, and a
+    /// selector pointing at byte 0 would send the caller round again --
+    /// so there is none, and the footer says why (B37).
+    #[test]
+    fn a_budget_nothing_fits_publishes_no_selector() {
+        let text = "a line far longer than the budget allows\nshort\n";
+        let out = cap(&args(&["1"]), text).out;
+        assert!(!out.contains("byte offset"), "would loop: {out}");
+        assert!(out.contains("nothing fits"), "{out}");
+    }
+
+    /// V51 as a PROPERTY, on text nobody chose.
+    ///
+    /// The unit tests above walk inputs I wrote, and I wrote them to make
+    /// each rung fire. This walks arbitrary line shapes at arbitrary
+    /// budgets and asserts the only thing that matters: following the
+    /// footer's own selector reads every byte once and no byte twice.
+    ///
+    /// Budgets start at 5 so the first line always fits -- below that is
+    /// B37's case, which publishes no selector by design and is covered
+    /// by its own test.
+    mod walks {
+        use super::{args, cap, follow};
+        use proptest::prelude::*;
+
+        proptest! {
+            #![proptest_config(ProptestConfig::with_cases(64))]
+
+            #[test]
+            fn the_selector_reconstructs_any_input(
+                lines in prop::collection::vec("[a-z ]{0,12}", 1..12),
+                budget in 5u64..40,
+            ) {
+                let text: String =
+                    lines.iter().map(|l| format!("{l}\n")).collect();
+                let walked = follow(&text, &budget.to_string());
+                prop_assert_eq!(walked, Some(text));
+            }
+
+            /// And the cut itself is deterministic, at any budget.
+            #[test]
+            fn the_same_cut_twice_matches(
+                lines in prop::collection::vec("[a-z ]{0,12}", 1..12),
+                budget in 1u64..40,
+            ) {
+                let text: String =
+                    lines.iter().map(|l| format!("{l}\n")).collect();
+                let n = budget.to_string();
+                let once = cap(&args(&[&n]), &text).out;
+                prop_assert_eq!(once, cap(&args(&[&n]), &text).out);
+            }
+        }
     }
 
     fn input() -> String {
@@ -617,7 +749,12 @@ mod tests {
     }
 
     /// A budget too small for even the first line yields an empty body --
-    /// honest, and the footer says so. Structure is `elide`'s job (T40).
+    /// honest, and the footer says so.
+    ///
+    /// It used to publish `resume: line 1 (byte offset 0)`, and this test
+    /// asserted it. A selector that does not move is a loop wearing a
+    /// number: the caller follows it and reads the same bytes again,
+    /// forever. B37, and the test that encoded it as law.
     #[test]
     fn a_budget_below_the_first_line_keeps_nothing() {
         let out = run(
@@ -628,7 +765,8 @@ mod tests {
             &input(),
         );
         assert!(out.starts_with("[itok cap:"), "empty body: {out}");
-        assert!(out.contains("resume: line 1 (byte offset 0)"), "{out}");
+        assert!(!out.contains("byte offset"), "would loop: {out}");
+        assert!(out.contains("nothing fits"), "{out}");
     }
 
     /// The LINE half of the selector survives a stream that was not valid
