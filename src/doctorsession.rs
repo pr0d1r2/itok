@@ -85,7 +85,7 @@ fn report(raw: &Raw, context: &Context<'_>, cap: Option<u64>) -> Output {
         Format::Json => json(&room, &rows, context.caveat),
         Format::Human => {
             crate::headroom::table(&room, raw.human)
-                + &human(&rows, context.caveat, raw.human)
+                + &human(&rows, context.caveat, raw.human, why(cap))
                 + &crate::tracecmd::origin_note(context.origin)
         }
     })
@@ -134,11 +134,9 @@ fn projected(parsed: &Session, turns_left: Option<u64>) -> Vec<Ahead> {
 /// and a hundred-line advisory is one nobody reads (V71).
 const SHOWN: usize = 5;
 
-fn human(rows: &[Ahead], caveat: Caveat<'_>, h: bool) -> String {
+fn human(rows: &[Ahead], caveat: Caveat<'_>, h: bool, why: &str) -> String {
     if rows.is_empty() {
-        return "  projected  -- no capacity, so no `turns left` and no \
-                projection (pass --window or --model)\n"
-            .to_owned();
+        return format!("  projected  -- {why}\n");
     }
     let head = format!("  projected = itok x ~turns left, {}\n", claim(caveat));
     let body: String = rows
@@ -147,6 +145,21 @@ fn human(rows: &[Ahead], caveat: Caveat<'_>, h: bool) -> String {
         .map(|a| projected_line(a, h))
         .collect();
     head + &body
+}
+
+/// WHICH absence this is. Two different missing things produce the same
+/// empty list, and telling a reader "no capacity" when the capacity is
+/// fine and the SAMPLE is short sends them to fix the wrong thing --
+/// V3's rule that a number names its method, applied to a number that
+/// is not there.
+fn why(cap: Option<u64>) -> &'static str {
+    if cap.is_none() {
+        "no capacity, so no `turns left` and no projection \
+         (pass --window or --model)"
+    } else {
+        "no growth rate yet, so no `turns left` and no projection \
+         (needs turns whose window grows)"
+    }
 }
 
 /// The tilde is not decoration: `turns left` is an extrapolation, so a
@@ -299,6 +312,28 @@ mod tests {
         }
     }
 
+    fn compaction() -> crate::session::Compaction {
+        crate::session::Compaction {
+            trigger: "auto".to_owned(),
+            pre_tokens: 167_028,
+            post_tokens: 18_937,
+            ts: "2026-08-16T05:19:24.283Z".to_owned(),
+        }
+    }
+
+    fn fixture(name: &str) -> String {
+        format!(
+            "{}/tests/fixtures/session/{name}",
+            env!("CARGO_MANIFEST_DIR")
+        )
+    }
+
+    fn run_on(name: &str, extra: &[&str]) -> Output {
+        let mut argv = vec!["--session".to_owned(), fixture(name)];
+        argv.extend(extra.iter().map(|s| (*s).to_owned()));
+        session(&argv)
+    }
+
     fn ahead(what: &str, tokens: u64, projected: u64) -> Ahead {
         Ahead {
             what: what.to_owned(),
@@ -359,7 +394,7 @@ mod tests {
     /// project" (V47's rule, on a report).
     #[test]
     fn an_empty_projection_says_why() {
-        let out = human(&[], Caveat::of(&[]), false);
+        let out = human(&[], Caveat::of(&[]), false, why(None));
         assert!(out.contains("no capacity"), "{out}");
         assert!(out.contains("--window"), "names the fix: {out}");
     }
@@ -369,9 +404,14 @@ mod tests {
     #[test]
     fn a_compacted_session_labels_the_projection_an_upper_bound() {
         let rows = vec![ahead("big.rs", 8_000, 80_000)];
-        let plain = human(&rows, Caveat::of(&[]), false);
+        let plain = human(&rows, Caveat::of(&[]), false, why(Some(1)));
         assert!(plain.contains("assumes no compaction"), "{plain}");
         assert!(!plain.contains("UPPER BOUND"), "{plain}");
+
+        let boundary = [compaction()];
+        let marked = human(&rows, Caveat::of(&boundary), false, why(Some(1)));
+        assert!(marked.contains("UPPER BOUND"), "{marked}");
+        assert!(!marked.contains("assumes no compaction"), "{marked}");
     }
 
     /// V3/V93: `turns left` is an extrapolation, so a product built on
@@ -379,7 +419,7 @@ mod tests {
     #[test]
     fn every_projected_cell_carries_the_tilde() {
         let rows = vec![ahead("big.rs", 8_000, 80_000)];
-        let out = human(&rows, Caveat::of(&[]), false);
+        let out = human(&rows, Caveat::of(&[]), false, why(Some(1)));
         assert!(out.contains("~80000"), "{out}");
         assert!(
             out.contains("at the recent rate"),
@@ -393,10 +433,106 @@ mod tests {
     #[test]
     fn the_session_report_gives_no_advice() {
         let rows = vec![ahead("big.rs", 8_000, 80_000)];
-        let out = human(&rows, Caveat::of(&[]), false);
+        let out = human(&rows, Caveat::of(&[]), false, why(Some(1)));
         for word in ["evict", "should", "consider", "reduce", "unhealthy"] {
             assert!(!out.to_lowercase().contains(word), "no advice: {word}");
         }
+    }
+
+    /// End to end: the verb prints `headroom`'s row and then the
+    /// projection built from `top`'s ranking. Exit 0 -- doctor advises,
+    /// `check` gates (V17/V5).
+    #[test]
+    fn the_session_form_reports_headrooms_row_and_the_projection() {
+        let out = run_on("growing.jsonl", &["--window", "100k"]);
+        assert_eq!(out.code, 0);
+        assert!(out.out.contains("use%"), "{}", out.out);
+        assert!(
+            out.out.contains("projected = itok x ~turns left"),
+            "{}",
+            out.out
+        );
+        assert!(out.out.contains("/w/big.rs"), "the ranking: {}", out.out);
+    }
+
+    /// A capacity with no rate behind it is a DIFFERENT absence from no
+    /// capacity at all, and it says which: the fixture's window never
+    /// grows, so there is nothing to extrapolate.
+    #[test]
+    fn a_flat_window_says_the_rate_is_missing_not_the_capacity() {
+        let out = run_on("tool-shapes.jsonl", &["--window", "1M"]);
+        assert!(out.out.contains("no growth rate yet"), "{}", out.out);
+        assert!(!out.out.contains("no capacity"), "{}", out.out);
+    }
+
+    /// `-h` is one flag with one meaning across both halves of the
+    /// report (V64): the borrowed table and the block below it.
+    #[test]
+    fn the_human_flag_reaches_both_halves() {
+        let out = run_on("growing.jsonl", &["--window", "100k", "-h"]);
+        assert_eq!(out.code, 0);
+        assert!(
+            out.out.contains('k') || out.out.contains('M'),
+            "{}",
+            out.out
+        );
+    }
+
+    /// Without a capacity the row still prints -- `used` is measured --
+    /// and the projection explains its own absence (V92).
+    #[test]
+    fn without_a_window_the_projection_explains_itself() {
+        let out = run_on("growing.jsonl", &[]);
+        assert_eq!(out.code, 0);
+        assert!(out.out.contains("no capacity"), "{}", out.out);
+    }
+
+    #[test]
+    fn the_json_form_is_one_object() {
+        let out =
+            run_on("growing.jsonl", &["--window", "100k", "--format", "json"]);
+        assert_eq!(out.out.lines().count(), 1, "{}", out.out);
+        assert!(out.out.contains("\"session\":true"), "{}", out.out);
+        assert!(out.out.contains("\"headroom\":{"), "{}", out.out);
+    }
+
+    /// V11: an unknown model FAILS rather than defaulting, because a
+    /// wrong capacity makes every derived column a fiction that still
+    /// looks measured.
+    #[test]
+    fn an_unknown_model_is_an_error_not_a_default() {
+        let out = run_on("growing.jsonl", &["--model", "nonesuch"]);
+        assert_eq!(out.code, 2, "{}", out.out);
+    }
+
+    /// V104: a NAMED session that resolves to nothing is a usage error
+    /// naming both forms tried, never a silent empty report (B14).
+    #[test]
+    fn a_named_miss_is_a_usage_error() {
+        let out = session(&args(&["--session", "no-such-session"]));
+        assert_eq!(out.code, 2, "{}", out.out);
+    }
+
+    /// `-C` picks the directory the session is inferred from, the same
+    /// as every other runtime verb.
+    #[test]
+    fn the_chdir_flag_is_accepted() {
+        let raw = parse(&args(&["--session", "-C", "/tmp"]));
+        let raw = raw.unwrap_or_default();
+        assert_eq!(raw.chdir.as_deref(), Some("/tmp"));
+    }
+
+    #[test]
+    fn a_bad_format_is_a_usage_error() {
+        assert!(parse(&args(&["--session", "--format", "yaml"])).is_err());
+    }
+
+    /// A row's identity is quoted into json, so a quote in a path cannot
+    /// break the object (V9).
+    #[test]
+    fn json_items_escape_their_identity() {
+        let out = json_item(&ahead("a\"b", 1, 2));
+        assert!(out.contains("a\\\"b"), "{out}");
     }
 
     /// V9: one object, and `headroom`'s row nested verbatim -- the json
