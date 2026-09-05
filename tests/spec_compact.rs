@@ -485,3 +485,127 @@ fn separators(line: &str) -> usize {
     }
     count
 }
+
+/// The most raises any path may carry before a reduction is owed.
+///
+/// Set to what SPEC.md already owes: ten ceiling raises against two
+/// compactions. It is a RATCHET -- the number comes down when a reduction
+/// resets a path, never up. Raising it is the move this file exists to
+/// stop being made quietly (V123).
+const MAX_RAISES: u32 = 8;
+
+/// Every registered path carries a raise count, and no count exceeds what
+/// is already owed.
+///
+/// This half needs no git, which is the point: with no resolvable base the
+/// guard still enforces the cap. A check that passes because it could not
+/// look is B32 repeated.
+#[test]
+fn the_ratchet_covers_every_registered_path() {
+    let limits = counts(&read_now(".context-limits"));
+    let ratchet = counts(&read_now(".context-ratchet"));
+    for path in limits.keys() {
+        let n = ratchet.get(path);
+        assert!(n.is_some(), "{path} has a ceiling and no raise count");
+        let n = n.copied().unwrap_or(u32::MAX);
+        assert!(n <= MAX_RAISES, "{path}: {n} raises, cap is {MAX_RAISES}");
+    }
+}
+
+/// A raise increments the count, a reduction resets it, and nothing else
+/// moves it (V123).
+///
+/// The base is `ITOK_BASE`, else `origin/main` -- the same baseline this
+/// file's other git-reading tests use. Unresolvable means the check above
+/// is what ran, and this one says so rather than passing quietly.
+#[test]
+fn a_raised_ceiling_increments_the_ratchet() {
+    let base =
+        std::env::var("ITOK_BASE").unwrap_or_else(|_| "origin/main".to_owned());
+    let old = counts(&read_at(&base, ".context-ratchet"));
+    if old.is_empty() {
+        // The commit that INTRODUCES the ratchet has nothing to move
+        // against; its numbers are the debt being recorded. One commit
+        // only. Deleting the file later does not reach this branch: the
+        // cap test reads the tree and fails on a path with no count.
+        println!("no .context-ratchet at {base}: recording the opening debt");
+        return;
+    }
+    moves(&base, &old);
+}
+
+/// Each path's ceiling move against its count, given a base that has one.
+fn moves(base: &str, old: &std::collections::BTreeMap<String, u32>) {
+    let old_limits = counts(&read_at(base, ".context-limits"));
+    let new_limits = counts(&read_now(".context-limits"));
+    let new = counts(&read_now(".context-ratchet"));
+    for (path, limit) in &new_limits {
+        let Some(was) = old_limits.get(path) else {
+            continue;
+        };
+        check_move(path, (*was, *limit), (old.get(path), new.get(path)));
+    }
+}
+
+/// One path's move, as a sentence: what the ceiling did, what the count
+/// must have done.
+fn check_move(
+    path: &str,
+    limits: (u32, u32),
+    counts: (Option<&u32>, Option<&u32>),
+) {
+    let (was, now) = limits;
+    let before = counts.0.copied().unwrap_or(0);
+    let after = counts.1.copied().unwrap_or(0);
+    let want = if now > was {
+        before.saturating_add(1)
+    } else if now < was {
+        0
+    } else {
+        before
+    };
+    assert_eq!(
+        after, want,
+        "{path}: ceiling {was} -> {now}, so .context-ratchet must read \
+         {want}, not {after}"
+    );
+}
+
+/// `path<space>number` rows, `#` comments and blanks skipped -- the shape
+/// `.context-limits` already uses, read the same way for both files so
+/// they cannot drift apart in how they are parsed.
+fn counts(text: &str) -> std::collections::BTreeMap<String, u32> {
+    let mut out = std::collections::BTreeMap::new();
+    for line in text.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let mut parts = line.split_whitespace();
+        if let (Some(p), Some(n)) = (parts.next(), parts.next())
+            && let Ok(n) = n.parse::<u32>()
+        {
+            out.insert(p.to_owned(), n);
+        }
+    }
+    out
+}
+
+/// The file as it stands NOW -- the working tree, not the last commit.
+/// `itok check` reads the tree, so this reads the tree: a guard that
+/// only saw committed state would pass on the change being made.
+fn read_now(path: &str) -> String {
+    std::fs::read_to_string(std::path::Path::new(DIR).join(path))
+        .unwrap_or_default()
+}
+
+/// One file as of a git ref. Empty when the ref or the path is absent --
+/// the caller decides what that means, and says so.
+fn read_at(git_ref: &str, path: &str) -> String {
+    scrubbed_git()
+        .args(["show", &format!("{git_ref}:./{path}")])
+        .output()
+        .ok()
+        .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
+        .unwrap_or_default()
+}
