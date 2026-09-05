@@ -42,6 +42,8 @@ struct Raw {
     session: Option<String>,
     path: Option<String>,
     top: Option<String>,
+    cost: bool,
+    model: Option<String>,
     style: Style,
     format: Format,
     chdir: Option<String>,
@@ -70,18 +72,34 @@ fn run(raw: &Raw) -> Output {
     // (V47's rule -- absent must stay distinguishable from zero). This
     // comment used to sit above two silent `ok("")` returns that did
     // exactly what it forbids; V104 now binds them (B14).
-    let (parsed, compactions) = match crate::tracecmd::session_with_compactions(
+    let read = crate::tracecmd::session_with_compactions(
         raw.session.as_deref(),
         raw.chdir.as_deref(),
-    ) {
-        Ok((p, c, _)) => (p, c),
+    );
+    let (parsed, compactions, _) = match read {
+        Ok(v) => v,
         Err(o) => return o,
     };
-    let rows = rank(&parsed, raw);
-    let caveat = Caveat::of(&compactions);
+    render(raw, &parsed, &compactions)
+}
+
+/// The report, once the session is in hand. A bad `--model` is a usage
+/// error rather than a missing line: V11's unknown-model rule reaches the
+/// rate column too.
+fn render(
+    raw: &Raw,
+    parsed: &Session,
+    compactions: &[crate::session::Compaction],
+) -> Output {
+    let cost = match cost_line(parsed, raw) {
+        Ok(line) => line,
+        Err(e) => return Output::usage_err(format!("itok: {e}")),
+    };
+    let rows = rank(parsed, raw);
+    let caveat = Caveat::of(compactions);
     Output::ok(match raw.format {
-        Format::Json => json(&rows, &parsed, caveat),
-        Format::Human => report(&rows, &parsed, &raw.style, caveat),
+        Format::Json => json(&rows, parsed, caveat),
+        Format::Human => report(&rows, parsed, &raw.style, caveat) + &cost,
     })
 }
 
@@ -218,6 +236,63 @@ fn report(
     }
     out.push_str(&ledger(parsed, style));
     out
+}
+
+/// What the session's billed tokens cost, in the unit the file declared
+/// (V61).
+///
+/// The rates multiply the harness's OWN split -- fresh input, cache reads,
+/// cache writes -- rather than this report's rows. A row's tokens are
+/// `bytes/4` and its cache split is unattributable, so a per-row price
+/// would be a fiction with a decimal point (V3/V44).
+///
+/// Integers throughout, and the unit is never named: itok bundles no price
+/// list and cannot know a currency, so the number is reported in whatever
+/// the file declared and the method says so beside it.
+fn money(parsed: &Session, rates: crate::models::Rates) -> Option<u64> {
+    let split = [
+        (parsed.fresh_input(), rates.input),
+        (parsed.cache_read(), rates.cache_read),
+        (parsed.cache_written(), rates.cache_write),
+    ];
+    if split.iter().all(|(n, _)| n.is_none()) {
+        return None;
+    }
+    Some(split.iter().fold(0u64, |acc, (n, rate)| {
+        let part = n.unwrap_or(0).saturating_mul(*rate);
+        acc.saturating_add(part.checked_div(1_000_000).unwrap_or(0))
+    }))
+}
+
+/// The money line, or the reason there is none (V47/V61): an absence with
+/// no explanation reads as a zero bill.
+fn cost_line(parsed: &Session, raw: &Raw) -> Result<String, String> {
+    if !raw.cost {
+        return Ok(String::new());
+    }
+    let Some(name) = raw.model.as_deref() else {
+        return Ok(
+            "  cost: none -- pass --model X; rates are per model\n".to_owned()
+        );
+    };
+    let root = std::path::PathBuf::from(raw.chdir.as_deref().unwrap_or("."));
+    let rates = crate::models::tier(Some(name), &root)?.rates;
+    Ok(rates.map_or_else(
+        || format!("  cost: none -- {name} declares no rate column\n"),
+        |r| cost_text(parsed, r),
+    ))
+}
+
+fn cost_text(parsed: &Session, rates: crate::models::Rates) -> String {
+    money(parsed, rates).map_or_else(
+        || "  cost: none -- no usage recorded to price\n".to_owned(),
+        |n| {
+            format!(
+                "{n:>9}       cost         (declared units; \
+                 in/cr/cc per 1M tokens)\n"
+            )
+        },
+    )
 }
 
 /// What THIS session's own record says the `carried` product is worth
@@ -482,6 +557,7 @@ fn apply<'a>(
     match a {
         "-h" => raw.style.human = true,
         "-s" => raw.style.summarize = true,
+        "--cost" => raw.cost = true,
         "--bpe" | "--ollama" => {
             return Err(crate::tracecmd::no_real_tier(a, "top"));
         }
@@ -498,6 +574,7 @@ fn with_value<'a>(
 ) -> Result<(), String> {
     match a {
         "--top" => raw.top = Some(value(it, a)?),
+        "--model" => raw.model = Some(value(it, a)?),
         "-C" => raw.chdir = Some(value(it, a)?),
         "--" => raw.path = Some(value(it, a)?),
         "--format" => raw.format = crate::tracecmd::format_of(&value(it, a)?)?,
@@ -1012,6 +1089,79 @@ mod tests {
         let out = run_on("tool-shapes.jsonl", &[]);
         assert!(out.out.contains("carried = itok x turns since entry"));
         assert!(out.out.contains("assumes no compaction"));
+    }
+
+    /// The rates multiply the harness's OWN split, so the arithmetic is
+    /// checkable by hand: 300/30/375 per million against 1,000,000 fresh,
+    /// 2,000,000 read and 400,000 written is 300 + 60 + 150.
+    #[test]
+    fn money_prices_each_half_of_the_split_at_its_own_rate() {
+        let session = priced_session();
+        let rates = crate::models::Rates {
+            input: 300,
+            cache_read: 30,
+            cache_write: 375,
+        };
+        assert_eq!(money(&session, rates), Some(510));
+    }
+
+    /// V47: no usage recorded is not a zero bill. A session the harness
+    /// never reported cannot be priced, and saying 0 would be a claim.
+    #[test]
+    fn a_session_with_no_usage_has_no_price_rather_than_zero() {
+        let rates = crate::models::Rates {
+            input: 300,
+            cache_read: 30,
+            cache_write: 375,
+        };
+        assert_eq!(money(&Session::default(), rates), None);
+    }
+
+    /// V61: each absence says WHICH it is. "No money" and "the wrong
+    /// money" are the two answers that invariant exists to keep apart, and
+    /// a bare missing line reads as a zero bill.
+    #[test]
+    fn every_absent_price_names_its_own_reason() {
+        let session = priced_session();
+        let asked = Raw {
+            cost: true,
+            ..Raw::default()
+        };
+        let out = cost_line(&session, &asked).unwrap_or_default();
+        assert!(out.contains("pass --model"), "{out}");
+        assert!(
+            cost_line(&session, &Raw::default())
+                .unwrap_or_default()
+                .is_empty()
+        );
+    }
+
+    /// V11 reaches the new column: an unknown model FAILS. A price
+    /// invented for a model nobody listed is the confident lie V61 is
+    /// about.
+    #[test]
+    fn an_unknown_model_fails_rather_than_pricing_nothing() {
+        let asked = Raw {
+            cost: true,
+            model: Some("nonesuch".to_owned()),
+            chdir: Some("/nonexistent".to_owned()),
+            ..Raw::default()
+        };
+        assert!(cost_line(&priced_session(), &asked).is_err());
+    }
+
+    /// A session whose usage split is round numbers, so a price is
+    /// arithmetic anyone can check in their head.
+    fn priced_session() -> Session {
+        Session {
+            turns: vec![crate::session::Turn {
+                input: Some(1_000_000),
+                cache_read: Some(2_000_000),
+                cache_creation: Some(400_000),
+                ..crate::session::Turn::default()
+            }],
+            ..Session::default()
+        }
     }
 
     /// V59: the legend explains the arithmetic and its premise. It does

@@ -53,11 +53,6 @@ const EXEMPT: &[(&str, &str, &str)] = &[
         "--task",
         "PLANNED, not BUILT (T76); the line says so",
     ),
-    (
-        "top",
-        "--cost",
-        "PLANNED, not BUILT (T38); the line says so",
-    ),
     // DESCRIBED, not offered. `check` pins the tokenizer rather than
     // taking a flag for it, and section I names `--bpe` to say the
     // verdict is deterministic -- a sentence about behaviour, not a
