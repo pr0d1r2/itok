@@ -21,6 +21,26 @@
 # catching the problem (V71). It catches RUNAWAY growth; T70's compaction
 # machine pays the debt -- two jobs, and conflating them made the ceiling
 # useless at both.
+# The TENTH covers one session's worth of §V and §B: V114-V122, T100-T107,
+# B29-B33. The badge learned what it was measuring (a level against a
+# measured compaction point, growth instead of re-billing, a clock), and
+# five defects fell out of building it -- each one a record, because a bug
+# found by measurement and not by the suite is the part worth keeping.
+#
+# 52,000 against 45,973 is ~13%, at the top of the band. The number moved
+# more this session than in any before it, and the honest reading is that
+# the SPEC is now the dominant entry cost: ~46k re-billed every turn of
+# every session, against a README of 5.1k and an overhead of ~32k. T49 and
+# T70 are the standing answer and neither has run since the eighth raise.
+# The next raise should be refused until one of them has.
+#
+# README 6,500 -> 5,800, and this is a LOWERING -- the first. The ninth
+# raise was bought by four verbs' worth of surface AND by the `rate` blurb
+# growing to ~2,600 characters of invariant recitation. T107 split `blurb`
+# from `reference` and cut the recitation, so the block went 5,753 ->
+# 5,110 and `itok --help` went 2,570 -> 623 itok. 5,800 against 5,110 is
+# ~13%. A ceiling left at 6,500 over a file that shrank would stop
+# catching the growth it exists for.
 #
 # The NINTH covers V114-V116 with their records (T100-T102, B29): the badge
 # was coloring an occupancy level with a flow's absolute threshold, and the
@@ -52,7 +72,7 @@
 # next legitimate sentence" state the seventh raise was itself
 # correcting. 41,000 against 36,400 is ~12.6%, inside the band.
 # History: 19,542 -> 20,500 (T49) -> 21,500 -> 25,000 -> 27,500 -> 31,000
-# -> 34,000 -> 36,000 -> 41,000 -> 46,000. Nine raises, every addition correct: the spec grows
+# -> 34,000 -> 36,000 -> 41,000 -> 46,000 -> 52,000. Ten raises, every addition correct: the spec grows
 # because the project does (103 invariants). Why each raise was justified
 # lives in its commit, not here (V26).
 #
@@ -119,5 +139,5 @@
 # commit rather than here (V26). A README that grows because the project went
 # public is the project growing; a README that grows every week is not, and
 # the next raise should be asked to prove which it is.
-SPEC.md    46000
-README.md  6500
+SPEC.md    52000
+README.md  5800
