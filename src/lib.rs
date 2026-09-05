@@ -23,6 +23,8 @@ mod discover;
 mod docs;
 mod doctor;
 mod doctorfmt;
+#[cfg(feature = "session")]
+mod doctorsession;
 mod estcmd;
 pub mod estimate;
 #[cfg(feature = "session")]

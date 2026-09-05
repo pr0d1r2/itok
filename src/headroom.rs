@@ -48,7 +48,7 @@ struct Raw {
 }
 
 /// One `df` row: capacity, occupancy, and the rate triple.
-struct Room {
+pub(crate) struct Room {
     /// The context's capacity. `None` when nothing named one (V92).
     capacity: Option<u64>,
     /// Current occupancy -- exact, from the harness's own usage record.
@@ -93,7 +93,7 @@ fn report(raw: &Raw, cap: Option<u64>, task: Option<u64>) -> Output {
 }
 
 /// The row, or `None` when no turn reported usage -- absent, not zero (V47).
-fn room_of(
+pub(crate) fn room_of(
     parsed: &Session,
     cap: Option<u64>,
     task: Option<u64>,
@@ -169,7 +169,7 @@ impl Room {
     /// Turns until full at that rate -- an EXTRAPOLATION (V93), never a
     /// verdict. A rate of zero yields `None`: "never fills" is a claim,
     /// and infinity is not a column.
-    fn turns_left(&self) -> Option<(u64, usize)> {
+    pub(crate) fn turns_left(&self) -> Option<(u64, usize)> {
         let (rate, window) = self.current()?;
         let left = self.avail()?.checked_div(rate)?;
         Some((left, window))
@@ -224,7 +224,7 @@ fn tasks_cell(room: &Room, h: bool) -> String {
     }
 }
 
-fn table(room: &Room, h: bool) -> String {
+pub(crate) fn table(room: &Room, h: bool) -> String {
     format!(
         "{HEADER}{}{:>8} {:>9} {:>9} {:>5} {:>15} {:>15}{}\n",
         task_header(room),
@@ -325,7 +325,7 @@ const METHODS: &str = "\"unit\":\"input_tokens\",\
      \"rate_unit\":\"input_tokens_per_turn\",\"used_method\":\"actual\",\
      \"turns_left_method\":\"extrapolated at the recent rate\"";
 
-fn json(room: &Room) -> String {
+pub(crate) fn json(room: &Room) -> String {
     format!("{{{},{},{METHODS}}}\n", json_df(room), json_rate(room))
 }
 

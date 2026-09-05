@@ -170,10 +170,10 @@ Token cost of files, git-tracked by default. `--bpe` swaps bytes/4 for a real to
 ### `doctor`
 
 ```text
-doctor [--model X[,Y...]] [--window N] [--ollama[=HOSTS]] [--format human|json] [-C dir] [paths...]
+doctor [--session [<id>]] [--model X[,Y...]] [--window N] [--ollama[=HOSTS]] [-h] [--format human|json] [-C dir] [paths...]
 ```
 
-Advisory health check: fit-to-window, budget balance, noise ratio, estimate confidence. Reports and suggests; never gates. `--model X` resolves an encoding via `.context-models`, and `--model a,b` narrows an `--ollama` fleet to those models (one unresolvable name fails the call); `--ollama[=HOSTS]` discovers live model windows across a fleet; a bare host needs the `=` form.
+Advisory health check: fit-to-window, budget balance, noise ratio, estimate confidence. Reports and suggests; never gates. `--model X` resolves an encoding via `.context-models`, and `--model a,b` narrows an `--ollama` fleet to those models (one unresolvable name fails the call); `--ollama[=HOSTS]` discovers live model windows across a fleet; a bare host needs the `=` form. `--session [<id>]` retargets the whole verb at a running CONTEXT instead of a fileset: it prints `headroom`'s row for that session -- window, used, avail, use%, the rate triple and `~turns left` -- and then projects each item's occupancy forward across the turns remaining, biggest first. That product is the forward half of `top`'s `carried`, and it inherits the same caveat, read off the session's own record: a transcript carrying a compaction boundary already dropped items, so the projection is labelled an upper bound. No capacity means no `~turns left` and therefore no projection at all, and the report says so rather than printing an empty block. Every figure comes from `headroom` or `top`; this form composes them and adds no estimator of its own. A second positional is a usage error: this form has no fileset.
 
 ### `diff`
 
