@@ -188,6 +188,12 @@ mod tests {
         crate::testutil::repo_root()
     }
 
+    /// Git's well-known empty tree. Diffing FROM it means "the whole
+    /// repo entered", which is a delta no commit can flatten -- the one
+    /// baseline that does not couple a test to what HEAD happens to be
+    /// (V37).
+    const EMPTY_TREE: &str = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
+
     fn args(parts: &[&str]) -> Vec<String> {
         parts.iter().map(|s| (*s).to_owned()).collect()
     }
@@ -222,12 +228,23 @@ mod tests {
         assert!(o.out.lines().count() <= 3);
     }
 
+    /// B3, and then B35: the empty tree -> HEAD is a delta that EXISTS
+    /// whatever the last commit did. `HEAD~1..HEAD` couples the assertion
+    /// to the size of whatever happens to be on top, and a one-character
+    /// commit -- flipping a section T status from `.` to `x` -- costs zero
+    /// tokens, so the delta was zero and `--exit-code` correctly returned
+    /// 0 while the test demanded 1.
+    ///
+    /// Its sibling two tests down was fixed for exactly this in B3 and
+    /// carries the reasoning in a comment. This one kept the coupling for
+    /// nine weeks: one rule, not carried to the path beside it (B11).
     #[test]
     fn exit_code_is_one_when_there_is_a_delta() {
         if !crate::testutil::dogfood() {
             return;
         }
-        let o = diff(&args(&["-C", &root(), "--exit-code", "HEAD~1", "HEAD"]));
+        let o =
+            diff(&args(&["-C", &root(), "--exit-code", EMPTY_TREE, "HEAD"]));
         assert_eq!(o.code, 1);
     }
 
@@ -240,8 +257,7 @@ mod tests {
         // breaches -- STATE-independent (V37). `HEAD~1..HEAD` couples to
         // the last commit's size: a near-zero-delta commit as HEAD (a
         // config number bump) made this spuriously pass with no breach
-        // (B3). The empty-tree hash is git's well-known constant.
-        const EMPTY_TREE: &str = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
+        // (B3).
         let o =
             diff(&args(&["-C", &root(), "--budget", "1", EMPTY_TREE, "HEAD"]));
         assert_eq!(o.code, 1);
