@@ -70,17 +70,18 @@ fn run(raw: &Raw) -> Output {
     // (V47's rule -- absent must stay distinguishable from zero). This
     // comment used to sit above two silent `ok("")` returns that did
     // exactly what it forbids; V104 now binds them (B14).
-    let parsed = match crate::tracecmd::session_at(
+    let (parsed, compactions) = match crate::tracecmd::session_with_compactions(
         raw.session.as_deref(),
         raw.chdir.as_deref(),
     ) {
-        Ok((p, _)) => p,
+        Ok((p, c, _)) => (p, c),
         Err(o) => return o,
     };
     let rows = rank(&parsed, raw);
+    let caveat = Caveat::of(&compactions);
     Output::ok(match raw.format {
-        Format::Json => json(&rows, &parsed),
-        Format::Human => report(&rows, &parsed, &raw.style),
+        Format::Json => json(&rows, &parsed, caveat),
+        Format::Human => report(&rows, &parsed, &raw.style, caveat),
     })
 }
 
@@ -185,7 +186,12 @@ fn turns_after(turns: &[String], last: &str) -> usize {
 /// `estimate --top N`, which does the same. Consistency beats a
 /// standalone improvement here: two verbs whose `--top` meant different
 /// things would be the near-collision V2 warns about.
-fn report(rows: &[Row], parsed: &Session, style: &Style) -> String {
+fn report(
+    rows: &[Row],
+    parsed: &Session,
+    style: &Style,
+    caveat: Caveat<'_>,
+) -> String {
     let total: u64 = rows.iter().fold(0, |a, r| a.saturating_add(r.tokens));
     let mut out = if style.summarize {
         String::new()
@@ -194,24 +200,61 @@ fn report(rows: &[Row], parsed: &Session, style: &Style) -> String {
     };
     out.push_str(&total_line(total, style));
     if !style.summarize {
-        out.push_str(CARRIED_LEGEND);
+        out.push_str(&caveat.legend());
     }
     out.push_str(&ledger(parsed, style));
     out
 }
 
-/// What the `carried` column means and what it assumes (V98).
+/// What THIS session's own record says the `carried` product is worth
+/// (V98).
 ///
-/// Printed only when rows are (under `-s` there is no column to explain),
-/// and states the CAVEAT rather than leaving it implicit: the product
-/// holds for uncompacted sessions, which is all that has been observed.
-/// If items ever do leave a context, it becomes an upper bound -- saying
-/// so here is what keeps it from silently becoming a claim (V3).
+/// The caveat used to be blanket -- "assumes no compaction", printed on
+/// every session, on the premise that no compaction had ever been
+/// observed. That premise was false for over a month (B29). The
+/// transcript answers the question per session, so the answer is read
+/// here rather than assumed in either direction.
 ///
-/// No advice, no verdict: the arithmetic and its premise, nothing else
-/// (V59).
-const CARRIED_LEGEND: &str = "  carried = itok x turns since entry (cache re-billing; \
-     assumes no compaction)\n";
+/// Borrowed rather than owned: the timestamp belongs to the record, and
+/// copying it would be a second place for it to go stale.
+#[derive(Clone, Copy)]
+pub(crate) struct Caveat<'a> {
+    /// When items first left this context, or `None` when they never did.
+    first: Option<&'a str>,
+    /// How many boundaries the transcript recorded.
+    count: usize,
+}
+
+impl<'a> Caveat<'a> {
+    fn of(compactions: &'a [crate::session::Compaction]) -> Self {
+        Self {
+            first: compactions.first().map(|c| c.ts.as_str()),
+            count: compactions.len(),
+        }
+    }
+
+    /// The human legend. No advice, no verdict: the arithmetic and its
+    /// premise, nothing else (V59).
+    fn legend(&self) -> String {
+        let tail = self.first.map_or_else(
+            || "assumes no compaction".to_owned(),
+            |ts| format!("UPPER BOUND -- this session compacted at {ts}"),
+        );
+        format!(
+            "  carried = itok x turns since entry (cache re-billing; {tail})\n"
+        )
+    }
+
+    /// The same claim in the shape json carries a method (V3): every
+    /// number names how it was arrived at, including this one.
+    fn method(&self) -> &'static str {
+        if self.first.is_some() {
+            "bytes/4 x turns-since-entry (UPPER BOUND: this session compacted)"
+        } else {
+            "bytes/4 x turns-since-entry (assumes no compaction)"
+        }
+    }
+}
 
 /// The accounted/unaccounted split (V44). Each number names its method
 /// (V3), because they do not share one: the window is EXACT, from the
@@ -323,9 +366,9 @@ fn size(n: u64, style: &Style) -> String {
 
 /// One JSON object per row (V9), same field vocabulary as every other
 /// verb so a parser learns it once.
-fn json(rows: &[Row], parsed: &Session) -> String {
-    let mut out: String = rows.iter().map(json_object).collect();
-    out.push_str(&json_summary(parsed));
+fn json(rows: &[Row], parsed: &Session, caveat: Caveat<'_>) -> String {
+    let mut out: String = rows.iter().map(|r| json_object(r, caveat)).collect();
+    out.push_str(&json_summary(parsed, caveat));
     out
 }
 
@@ -366,20 +409,21 @@ fn json_cache(parsed: &Session) -> String {
     )
 }
 
-fn json_summary(parsed: &Session) -> String {
+fn json_summary(parsed: &Session, caveat: Caveat<'_>) -> String {
     let Some(win) = parsed.window() else {
         return String::new();
     };
     let counts = json_counts(parsed);
     let cache = json_cache(parsed);
+    let gap = parsed.unaccounted_tokens().unwrap_or(0);
     format!(
         "{{\"summary\":true,\"window\":{win},\"accounted\":{acc},\
          \"unaccounted\":{gap},\"billed\":{billed},{cache},{counts},\
-         \"unit\":\"input_tokens\",\"window_method\":\"actual\",\
-         \"accounted_method\":\"bytes/4\"}}\n",
+         \"compactions\":{n},\"unit\":\"input_tokens\",\
+         \"window_method\":\"actual\",\"accounted_method\":\"bytes/4\"}}\n",
         acc = parsed.accounted_tokens(),
-        gap = parsed.unaccounted_tokens().unwrap_or(0),
         billed = parsed.billed_input(),
+        n = caveat.count,
     )
 }
 
@@ -391,17 +435,17 @@ fn json_summary(parsed: &Session) -> String {
 /// on the ROW rather than in the summary object because the summary is
 /// emitted only when a turn reported usage, and a caveat that disappears
 /// with the window would leave the number looking unconditional (V3).
-fn json_object(r: &Row) -> String {
+fn json_object(r: &Row, caveat: Caveat<'_>) -> String {
     format!(
         "{{\"what\":\"{}\",\"tokens\":{},\"loads\":{},\"stale_turns\":{},\
-         \"carried\":{},\"carried_method\":\"bytes/4 x turns-since-entry \
-         (assumes no compaction)\",\
+         \"carried\":{},\"carried_method\":\"{}\",\
          \"unit\":\"input_tokens\",\"estimated\":true,\"method\":\"bytes/4\"}}\n",
         escape(&r.what),
         r.tokens,
         r.loads,
         r.stale,
         r.carried,
+        caveat.method(),
     )
 }
 
@@ -947,8 +991,8 @@ mod tests {
         }
     }
 
-    /// V98: the caveat is STATED, not implicit. The product holds for
-    /// uncompacted sessions, and that is all that has been observed.
+    /// V98: the caveat is STATED, not implicit, and this fixture carries
+    /// no compaction boundary, so it is the exact reading that prints.
     #[test]
     fn the_report_states_the_uncompacted_caveat() {
         let out = run_on("tool-shapes.jsonl", &[]);
@@ -957,15 +1001,48 @@ mod tests {
     }
 
     /// V59: the legend explains the arithmetic and its premise. It does
-    /// not tell the reader what to do about the number.
+    /// not tell the reader what to do about the number -- in EITHER of
+    /// its two readings.
     #[test]
     fn the_carried_column_gives_no_advice() {
+        let compacted = Caveat {
+            first: Some("2026-08-16T05:19:24.283Z"),
+            count: 1,
+        };
+        let both = Caveat::of(&[]).legend() + &compacted.legend();
         for word in ["should", "consider", "unhealthy", "reduce", "too"] {
-            assert!(
-                !CARRIED_LEGEND.to_lowercase().contains(word),
-                "no advice: {word}"
-            );
+            assert!(!both.to_lowercase().contains(word), "no advice: {word}");
         }
+    }
+
+    /// B29: the caveat is READ off the session, not assumed. A
+    /// transcript carrying a compaction says its product is an upper
+    /// bound, and says when the items left.
+    #[test]
+    fn a_compacted_session_labels_carried_an_upper_bound() {
+        let caveat = Caveat {
+            first: Some("2026-08-16T05:19:24.283Z"),
+            count: 2,
+        };
+        let legend = caveat.legend();
+        assert!(legend.contains("UPPER BOUND"), "{legend}");
+        assert!(legend.contains("2026-08-16T05:19:24.283Z"), "{legend}");
+        assert!(!legend.contains("assumes no compaction"), "{legend}");
+        assert!(
+            caveat.method().contains("UPPER BOUND"),
+            "{}",
+            caveat.method()
+        );
+    }
+
+    /// And a session with no boundary keeps the exact reading: the fix
+    /// for a blanket claim is not the opposite blanket claim.
+    #[test]
+    fn a_session_that_never_compacted_keeps_the_exact_reading() {
+        let caveat = Caveat::of(&[]);
+        assert!(caveat.legend().contains("assumes no compaction"));
+        assert!(!caveat.legend().contains("UPPER BOUND"));
+        assert!(caveat.method().contains("assumes no compaction"));
     }
 
     /// Under `-s` there is no column, so there is nothing to explain --
