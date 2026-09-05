@@ -49,9 +49,9 @@ struct Raw {
 
 /// One ranked line: what was loaded, how much, how often, how stale, and
 /// how much re-billing it has carried since it entered (V98).
-struct Row {
-    what: String,
-    tokens: u64,
+pub(crate) struct Row {
+    pub(crate) what: String,
+    pub(crate) tokens: u64,
     loads: usize,
     stale: usize,
     carried: u64,
@@ -94,6 +94,20 @@ fn rank(parsed: &Session, raw: &Raw) -> Vec<Row> {
     if let Some(n) = raw.top.as_ref().and_then(|n| n.parse::<usize>().ok()) {
         rows.truncate(n);
     }
+    rows
+}
+
+/// The same ranking `top` prints, for a caller that wants the rows rather
+/// than the report (V64).
+///
+/// `doctor --session` needs occupancy per item to project it forward
+/// (V99: every figure comes from `headroom` or `top`, never a new
+/// estimator). It takes the ranking WITHOUT `--top`, because truncation
+/// is a display choice and the caller has its own.
+pub(crate) fn ranked(parsed: &Session) -> Vec<Row> {
+    let events: Vec<&LoadEvent> = parsed.events.iter().collect();
+    let mut rows = group(&events, &turn_times(parsed));
+    rows.sort_by(|a, b| b.tokens.cmp(&a.tokens).then(a.what.cmp(&b.what)));
     rows
 }
 
@@ -226,7 +240,7 @@ pub(crate) struct Caveat<'a> {
 }
 
 impl<'a> Caveat<'a> {
-    fn of(compactions: &'a [crate::session::Compaction]) -> Self {
+    pub(crate) fn of(compactions: &'a [crate::session::Compaction]) -> Self {
         Self {
             first: compactions.first().map(|c| c.ts.as_str()),
             count: compactions.len(),
@@ -235,7 +249,7 @@ impl<'a> Caveat<'a> {
 
     /// The human legend. No advice, no verdict: the arithmetic and its
     /// premise, nothing else (V59).
-    fn legend(&self) -> String {
+    pub(crate) fn legend(&self) -> String {
         let tail = self.first.map_or_else(
             || "assumes no compaction".to_owned(),
             |ts| format!("UPPER BOUND -- this session compacted at {ts}"),
@@ -247,7 +261,7 @@ impl<'a> Caveat<'a> {
 
     /// The same claim in the shape json carries a method (V3): every
     /// number names how it was arrived at, including this one.
-    fn method(&self) -> &'static str {
+    pub(crate) fn method(&self) -> &'static str {
         if self.first.is_some() {
             "bytes/4 x turns-since-entry (UPPER BOUND: this session compacted)"
         } else {

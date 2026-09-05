@@ -15,6 +15,13 @@ use crate::walk::bytes;
 use std::path::{Path, PathBuf};
 
 pub(crate) fn doctor(rest: &[String]) -> Output {
+    // `--session` retargets the verb at a CONTEXT (V99/T76). Routed
+    // BEFORE the shared parser, because the flag belongs to doctor and
+    // putting it in `Opts` would hand it to `estimate` and `fit` too.
+    #[cfg(feature = "session")]
+    if crate::doctorsession::targeted(rest) {
+        return crate::doctorsession::session(rest);
+    }
     match parse(rest) {
         Ok(opts) => run(&opts),
         Err(e) => Output::usage_err(format!("itok: {e}")),

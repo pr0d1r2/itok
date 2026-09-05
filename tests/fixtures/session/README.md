@@ -14,6 +14,7 @@ shape occurs. None is imagined:
 | `tool-shapes.jsonl` | per-tool result shapes: bash, edit, write, read | shapes are tool-specific, not uniform (V76) |
 | `truncated.jsonl` | `persistedOutputSize` >> the `stdout` actually billed | 5,749,032 bytes vs 30,000 chars (V76) |
 | `torn-tail.jsonl` | a final line cut mid-write | the file appends live (V43) |
+| `growing.jsonl` | a window that GROWS across 12 turns, plus one tool result | a rate needs turns to be read from; `headroom`/`doctor --session` report nothing without one (V92) |
 | `weird.jsonl` | bare-string result, null `isSidechain`, unknown type, unknown fields | all four observed (V43) |
 
 Numbers are small and distinctive so a wrong sum is obvious by eye.
