@@ -256,7 +256,7 @@ What entered the context, when, and how big. Defaults to the newest transcript f
 ### `top`
 
 ```text
-top [<session>] [-- <path>] [-h] [-s] [--top N] [--format human|json]
+top [<session>] [-- <path>] [-h] [-s] [--top N] [--cost --model X] [--format human|json] [-C dir]
 ```
 
 Ranked context occupancy for a session, `du`-shaped. Report-only.
@@ -264,6 +264,8 @@ Ranked context occupancy for a session, `du`-shaped. Report-only.
 How much each thing cost, how many times it was loaded, how many turns since, and how much cache re-billing it has `carried` since it entered. Whether that product is exact is read off the session: a transcript carrying a compaction boundary had items leave, so its `carried` is an upper bound and the report names when.
 
 `-- <path>` narrows to one path's loads. Ends with the accounted-vs-unaccounted split, each number naming its method.
+
+`--cost --model X` prices the session, using the `in/cr/cc` column in `.context-models` -- three integers per million tokens, in whatever unit that file declares. itok bundles no price list and names no currency: prices change and vary by contract, so a built-in one would go stale into a confident lie. The rates multiply the harness's own usage split, not this report's rows, because a row's tokens are an estimate and its cache split is unattributable. A model with no rate column, or no `--model` at all, prints why there is no price rather than printing none.
 
 ### `headroom`
 

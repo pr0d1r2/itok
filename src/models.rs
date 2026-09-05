@@ -26,6 +26,28 @@ const MODELS: &str = ".context-models";
 pub(crate) struct Model {
     pub(crate) encoding: &'static Method,
     pub(crate) window: Option<u64>,
+    pub(crate) rates: Option<Rates>,
+}
+
+/// What a million tokens cost, split three ways (V61).
+///
+/// THREE rates, because V61's own clause requires it: cache-read bills at
+/// a fraction of fresh input and cache-creation at a premium, so a single
+/// rate is a wrong number wearing a currency.
+///
+/// The UNIT is whatever the file declares -- itok bundles no price list
+/// and names no currency, because prices change, vary by contract, and a
+/// built-in would go stale into a confident lie. Integers, so the
+/// arithmetic that follows carries no float and no rounding anyone has to
+/// argue about.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct Rates {
+    /// Fresh input, per million tokens.
+    pub(crate) input: u64,
+    /// Cache reads, per million tokens.
+    pub(crate) cache_read: u64,
+    /// Cache writes, per million tokens.
+    pub(crate) cache_write: u64,
 }
 
 /// A run's tier + window as one `Model`: a named model resolves both from
@@ -37,6 +59,7 @@ pub(crate) fn tier(model: Option<&str>, root: &Path) -> Result<Model, String> {
         None => Ok(Model {
             encoding: default(),
             window: None,
+            rates: None,
         }),
     }
 }
@@ -66,16 +89,16 @@ pub(crate) fn resolve(root: &Path, name: &str) -> Result<Model, String> {
 
 /// Look up NAME's row. Absent model, an encoding this build cannot honor,
 /// or a malformed window are all errors -- never a silent wrong value.
-/// A row's three fields: model, encoding, and an optional window.
-type Row = (String, String, Option<String>);
+/// A row's fields: model, encoding, an optional window, optional rates.
+type Row = (String, String, Option<String>, Option<String>);
 
 fn find(text: &str, name: &str) -> Result<Model, String> {
     // Every row is parsed BEFORE the lookup, so an unreadable row fails
     // even when the requested model is found earlier in the file (V88): the
     // author wrote that row expecting it to work.
-    let (_, enc, win) = rows(text)?
+    let (_, enc, win, rate) = rows(text)?
         .into_iter()
-        .find(|(m, _, _)| m == name)
+        .find(|(m, _, _, _)| m == name)
         .ok_or_else(|| {
             format!("unknown model '{name}'; add a row to {MODELS}")
         })?;
@@ -85,9 +108,11 @@ fn find(text: &str, name: &str) -> Result<Model, String> {
     // should win, or `--no-default-features` reports a build limitation for
     // a row that is simply wrong.
     let window = window_of(win.as_deref(), name)?;
+    let rates = rates_of(rate.as_deref(), name)?;
     Ok(Model {
         encoding: encoding(&enc)?,
         window,
+        rates,
     })
 }
 
@@ -117,7 +142,32 @@ fn row(line: &str) -> Option<Row> {
     let mut p = line.split_whitespace();
     let model = p.next()?.to_owned();
     let enc = p.next()?.to_owned();
-    Some((model, enc, p.next().map(str::to_owned)))
+    let window = p.next().map(str::to_owned);
+    Some((model, enc, window, p.next().map(str::to_owned)))
+}
+
+/// A row's optional rate column: `in/cr/cc`, three integers.
+///
+/// A malformed one is an ERROR, never an absent one (V11/B7): a row whose
+/// author wrote rates expecting them to work must not be read as a row
+/// with none, because the difference between "no money column" and "the
+/// wrong money column" is the whole of V61.
+fn rates_of(rate: Option<&str>, name: &str) -> Result<Option<Rates>, String> {
+    let Some(text) = rate else { return Ok(None) };
+    let mut parts = text.split('/').map(str::parse::<u64>);
+    let (Some(Ok(input)), Some(Ok(read)), Some(Ok(write)), None) =
+        (parts.next(), parts.next(), parts.next(), parts.next())
+    else {
+        return Err(format!(
+            "bad rates for '{name}': expected `in/cr/cc`, three whole \
+             numbers per million tokens, got `{text}`"
+        ));
+    };
+    Ok(Some(Rates {
+        input,
+        cache_read: read,
+        cache_write: write,
+    }))
 }
 
 /// Names the FILE, the LINE, and what was expected (V88). The sibling
@@ -126,7 +176,8 @@ fn row(line: &str) -> Option<Row> {
 /// the author can SEE in the file -- a worse kind of confusing.
 fn row_err(line: usize, text: &str) -> String {
     format!(
-        "{MODELS}:{line}: expected `<model> <encoding> [window]`, got `{text}`"
+        "{MODELS}:{line}: expected \
+         `<model> <encoding> [window] [in/cr/cc]`, got `{text}`"
     )
 }
 
@@ -147,22 +198,65 @@ mod tests {
 
     // gpt-4o carries a window (T14); claude-x is encoding-only (window
     // optional, back-compatible with the T7 two-field row).
-    const TABLE: &str = "# models\n\ngpt-4o   o200k  128k\nclaude-x o200k\n";
+    const TABLE: &str = "# models\n\ngpt-4o   o200k  128k  300/30/375\n\
+     claude-x o200k\n";
 
     #[test]
     fn rows_skip_comments_and_blanks() {
         let got: Vec<_> = rows(TABLE).unwrap_or_default();
+        let names: Vec<&str> =
+            got.iter().map(|(m, _, _, _)| m.as_str()).collect();
+        assert_eq!(names, vec!["gpt-4o", "claude-x"]);
+    }
+
+    /// V61: three rates, because cache reads bill at a fraction and cache
+    /// writes at a premium. One rate would be a wrong number wearing a
+    /// currency.
+    ///
+    /// Tested through `rates_of` rather than `find`, so it runs in EVERY
+    /// build: `find` resolves the encoding first, and a table naming
+    /// `o200k` is unreadable under `--no-default-features` for a reason
+    /// that has nothing to do with the rate column.
+    #[test]
+    fn a_rate_column_carries_the_cache_split() {
+        let got = rates_of(Some("300/30/375"), "m").ok().flatten();
         assert_eq!(
             got,
-            vec![
-                (
-                    "gpt-4o".to_owned(),
-                    "o200k".to_owned(),
-                    Some("128k".to_owned())
-                ),
-                ("claude-x".to_owned(), "o200k".to_owned(), None),
-            ]
+            Some(Rates {
+                input: 300,
+                cache_read: 30,
+                cache_write: 375,
+            })
         );
+    }
+
+    /// A row with no rates has no money, and that is not zero (V47/V61):
+    /// a guessed price is the thing V61 exists to refuse.
+    #[test]
+    fn a_row_without_rates_has_no_money() {
+        assert_eq!(rates_of(None, "m"), Ok(None));
+    }
+
+    /// B7's rule on a new column: a malformed rate is an ERROR, never an
+    /// absent one. The author wrote it expecting it to work, and "no money
+    /// column" and "the wrong money column" are the two answers V61 exists
+    /// to keep apart.
+    #[test]
+    fn a_malformed_rate_fails_rather_than_reading_as_absent() {
+        for bad in ["300/30", "300/30/375/9", "300/x/375", "free", ""] {
+            assert!(
+                rates_of(Some(bad), "m").is_err(),
+                "`{bad}` parsed instead of failing"
+            );
+        }
+    }
+
+    /// And the column reaches `Model`, which is what the caller reads.
+    #[cfg(feature = "bpe")]
+    #[test]
+    fn a_resolved_model_carries_its_rates() {
+        let got = find(TABLE, "gpt-4o").ok().and_then(|m| m.rates);
+        assert_eq!(got.map(|r| r.cache_read), Some(30));
     }
 
     #[test]
@@ -209,6 +303,7 @@ mod tests {
         let m = find(TABLE, "gpt-4o").ok().unwrap_or(Model {
             encoding: &crate::render::DUMMY,
             window: None,
+            rates: None,
         });
         assert_eq!(m.encoding.label(), "o200k");
         assert!(!m.encoding.approximate);
