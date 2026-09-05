@@ -26,17 +26,7 @@
 [![built with SDD](https://img.shields.io/badge/built_with-spec--driven_development-D97757)](SPEC.md)
 <!-- END badges -->
 
-> ### Built by an LLM, deliberately and in the open
->
-> This repository — code, spec, tests and prose — was written by [Claude Code](https://claude.com/claude-code) running Anthropic's **Claude Opus 5**. 93 of 107 commits carry a `Co-Authored-By: Claude Opus 5` trailer. A human owns every decision, reviews every diff, and is accountable for what ships.
->
-> **The method is spec-driven development.** [`SPEC.md`](SPEC.md) is the law rather than a description written afterwards: the invariants that must stay true, the tasks that remain, and every bug found so far paired with the rule that now catches it. A rule and its checker land in the same commit, because a rule with no runner gates nothing (§V17).
->
-> **The guardrails are git hooks that also run on CI.** Entering the dev shell (`nix develop`, or `direnv allow`) installs `pre-commit` and `pre-push`, which run [hk](https://github.com/jdx/hk) against one definition of the gate in [`hk.pkl`](hk.pkl) — 26 steps on commit, 32 on push, the slow half adding coverage, the tarball's contents and the network axis. [`ci.yml`](.github/workflows/ci.yml) calls that same definition, so a laptop and a runner cannot disagree. The badges above are generated from those runs rather than typed here, because a number typed into prose is true the day it is written and quietly wrong after.
->
-> **The record is deliberately unflattering.** `§B` logs what got through: `B16` records that the spec promised TLS the build could not perform, and that no test covered the path — found by a reader, not by the gate.
->
-> Deeper: [`AGENTS.md`](AGENTS.md) is the working guide · [`CONTRIBUTING.md`](docs/CONTRIBUTING.md) is the loop · [`INTEGRATION.md`](docs/INTEGRATION.md) is the gate and its known gaps.
+Read [LLM-DISCLAIMER](docs/LLM-DISCLAIMER.md) first.
 
 Estimate the token / context cost of files and changes, from the command
 line. `git`- and `du`-shaped, so if you know those tools you already know
