@@ -71,27 +71,40 @@ pub(crate) fn ansi(fill: u64, truecolor: bool) -> String {
     format!("\x1b[38;2;{r};{g};{b}m")
 }
 
+/// The three bands, cut from the ramp rather than from a second set of
+/// numbers. Red is `ALARM` -- the same event the mark reports -- and
+/// green is the green sector of the wheel, so a 16-colour terminal and a
+/// truecolor one change colour at the same fills instead of disagreeing
+/// across the whole top fifth of the gauge.
 fn band(fill: u64) -> &'static str {
-    if fill < 500 {
-        GREEN
-    } else if fill < 800 {
-        AMBER
-    } else {
+    if fill >= ALARM {
         RED
+    } else if hue(fill) > SECTOR {
+        GREEN
+    } else {
+        AMBER
     }
 }
 
 /// Hue for a fill, with a `sqrt` gamma: green through the flat half,
-/// diving over the last fifth.
+/// diving over the last fifth, and PINNED at red from `ALARM` on.
 ///
 /// A LINEAR ramp spends its resolution where nothing is at stake -- the
 /// walk from 10% to 50% full is the part of a session nobody needs
 /// warning about, and it would eat a third of the wheel. `sqrt` moves
 /// the colour slowly while there is room and quickly once there is not,
 /// which is the shape of the reader's actual concern.
+///
+/// The ramp runs out at `ALARM` rather than at `FULL` because V115 put
+/// the mark and the colour on the same event, and a ramp that reached
+/// red only at `FULL` broke that: at the fill where `!` first appears it
+/// still rendered 255,157,0 -- orange, the colour of caution, under a
+/// mark that means "do not miss this". Two channels were added to say
+/// one thing twice; they have to run out together to do that.
 fn hue(fill: u64) -> u64 {
-    let room = FULL.saturating_sub(fill);
-    let root = room.saturating_mul(FULL).isqrt().min(FULL);
+    let room = ALARM.saturating_sub(fill);
+    let scaled = room.saturating_mul(FULL).checked_div(ALARM).unwrap_or(0);
+    let root = scaled.saturating_mul(FULL).isqrt().min(FULL);
     GREEN_HUE
         .saturating_mul(root)
         .checked_div(FULL)
@@ -169,7 +182,7 @@ mod tests {
     #[test]
     fn the_ramp_holds_green_through_the_flat_half() {
         assert!(hue(500) > SECTOR, "hue at 50% was {}", hue(500));
-        assert!(hue(900) < SECTOR, "hue at 90% was {}", hue(900));
+        assert!(hue(ALARM) < SECTOR, "hue at the alarm was {}", hue(ALARM));
     }
 
     #[test]
@@ -202,8 +215,28 @@ mod tests {
     #[test]
     fn without_truecolor_the_same_fill_falls_to_three_bands() {
         assert_eq!(ansi(100, false), GREEN);
-        assert_eq!(ansi(600, false), AMBER);
+        assert_eq!(ansi(800, false), AMBER);
         assert_eq!(ansi(950, false), RED);
+    }
+
+    /// The failure this fix exists for: at the fill where `!` first
+    /// appears the ramp still rendered orange, so the mark and the
+    /// colour contradicted each other for the whole top tenth.
+    #[test]
+    fn the_alarm_zone_is_red_in_both_renderings() {
+        for f in ALARM..=FULL {
+            assert_eq!(rgb(hue(f)), (MAX_CHANNEL, 0, 0), "ramp at {f}");
+            assert_eq!(band(f), RED, "band at {f}");
+            assert_eq!(alarm(f), "!", "mark at {f}");
+        }
+    }
+
+    /// Below the alarm the ramp must NOT be red yet, or the gauge would
+    /// spend its last fifth saying the same thing and the mark would
+    /// stop meaning anything.
+    #[test]
+    fn the_ramp_reaches_red_no_earlier_than_the_alarm() {
+        assert!(hue(ALARM - 1) > 0, "hue just under alarm was 0");
     }
 
     #[test]
