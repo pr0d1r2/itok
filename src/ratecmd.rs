@@ -75,10 +75,23 @@ impl Compact {
     /// record (V116), which is the honest answer and the one that cannot
     /// go stale. A threshold guessed from a different model is V2 wearing
     /// a config file.
+    /// The FULL id is tried first and the base id only after it, for the
+    /// reason spelled out on `models::base_id`: a `[1m]` variant compacts
+    /// somewhere else entirely, so an entry naming it outright outranks
+    /// the bare one. Without the fallback a suffixed id matched NOTHING
+    /// here, fell past the capacity rung too, and left the badge with no
+    /// red line at all -- which reads as a calm absolute band rather than
+    /// as the missing measurement it is.
     fn point(&self, model: Option<&str>) -> Option<u64> {
         match self {
             Self::Every(n) => Some(*n),
-            Self::PerModel(table) => table.get(model?).copied(),
+            Self::PerModel(table) => {
+                let name = model?;
+                table
+                    .get(name)
+                    .or_else(|| table.get(crate::models::base_id(name)))
+                    .copied()
+            }
         }
     }
 }
@@ -1317,6 +1330,41 @@ mod tests {
         let compact = Compact::PerModel(table);
         assert_eq!(compact.point(Some("claude-opus-4-6")), None);
         assert_eq!(compact.point(None), None, "no model named at all");
+    }
+
+    /// The failure this fallback exists for: the harness names a
+    /// context-window variant with a bracketed suffix, so the id arriving
+    /// on the payload is `claude-opus-5[1m]` while every config key is
+    /// bare. Matching only the full string left the badge with no red
+    /// line at all.
+    #[test]
+    fn a_variant_suffix_falls_back_to_the_base_id() {
+        let mut table = std::collections::BTreeMap::new();
+        table.insert("claude-opus-5".to_owned(), 968_887);
+        let compact = Compact::PerModel(table);
+        assert_eq!(compact.point(Some("claude-opus-5[1m]")), Some(968_887));
+    }
+
+    /// ...but only as a FALLBACK. A table naming the variant outright is
+    /// stating a point for that variant, and it has to beat the base row.
+    #[test]
+    fn an_entry_for_the_variant_beats_the_base_entry() {
+        let mut table = std::collections::BTreeMap::new();
+        table.insert("claude-opus-5".to_owned(), 168_000);
+        table.insert("claude-opus-5[1m]".to_owned(), 968_887);
+        let compact = Compact::PerModel(table);
+        assert_eq!(compact.point(Some("claude-opus-5[1m]")), Some(968_887));
+        assert_eq!(compact.point(Some("claude-opus-5")), Some(168_000));
+    }
+
+    /// The fallback must not invent a base that was never there: an
+    /// unlisted model stays unlisted, suffix or no suffix (V121).
+    #[test]
+    fn a_variant_of_an_unlisted_model_still_gets_no_opinion() {
+        let mut table = std::collections::BTreeMap::new();
+        table.insert("claude-opus-5".to_owned(), 968_887);
+        let compact = Compact::PerModel(table);
+        assert_eq!(compact.point(Some("claude-opus-4-6[1m]")), None);
     }
 
     /// The scalar keeps meaning EVERY model, including a session whose
