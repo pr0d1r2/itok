@@ -92,16 +92,42 @@ pub(crate) fn resolve(root: &Path, name: &str) -> Result<Model, String> {
 /// A row's fields: model, encoding, an optional window, optional rates.
 type Row = (String, String, Option<String>, Option<String>);
 
+/// A model id stripped of its VARIANT suffix: `claude-opus-5[1m]` becomes
+/// `claude-opus-5`.
+///
+/// The harness names a context-window variant with a bracketed tag, and
+/// that id is what reaches us on the statusline payload. It is a REAL
+/// distinction -- a `[1m]` run holds a million tokens where the base run
+/// does not -- so the suffix is never discarded, only fallen back from.
+pub(crate) fn base_id(name: &str) -> &str {
+    match name.split_once('[') {
+        Some((base, tail)) if tail.ends_with(']') && !base.is_empty() => base,
+        _ => name,
+    }
+}
+
+/// NAME's row: the FULL id first, the base id only as a fallback.
+///
+/// Exact-first is the load-bearing half. A table that names the variant
+/// outright is stating a window FOR that variant and has to win; reaching
+/// for the base first would answer a question about a million-token run
+/// with a number written for the smaller one. The fallback is for the
+/// ordinary table that lists base ids only, where "no row" costs the
+/// caller its whole capacity rather than a little precision.
+fn row_for(rows: &[Row], name: &str) -> Option<Row> {
+    rows.iter()
+        .find(|(m, _, _, _)| m == name)
+        .or_else(|| rows.iter().find(|(m, _, _, _)| m == base_id(name)))
+        .cloned()
+}
+
 fn find(text: &str, name: &str) -> Result<Model, String> {
     // Every row is parsed BEFORE the lookup, so an unreadable row fails
     // even when the requested model is found earlier in the file (V88): the
     // author wrote that row expecting it to work.
-    let (_, enc, win, rate) = rows(text)?
-        .into_iter()
-        .find(|(m, _, _, _)| m == name)
-        .ok_or_else(|| {
-            format!("unknown model '{name}'; add a row to {MODELS}")
-        })?;
+    let (_, enc, win, rate) = row_for(&rows(text)?, name).ok_or_else(|| {
+        format!("unknown model '{name}'; add a row to {MODELS}")
+    })?;
     // Window BEFORE encoding, and the order is load-bearing: a malformed
     // window means the ROW is unreadable (V88), while an unhonorable
     // encoding only means THIS BUILD cannot serve it. The file's error
@@ -200,6 +226,60 @@ mod tests {
     // optional, back-compatible with the T7 two-field row).
     const TABLE: &str = "# models\n\ngpt-4o   o200k  128k  300/30/375\n\
      claude-x o200k\n";
+
+    /// The harness names a context-window variant with a bracketed tag,
+    /// and that id is what lands on the statusline payload.
+    #[test]
+    fn a_bracketed_variant_reduces_to_its_base_id() {
+        assert_eq!(base_id("claude-opus-5[1m]"), "claude-opus-5");
+        assert_eq!(base_id("claude-opus-4-6[1m]"), "claude-opus-4-6");
+    }
+
+    /// A plain id is its own base -- the common case must not be touched.
+    #[test]
+    fn an_unsuffixed_id_is_left_alone() {
+        assert_eq!(base_id("claude-opus-5"), "claude-opus-5");
+        assert_eq!(base_id(""), "");
+    }
+
+    /// Only a WELL-FORMED trailing tag counts. A stray bracket is part of
+    /// the name as far as this is concerned: trimming it would invent a
+    /// model id the table never held, and V11 wants an unknown model to
+    /// stay unknown rather than resolve to something adjacent.
+    #[test]
+    fn a_malformed_bracket_is_not_a_variant_tag() {
+        assert_eq!(base_id("claude-opus-5[1m"), "claude-opus-5[1m");
+        assert_eq!(base_id("[1m]"), "[1m]");
+        assert_eq!(base_id("claude[1m]extra"), "claude[1m]extra");
+    }
+
+    /// The `.context-models` half of the same fallback. Tested through
+    /// `row_for` rather than `find` for the reason given below: `find`
+    /// resolves the encoding, which a `--no-default-features` build cannot
+    /// do for an `o200k` row.
+    #[test]
+    fn a_variant_falls_back_to_the_base_row() {
+        let rows = rows(TABLE).unwrap_or_default();
+        let got = row_for(&rows, "claude-x[1m]");
+        assert_eq!(got.map(|(m, _, _, _)| m), Some("claude-x".to_owned()));
+    }
+
+    /// ...and a row naming the variant beats the base row, because the
+    /// windows genuinely differ.
+    #[test]
+    fn a_row_for_the_variant_wins_over_the_base_row() {
+        let table = "claude-x o200k 200k\nclaude-x[1m] o200k 1m\n";
+        let rows = rows(table).unwrap_or_default();
+        let got = row_for(&rows, "claude-x[1m]");
+        assert_eq!(got.and_then(|(_, _, w, _)| w), Some("1m".to_owned()));
+    }
+
+    /// The fallback must not conjure a base that was never listed.
+    #[test]
+    fn an_unlisted_model_has_no_row_suffix_or_not() {
+        let rows = rows(TABLE).unwrap_or_default();
+        assert!(row_for(&rows, "nonesuch[1m]").is_none());
+    }
 
     #[test]
     fn rows_skip_comments_and_blanks() {
