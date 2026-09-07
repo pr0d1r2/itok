@@ -253,9 +253,11 @@ fn scrubbed_git() -> Command {
 ///
 /// Printed when `mth` is absent. It names the DEV SHELL, not a sibling
 /// checkout: since the release the shell wraps a pinned flake input
-/// (`github:pr0d1r2/microlith/v0.5.0`), so nothing has to sit beside this
-/// repo. Naming the wrong cause sends the reader to fix a layout that is
-/// no longer part of the design.
+/// (`github:pr0d1r2/microlith`, at whatever tag `flake.nix` pins -- the
+/// tag is not repeated here, because a second copy of a number that moves
+/// is the defect this comment was part of), so nothing has to sit beside
+/// this repo. Naming the wrong cause sends the reader to fix a layout that
+/// is no longer part of the design.
 const NO_MTH: &str = "mth: not on PATH -- enter the dev shell (`nix develop`, or \
                       `direnv reload`). It provides mth from a pinned flake input, \
                       so nothing needs to sit beside this repo.";
