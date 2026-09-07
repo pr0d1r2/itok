@@ -357,9 +357,9 @@ used. The pieces are public too — `estimate`, `bpe`, `session`, `walk`,
 `render`, `json` — so a consumer can take the measurement without the
 grammar around it.
 
-This is not hypothetical: [`blackbox`](https://github.com/pr0d1r2/blackbox)
-depends on `itok` with `features = ["bpe"]` to size the slices it feeds to a
-model.
+This is not hypothetical: [`sherd`](https://github.com/pr0d1r2/sherd) depends
+on `itok` with `default-features = false, features = ["bpe"]` to size the
+slices it feeds to a model.
 
 ## Guarantees
 
