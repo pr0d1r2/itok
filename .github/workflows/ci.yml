@@ -222,9 +222,15 @@ jobs:
       #
       # The timeout above stays regardless. It is what made the deadlock
       # visible, and it is what bounds the next one.
-      - run: >
-          nix develop --command hk check --all --check
-          ${{ github.event_name == 'push' && '--no-fail-fast' || '' }}
+      # Same shape as the `nix build` step below: the expression is evaluated
+      # into `env:`, and the shell reads a variable. `${FAIL_FAST:+"$FAIL_FAST"}`
+      # expands to a single quoted argument when set and to NOTHING when empty,
+      # which is what a bare `$FAIL_FAST` would also do here -- but only by
+      # relying on word splitting, and a construct that is correct by accident
+      # is one a later edit breaks silently.
+      - env:
+          FAIL_FAST: ${{ github.event_name == 'push' && '--no-fail-fast' || '' }}
+        run: nix develop --command hk check --all --check ${FAIL_FAST:+"$FAIL_FAST"}
 
   # All three feature configurations must build reproducibly. The minimal
   # one is load-bearing: it is what proves the zero-dependency core actually
@@ -322,4 +328,12 @@ jobs:
           name: pr0d1r2
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
 
-      - run: nix build .#${{ matrix.package }}
+      # The matrix value reaches the shell through `env:` rather than being
+      # pasted into the script by the expression engine. Both are workflow-
+      # authored constants here, so nothing hostile can arrive either way --
+      # the point is that the shell receives DATA in a variable rather than
+      # having its own source code assembled around it, which is the only
+      # form that stays safe when the input later changes.
+      - env:
+          PACKAGE: ${{ matrix.package }}
+        run: nix build ".#$PACKAGE"
