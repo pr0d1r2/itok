@@ -201,6 +201,20 @@ local fast = new Mapping<String, Step> {
     glob = List(".github/workflows/*.yml", ".github/workflows/*.yaml")
     check = "actionlint {{files}}"
   }
+  // The security half of the same file. actionlint asks whether the
+  // workflow is CORRECT; zizmor asks what it can REACH -- token scope,
+  // credential persistence, injection of attacker-controlled context into
+  // a `run:` block, an action reference that is not pinned. The overlap
+  // between the two is close to nothing, which is why both run rather
+  // than one.
+  //
+  // `--persona=regular` is the default and is stated anyway: `pedantic`
+  // reports style, and a gate step that reports style is a step people
+  // learn to ignore.
+  ["zizmor"] {
+    glob = List(".github/workflows/*.yml", ".github/workflows/*.yaml")
+    check = "command -v zizmor >/dev/null 2>&1 || { echo 'hk: zizmor is not on PATH -- re-enter the dev shell (`nix develop`, or `direnv reload`). This is a MISSING TOOL, not a finding.' >&2; exit 1; }; zizmor --no-progress --persona=regular {{files}}"
+  }
   // The README badge block is GENERATED, like the `itok docs` command block
   // below it. Every number is read from the file that OWNS it -- edition and
   // MSRV from Cargo.toml, the floor from this file, coverage from the

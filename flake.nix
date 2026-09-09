@@ -231,6 +231,16 @@
             # dev shell and CI run the same versions.
             pkgs.typos
             pkgs.actionlint
+            # zizmor AUDITS the workflow; actionlint CHECKS it. Not a
+            # replacement for the line above -- zizmor does no syntax or
+            # type checking at all, and actionlint knows nothing about
+            # token scope. The two findings that motivated adding it are
+            # both structural rather than typographic: a workflow with no
+            # `permissions:` block runs at the repository default, and a
+            # checkout that keeps its credentials leaves a token in
+            # `.git/config` for every later step to read. Neither is a
+            # mistake actionlint is built to see.
+            pkgs.zizmor
             pkgs.taplo
             pkgs.shellcheck
             # V72 again: `nixfmt --check` gates this very file.

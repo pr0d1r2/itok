@@ -42,6 +42,15 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# The token this workflow gets is the one it can leak. Nothing here writes
+# to the repository -- no tag, no comment, no commit -- so read is the whole
+# requirement, and stating it means a future step that needs more has to ask
+# for it in the diff rather than inherit it from a repository setting nobody
+# reads. `zizmor` gates this: without the block it reports the default scope,
+# whatever that default happens to be today.
+permissions:
+  contents: read
+
 jobs:
   # The gate. Everything hk defines, in hk's own order, on every system the
   # flake declares.
@@ -104,9 +113,15 @@ jobs:
       # clone has no history and would fail them (V37/B3 class). This is
       # the one place itok's workflow must differ from microlith's, whose
       # tests read no history at all.
+      # persist-credentials: false -- checkout writes the job token into
+      # `.git/config` as an extraheader by default, where every later step
+      # can read it. Nothing here pushes, so the token is only a liability
+      # after the clone. The history the dogfood tests read is already on
+      # disk and needs no credential.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
       # The fleet's binary cache. `nix-hk` and `microlith` are Rust crates
       # built from source without it, and the dev shell gained BOTH plus
       # `cargo-release` -- MEASURED on macOS, materialising the shell went
@@ -247,6 +262,8 @@ jobs:
         package: [default, itok-minimal, itok-ollama]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       # The fleet's binary cache. `nix-hk` and `microlith` are Rust crates
       # built from source without it, and the dev shell gained BOTH plus
       # `cargo-release` -- MEASURED on macOS, materialising the shell went
