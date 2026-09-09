@@ -76,15 +76,27 @@ fn the_workflow_delegates_to_the_gate() {
 /// The three used to appear as three literal `nix build` lines, and this
 /// test looked for those strings. They are one matrix job now, so the
 /// literals are gone and the packages live in the matrix list instead --
-/// the CLAIM is unchanged, only where it is written down. Checking the
-/// matrix entries plus the templated command keeps the guard pointed at
-/// the claim rather than at a formatting choice.
+/// the CLAIM is unchanged, only where it is written down.
+///
+/// It happened a SECOND time, which is why the assertions below are shaped
+/// the way they are. The command was `nix build .#${{ matrix.package }}`
+/// until `zizmor --persona=pedantic` asked for the matrix value to arrive
+/// through `env:` rather than be pasted into the script (`V125`), and this
+/// test failed on a change that altered nothing about what CI builds. Twice
+/// now the guard has fired on the spelling. So it asserts the two halves of
+/// the claim separately -- the matrix value reaches the step, and the build
+/// consumes it -- because those are what would have to change for the claim
+/// itself to stop being true.
 #[test]
 fn the_workflow_builds_every_feature_configuration() {
     let y = workflow();
     assert!(
-        y.contains("nix build .#${{ matrix.package }}"),
-        "ci.yml no longer builds from the package matrix"
+        y.contains("PACKAGE: ${{ matrix.package }}"),
+        "ci.yml no longer passes the matrix package to the build step"
+    );
+    assert!(
+        y.contains(r#"nix build ".#$PACKAGE""#),
+        "ci.yml no longer builds the package it was handed"
     );
     for pkg in ["default", "itok-minimal", "itok-ollama"] {
         assert!(

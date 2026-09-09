@@ -201,6 +201,30 @@ local fast = new Mapping<String, Step> {
     glob = List(".github/workflows/*.yml", ".github/workflows/*.yaml")
     check = "actionlint {{files}}"
   }
+  // The security half of the same file. actionlint asks whether the
+  // workflow is CORRECT; zizmor asks what it can REACH -- token scope,
+  // credential persistence, injection of attacker-controlled context into
+  // a `run:` block, an action reference that is not pinned. The overlap
+  // between the two is close to nothing, which is why both run rather
+  // than one.
+  //
+  // `--persona=pedantic` ON PURPOSE, and it is the stricter setting rather
+  // than the default. Pedantic reports code SMELLS -- claims about how the
+  // file will age, not about what it does today -- and conforming to that
+  // stricter reading is what produces the more pristine workflow. The
+  // findings it added over `regular` were both real: two `run:` blocks had
+  // their source code assembled around an expression instead of reading a
+  // variable, safe today only because every input happened to be
+  // workflow-authored.
+  //
+  // `-c` is passed explicitly rather than left to zizmor's own discovery,
+  // so the ledger's PATH is visible in the step that depends on it. What
+  // pedantic reports and this repo does not fix is written down there,
+  // with the reason and the condition that would retire it.
+  ["zizmor"] {
+    glob = List(".github/workflows/*.yml", ".github/workflows/*.yaml")
+    check = "command -v zizmor >/dev/null 2>&1 || { echo 'hk: zizmor is not on PATH -- re-enter the dev shell (`nix develop`, or `direnv reload`). This is a MISSING TOOL, not a finding.' >&2; exit 1; }; zizmor --no-progress --persona=pedantic -c .github/zizmor.yml {{files}} || { echo 'hk: zizmor found a workflow security finding. Fix it, or -- if it is understood and deliberately accepted -- record it in .github/zizmor.yml with the reason and the condition that would retire it. An ignore with no exit is a rule nobody revisits.' >&2; exit 1; }"
+  }
   // The README badge block is GENERATED, like the `itok docs` command block
   // below it. Every number is read from the file that OWNS it -- edition and
   // MSRV from Cargo.toml, the floor from this file, coverage from the

@@ -14,9 +14,9 @@ things run it, and none of them restates it.
 
 | caller | set | when |
 |---|---|---|
-| `pre-commit` hook | `fast` — **26 steps** | every commit |
-| `pre-push` hook | `all` — **33 steps** | every push |
-| `hk check --all` in CI | `all` — **33 steps** | every push and PR |
+| `pre-commit` hook | `fast` — **27 steps** | every commit |
+| `pre-push` hook | `all` — **34 steps** | every push |
+| `hk check --all` in CI | `all` — **34 steps** | every push and PR |
 
 `all` is `fast` plus six: `ollama`, `no-default-features`, `package`,
 `rustdoc`, `coverage`, `semver`. Those six either compile a second
@@ -54,7 +54,7 @@ same minimal fixture that hung three times out of three on 1.51.0.
 
 ```mermaid
 flowchart TD
-    A["edit"] --> B["pre-commit — fast (26)"]
+    A["edit"] --> B["pre-commit — fast (27)"]
     B -->|fixable| B2["fixed in place, restaged"]
     B2 --> B
     B -->|fails| A
@@ -116,7 +116,7 @@ being a copy.
 
 ## The steps that guard claims, not code
 
-Most of the 33 are ordinary: a formatter, a linter, a test runner, hygiene.
+Most of the 34 are ordinary: a formatter, a linter, a test runner, hygiene.
 Eleven exist because this repository makes a *claim* somewhere, and a claim with
 no runner is just a sentence (`§V17`). The count said six while the table
 listed ten, which is the drift `integration-doc` checks for and cannot see:

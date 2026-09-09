@@ -42,6 +42,15 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# The token this workflow gets is the one it can leak. Nothing here writes
+# to the repository -- no tag, no comment, no commit -- so read is the whole
+# requirement, and stating it means a future step that needs more has to ask
+# for it in the diff rather than inherit it from a repository setting nobody
+# reads. `zizmor` gates this: without the block it reports the default scope,
+# whatever that default happens to be today.
+permissions:
+  contents: read
+
 jobs:
   # The gate. Everything hk defines, in hk's own order, on every system the
   # flake declares.
@@ -104,9 +113,15 @@ jobs:
       # clone has no history and would fail them (V37/B3 class). This is
       # the one place itok's workflow must differ from microlith's, whose
       # tests read no history at all.
+      # persist-credentials: false -- checkout writes the job token into
+      # `.git/config` as an extraheader by default, where every later step
+      # can read it. Nothing here pushes, so the token is only a liability
+      # after the clone. The history the dogfood tests read is already on
+      # disk and needs no credential.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
       # The fleet's binary cache. `nix-hk` and `microlith` are Rust crates
       # built from source without it, and the dev shell gained BOTH plus
       # `cargo-release` -- MEASURED on macOS, materialising the shell went
@@ -207,9 +222,15 @@ jobs:
       #
       # The timeout above stays regardless. It is what made the deadlock
       # visible, and it is what bounds the next one.
-      - run: >
-          nix develop --command hk check --all --check
-          ${{ github.event_name == 'push' && '--no-fail-fast' || '' }}
+      # Same shape as the `nix build` step below: the expression is evaluated
+      # into `env:`, and the shell reads a variable. `${FAIL_FAST:+"$FAIL_FAST"}`
+      # expands to a single quoted argument when set and to NOTHING when empty,
+      # which is what a bare `$FAIL_FAST` would also do here -- but only by
+      # relying on word splitting, and a construct that is correct by accident
+      # is one a later edit breaks silently.
+      - env:
+          FAIL_FAST: ${{ github.event_name == 'push' && '--no-fail-fast' || '' }}
+        run: nix develop --command hk check --all --check ${FAIL_FAST:+"$FAIL_FAST"}
 
   # All three feature configurations must build reproducibly. The minimal
   # one is load-bearing: it is what proves the zero-dependency core actually
@@ -247,6 +268,8 @@ jobs:
         package: [default, itok-minimal, itok-ollama]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       # The fleet's binary cache. `nix-hk` and `microlith` are Rust crates
       # built from source without it, and the dev shell gained BOTH plus
       # `cargo-release` -- MEASURED on macOS, materialising the shell went
@@ -305,4 +328,12 @@ jobs:
           name: pr0d1r2
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
 
-      - run: nix build .#${{ matrix.package }}
+      # The matrix value reaches the shell through `env:` rather than being
+      # pasted into the script by the expression engine. Both are workflow-
+      # authored constants here, so nothing hostile can arrive either way --
+      # the point is that the shell receives DATA in a variable rather than
+      # having its own source code assembled around it, which is the only
+      # form that stays safe when the input later changes.
+      - env:
+          PACKAGE: ${{ matrix.package }}
+        run: nix build ".#$PACKAGE"

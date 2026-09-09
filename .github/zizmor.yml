@@ -1,0 +1,53 @@
+# zizmor's ignore ledger -- the DEBT, written down rather than absorbed.
+#
+# The gate runs `--persona=pedantic`, which is stricter than the findings
+# this repository is obliged to fix: pedantic reports code smells, and a
+# smell is a claim about how the file will age rather than about how it
+# behaves today. Running it anyway is the point. Conforming to the stricter
+# reading is what produces the more pristine file, and the two entries below
+# are the price of NOT conforming, stated once and in the open.
+#
+# WHAT AN ENTRY MEANS: this finding is real, it is understood, and it is not
+# being fixed for a reason that outlives the person who wrote it down. What
+# it does NOT mean is that the finding is wrong. A false positive belongs
+# upstream as a bug report, not here.
+#
+# EVERY ENTRY CARRIES ITS EXIT. An ignore with no stated condition for its
+# own removal is indistinguishable from one nobody ever revisits, which is
+# how a debt register becomes a wall of noise (V17: a rule with no runner is
+# a sentence; an exemption with no exit is the same thing pointing the other
+# way).
+#
+# LINE NUMBERS ARE PART OF THE MATCH, so an entry that drifts stops
+# suppressing and the finding returns. That is a feature -- it forces a
+# re-read whenever the surrounding job moves -- but it means editing
+# `ci.yml` above one of these jobs can turn the gate red without anything
+# being wrong. When that happens the fix is to update the number here after
+# confirming the reason still holds, not to reach for a broader pattern.
+
+rules:
+  # DEBT, opened 2026-09-09. Both jobs are deliberately anonymous.
+  #
+  # `main`'s branch protection requires TWELVE status checks, named by the
+  # contexts GitHub generates from the job id and the matrix values:
+  #
+  #   gate (macos-latest) · gate (ubuntu-24.04-arm) · gate (ubuntu-latest)
+  #   nix-build (<os>, default|itok-minimal|itok-ollama)   -- nine of these
+  #
+  # A `name:` on either job renames every context it generates. The twelve
+  # required checks then wait for names that will never be reported again,
+  # and no pull request can merge until someone edits branch protection by
+  # hand -- an out-of-band change, in a settings page, that no diff records
+  # and no gate here can see. That is a strictly worse failure than the
+  # smell being ignored: the smell costs a reader one lookup, and the fix
+  # costs the repository its merge path.
+  #
+  # EXIT: pay this off in ONE commit that adds the names AND updates the
+  # required-check list, in that order, on a branch whose own run has
+  # already reported the new contexts. Verify with
+  # `gh api repos/pr0d1r2/itok/branches/main/protection`. Until someone is
+  # doing exactly that, the names stay off.
+  anonymous-definition:
+    ignore:
+      - ci.yml:71
+      - ci.yml:255
