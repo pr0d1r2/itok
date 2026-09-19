@@ -15,7 +15,7 @@
 [![floor 98%](https://img.shields.io/badge/floor-%E2%89%A598%25-brightgreen)](hk.pkl)
 
 [![nix flake](https://img.shields.io/badge/nix-flake-5277C3?logo=nixos&logoColor=white)](flake.nix)
-[![nixpkgs 9f78f44](https://img.shields.io/badge/nixpkgs-9f78f44-5277C3?logo=nixos&logoColor=white)](flake.lock)
+[![nixpkgs ecc58f3](https://img.shields.io/badge/nixpkgs-ecc58f3-5277C3?logo=nixos&logoColor=white)](flake.lock)
 [![intel linux](https://img.shields.io/badge/linux-5277C3?logo=intel&logoColor=white)](flake.nix)
 [![amd linux](https://img.shields.io/badge/linux-5277C3?logo=amd&logoColor=white)](flake.nix)
 [![arm linux](https://img.shields.io/badge/linux-5277C3?logo=arm&logoColor=white)](flake.nix)
