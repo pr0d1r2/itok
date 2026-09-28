@@ -22,14 +22,25 @@ pub(crate) enum Verb {
     Log,
     Check,
     Fit,
+    /// The session-axis verbs, one variant so that routing them is
+    /// exhaustive at both levels -- see `Runtime`.
+    Runtime(Runtime),
+    Cap,
+    /// The runtime gate (V52/V53). NOT prefix-inferred -- see `EXACT`.
+    Guard,
+}
+
+/// The runtime-axis verbs, which share the `session` feature gate. They
+/// are a nested enum rather than five `Verb` variants because `cli`
+/// routes them in a second match: with flat variants that match needed a
+/// catch-all, and a new verb silently answered as `trace` (B42).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Runtime {
     Trace,
     Top,
     Headroom,
     Calibrate,
-    Cap,
     Rate,
-    /// The runtime gate (V52/V53). NOT prefix-inferred -- see `EXACT`.
-    Guard,
 }
 
 /// Read-only verbs, the only ones prefix-inference resolves. `fit` selects
@@ -42,12 +53,12 @@ pub(crate) const VERBS: &[(&str, Verb)] = &[
     ("log", Verb::Log),
     ("check", Verb::Check),
     ("fit", Verb::Fit),
-    ("trace", Verb::Trace),
-    ("top", Verb::Top),
-    ("headroom", Verb::Headroom),
-    ("calibrate", Verb::Calibrate),
+    ("trace", Verb::Runtime(Runtime::Trace)),
+    ("top", Verb::Runtime(Runtime::Top)),
+    ("headroom", Verb::Runtime(Runtime::Headroom)),
+    ("calibrate", Verb::Runtime(Runtime::Calibrate)),
     ("cap", Verb::Cap),
-    ("rate", Verb::Rate),
+    ("rate", Verb::Runtime(Runtime::Rate)),
 ];
 
 /// Verbs that must be spelled IN FULL. Never prefix-matched, never
@@ -142,7 +153,10 @@ mod tests {
     /// does too.
     #[test]
     fn headroom_takes_h_without_costing_fit_its_f() {
-        assert_eq!(resolve("h"), Resolution::Verb(Verb::Headroom));
+        assert_eq!(
+            resolve("h"),
+            Resolution::Verb(Verb::Runtime(Runtime::Headroom))
+        );
         assert_eq!(resolve("f"), Resolution::Verb(Verb::Fit));
     }
 
@@ -162,7 +176,10 @@ mod tests {
         };
         assert_eq!(got, vec!["calibrate", "cap", "check"]);
         // Longer prefixes still resolve, so the cost is one keystroke.
-        assert_eq!(resolve("cal"), Resolution::Verb(Verb::Calibrate));
+        assert_eq!(
+            resolve("cal"),
+            Resolution::Verb(Verb::Runtime(Runtime::Calibrate))
+        );
         assert_eq!(resolve("ch"), Resolution::Verb(Verb::Check));
         assert_eq!(resolve("cap"), Resolution::Verb(Verb::Cap));
     }
@@ -183,8 +200,14 @@ mod tests {
     /// Longer prefixes still resolve, so the ambiguity costs nothing.
     #[test]
     fn longer_prefixes_still_resolve() {
-        assert_eq!(resolve("to"), Resolution::Verb(Verb::Top));
-        assert_eq!(resolve("tr"), Resolution::Verb(Verb::Trace));
+        assert_eq!(
+            resolve("to"),
+            Resolution::Verb(Verb::Runtime(Runtime::Top))
+        );
+        assert_eq!(
+            resolve("tr"),
+            Resolution::Verb(Verb::Runtime(Runtime::Trace))
+        );
     }
 
     #[test]
@@ -198,7 +221,10 @@ mod tests {
         assert_eq!(resolve("do"), Resolution::Verb(Verb::Doctor));
         assert_eq!(resolve("di"), Resolution::Verb(Verb::Diff));
         assert_eq!(resolve("f"), Resolution::Verb(Verb::Fit));
-        assert_eq!(resolve("r"), Resolution::Verb(Verb::Rate));
+        assert_eq!(
+            resolve("r"),
+            Resolution::Verb(Verb::Runtime(Runtime::Rate))
+        );
     }
 
     #[test]

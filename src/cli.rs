@@ -8,7 +8,7 @@
 //! lives in `args`, each verb's orchestration in its own module
 //! (`estcmd` for `estimate`). Split at the byte ceiling (V483).
 
-use crate::verb::{Resolution, Verb, resolve};
+use crate::verb::{Resolution, Runtime, Verb, resolve};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -119,8 +119,6 @@ fn handle(
     }
 }
 
-/// Route a resolved verb to its command. Exhaustive over `Verb` -- a new
-/// verb is a compile error here until it is wired.
 /// The runtime-axis verbs, together because they share a feature gate
 /// (V23's shape: a tier that needs a dep is opt-in).
 /// `rate` takes the input CLOSURE, not its result: only `--statusline`
@@ -129,23 +127,26 @@ fn handle(
 /// plain `cargo test`. That is the same hazard the `Input` type exists to
 /// prevent, one verb further down.
 #[cfg(feature = "session")]
-fn runtime(v: Verb, rest: &[String], input: Input) -> Output {
+fn runtime(v: Runtime, rest: &[String], input: Input) -> Output {
     match v {
-        Verb::Top => crate::topcmd::top(rest),
-        Verb::Headroom => crate::headroom::headroom(rest),
-        Verb::Calibrate => crate::calibrate::calibrate(rest),
-        Verb::Rate => crate::ratecmd::rate(rest, input),
-        _ => crate::tracecmd::trace(rest),
+        Runtime::Trace => crate::tracecmd::trace(rest),
+        Runtime::Top => crate::topcmd::top(rest),
+        Runtime::Headroom => crate::headroom::headroom(rest),
+        Runtime::Calibrate => crate::calibrate::calibrate(rest),
+        Runtime::Rate => crate::ratecmd::rate(rest, input),
     }
 }
 
 #[cfg(not(feature = "session"))]
-fn runtime(_v: Verb, _rest: &[String], _input: Input) -> Output {
+fn runtime(_v: Runtime, _rest: &[String], _input: Input) -> Output {
     Output::usage_err(
         "itok: the runtime verbs need the `session` feature".to_owned(),
     )
 }
 
+/// Route a resolved verb to its command. Exhaustive over `Verb`, and
+/// `runtime` over `Runtime`, with no catch-all in either -- a new verb is
+/// a compile error here until it is wired (B42).
 fn dispatch(v: Verb, rest: &[String], input: Input) -> Output {
     match v {
         Verb::Cap => crate::capcmd::cap(rest, &input()),
@@ -157,7 +158,7 @@ fn dispatch(v: Verb, rest: &[String], input: Input) -> Output {
         Verb::Log => crate::logcmd::log(rest),
         Verb::Check => crate::checkcmd::check(rest),
         Verb::Fit => crate::fitcmd::fit(rest),
-        _ => runtime(v, rest, input),
+        Verb::Runtime(r) => runtime(r, rest, input),
     }
 }
 
