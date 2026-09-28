@@ -1,5 +1,31 @@
 # Built by an LLM, deliberately and in the open
 
+<!-- hallucinogen:tending-disclaimer start -->
+**Tended by an autonomous loop running Codex with GPT-5.6 luna at low
+reasoning effort.** When Codex is unavailable the loop falls back to Claude,
+then to a local model. The loop opens pull requests, reviews them itself
+and merges them once they are green, without a human reading the diff: the
+merge gate is this repository's own checks plus that automated review, not
+human approval. On top of that, the maintainer runs periodic meta-reviews
+with agents and corrects drift or bugs they find.
+
+What keeps that checkable is mechanical rather than a matter of trust:
+the loop generates tests and linter configurations, so its gates give
+the same answer every time, and it builds command-line tools, with clear
+documentation, that a person can use to inspect the same state the loop sees.
+
+Some classes of change are held for a human by design: releases, anything
+touching the loop's own safety rails, and anything that could publish to
+a package registry. Everything else is not.
+
+**Origin.** This project was built in spec-driven development sessions with
+Claude Opus 5, with a human reviewing every change. The text below records
+that period: what it says about human review holds for the code written then,
+not for the merges the loop makes now.
+
+---
+<!-- hallucinogen:tending-disclaimer end -->
+
 This repository — code, spec, tests and prose — was written by
 [Claude Code](https://claude.com/claude-code) running Anthropic's **Claude
 Opus 5**. Most commits carry a `Co-Authored-By: Claude Opus 5` trailer; the

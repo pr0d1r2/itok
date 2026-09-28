@@ -1,5 +1,11 @@
 # itok
 
+<!-- hallucinogen:autonomy-disclaimer start -->
+> Read [LLM-DISCLAIMER](docs/LLM-DISCLAIMER.md) first. This repository is
+> tended by an autonomous loop, and that file says what the loop may do here,
+> what it may not, and what to check before trusting anything in this tree.
+<!-- hallucinogen:autonomy-disclaimer end -->
+
 <!-- BEGIN badges -->
 [![CI](https://github.com/pr0d1r2/itok/actions/workflows/ci.yml/badge.svg)](https://github.com/pr0d1r2/itok/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
