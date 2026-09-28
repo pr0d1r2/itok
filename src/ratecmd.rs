@@ -145,7 +145,8 @@ struct Rates {
 }
 
 struct Throughput {
-    last_turn: u64,
+    /// `None` when the last turn carried no usage: absent, not zero (V47).
+    last_turn: Option<u64>,
     total: u64,
     /// Sum of positive window deltas: what actually entered (V117).
     growth: u64,
@@ -293,7 +294,9 @@ fn gauge_of(raw: &Raw, tp: &Throughput, config: &RateConfig) -> Gauge {
     let limit = red_line(raw, tp, config);
     Gauge {
         limit,
-        eta: crate::eta::seconds(tp.last_turn, limit, tp.rates.growth_hour),
+        eta: tp.last_turn.and_then(|used| {
+            crate::eta::seconds(used, limit, tp.rates.growth_hour)
+        }),
     }
 }
 
@@ -398,14 +401,13 @@ fn sample_of(
 /// The bill's composition, which is what makes `/bill` readable as a bill
 /// rather than as content (V118).
 /// The occupancy the badge's first cell reports: the last turn's billed
-/// input, or 0 when the session carried no usage at all. Zero is what
-/// V115 then declines to paint, so the absence survives the cast.
-fn last_billed(session: &Session) -> u64 {
+/// input, or `None` when that turn carried no usage. It used to collapse
+/// to 0, which the badge then PRINTED as a confident `0` (#14, V47/V92).
+fn last_billed(session: &Session) -> Option<u64> {
     session
         .turns
         .last()
         .and_then(crate::session::Turn::billed_input)
-        .unwrap_or(0)
 }
 
 fn split_of(session: &Session) -> Split {
@@ -421,7 +423,7 @@ fn split_of(session: &Session) -> Split {
 /// arguments, and because span and active are easy to swap by accident
 /// when they sit side by side as bare `u64`s.
 struct Sample {
-    last_turn: u64,
+    last_turn: Option<u64>,
     total: u64,
     growth: u64,
     split: Split,
@@ -628,9 +630,11 @@ fn cells_of(
 ) -> [Cell; 4] {
     let age = tp.active_seconds;
     let (hour, day) = (tp.rates.growth_hour, tp.rates.growth_day);
-    let gauge = level(tp.last_turn, limit, config);
+    let gauge = tp
+        .last_turn
+        .map_or(Paint::None, |used| level(used, limit, config));
     [
-        (Some(tp.last_turn), "", "", gauge),
+        (tp.last_turn, "", "", gauge),
         (Some(tp.total), "/bill", "", band(config.total)),
         (hour, "/h", mark(age, HOUR), band(config.hour)),
         (day, "/d", mark(age, DAY), band(config.day)),
@@ -740,7 +744,7 @@ fn json(tp: &Throughput, eta: Option<u64>) -> String {
     format!(
         "{{\"last_turn\":{},\"total\":{},\"per_hour\":{},\
          \"per_day\":{},\"turns\":{},{},{},\"compact_in_active_seconds\":{}}}\n",
-        tp.last_turn,
+        or_null(tp.last_turn),
         tp.total,
         or_null(tp.rates.per_hour),
         or_null(tp.rates.per_day),
@@ -934,7 +938,7 @@ mod tests {
     };
 
     const ZERO_TP: Throughput = Throughput {
-        last_turn: 0,
+        last_turn: Some(0),
         total: 0,
         growth: 0,
         rates: ZERO_RATES,
@@ -1051,7 +1055,7 @@ mod tests {
         let tp = throughput(&s, &[]);
         assert!(tp.is_some());
         let tp = tp.unwrap_or(ZERO_TP);
-        assert_eq!(tp.last_turn, 2_000);
+        assert_eq!(tp.last_turn, Some(2_000));
         assert_eq!(tp.total, 3_000);
         assert_eq!(tp.turns, 2);
     }
@@ -1261,7 +1265,7 @@ mod tests {
             ..RateConfig::default()
         };
         let tp = Throughput {
-            last_turn: 963_000,
+            last_turn: Some(963_000),
             ..sample_tp()
         };
         let out = human(&tp, &config, true, gauge_at(1_000_000));
@@ -1281,7 +1285,7 @@ mod tests {
             ..RateConfig::default()
         };
         let tp = Throughput {
-            last_turn: 963_000,
+            last_turn: Some(963_000),
             ..sample_tp()
         };
         let out = human(&tp, &config, true, Gauge::default());
@@ -1294,7 +1298,7 @@ mod tests {
     #[test]
     fn a_zero_level_is_never_painted_green_by_the_gauge() {
         let tp = Throughput {
-            last_turn: 0,
+            last_turn: Some(0),
             ..sample_tp()
         };
         let out = human(&tp, &RateConfig::default(), true, gauge_at(1_000_000));
@@ -1590,7 +1594,7 @@ mod tests {
             ..RateConfig::default()
         };
         let tp = Throughput {
-            last_turn: 900_000,
+            last_turn: Some(900_000),
             ..sample_tp()
         };
         let g = gauge_of(&Raw::default(), &tp, &config);
@@ -1630,7 +1634,7 @@ mod tests {
 
     fn sample_tp() -> Throughput {
         Throughput {
-            last_turn: 2_117,
+            last_turn: Some(2_117),
             total: 45_305,
             growth: 6_000,
             rates: SAMPLE_RATES,
@@ -1657,6 +1661,35 @@ mod tests {
         assert!(out.contains("\"total\":45305"));
         assert!(out.contains("\"per_hour\":12400"));
         assert!(out.contains("\"per_day\":280000"));
+    }
+
+    /// A last turn with no `usage` block is ABSENT, not zero (V47/V92,
+    /// #14): the badge prints `-` and json `null`, while a turn that
+    /// really billed nothing still reads `0` -- the two must stay apart.
+    #[test]
+    fn an_absent_last_turn_is_a_dash_not_a_zero() {
+        let mut s = session_with_turns(&[(1_000, T0)]);
+        s.turns.push(Turn {
+            ts: T1H.to_owned(),
+            ..Turn::default()
+        });
+        let tp = throughput(&s, &[]).unwrap_or(ZERO_TP);
+        assert_eq!(tp.last_turn, None);
+        let cfg = RateConfig::default();
+        let out = human(&tp, &cfg, false, Gauge::default());
+        assert!(out.starts_with("-,"), "{out}");
+        assert!(json_of(tp).contains("\"last_turn\":null"));
+    }
+
+    #[test]
+    fn a_last_turn_that_billed_zero_still_reads_zero() {
+        let s = session_with_turns(&[(1_000, T0), (0, T1H)]);
+        let tp = throughput(&s, &[]).unwrap_or(ZERO_TP);
+        assert_eq!(tp.last_turn, Some(0));
+        let cfg = RateConfig::default();
+        let out = human(&tp, &cfg, false, Gauge::default());
+        assert!(out.starts_with("0,"), "{out}");
+        assert!(json_of(tp).contains("\"last_turn\":0,"));
     }
 
     /// V110 in json is a boolean per metric (V9), and it tracks the same

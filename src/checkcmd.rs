@@ -29,7 +29,7 @@ fn run(root: &Path, format: Format) -> Output {
     match read_limits(root) {
         Ok(entries) => {
             let breaches = evaluate(root, &entries);
-            verdict(entries.len(), &breaches, format)
+            verdict(&tally_of(root, &entries), &breaches, format)
         }
         // A row the tool cannot read is a row the AUTHOR believes is
         // enforced, so this is a usage error, not a pass (V88/B7).
@@ -96,8 +96,31 @@ fn entry(line: &str) -> Option<Entry> {
     Some((path, cap))
 }
 
+/// What the registry actually measured: rows whose path exists (a file,
+/// or a directory another tool budgets), and the rows that match NOTHING.
+struct Tally {
+    measured: usize,
+    unmatched: Vec<String>,
+}
+
+/// #42: a row naming a missing path used to be counted "within budget",
+/// so a renamed file or a typo'd row left a ceiling that could never fail
+/// and a log that could not tell. It still passes (V10, opt-in), but it
+/// is counted apart and named, so a gate log shows the row guards nothing.
+fn tally_of(root: &Path, entries: &[Entry]) -> Tally {
+    let unmatched: Vec<String> = entries
+        .iter()
+        .filter(|(p, _)| !root.join(p).exists())
+        .map(|(p, _)| p.clone())
+        .collect();
+    Tally {
+        measured: entries.len().saturating_sub(unmatched.len()),
+        unmatched,
+    }
+}
+
 /// Registered paths whose token cost exceeds their ceiling. A path absent
-/// on disk counts as 0 and passes.
+/// on disk counts as 0 and passes -- `Tally` is what reports it.
 fn evaluate(root: &Path, entries: &[Entry]) -> Vec<Breach> {
     entries
         .iter()
@@ -108,24 +131,52 @@ fn evaluate(root: &Path, entries: &[Entry]) -> Vec<Breach> {
         .collect()
 }
 
-fn verdict(n: usize, breaches: &[Breach], format: Format) -> Output {
+fn verdict(t: &Tally, breaches: &[Breach], format: Format) -> Output {
     match format {
-        Format::Json => json(n, breaches),
-        Format::Human => human(n, breaches),
+        Format::Json => json(t, breaches),
+        Format::Human => human(t, breaches),
     }
 }
 
-fn human(n: usize, breaches: &[Breach]) -> Output {
+fn human(t: &Tally, breaches: &[Breach]) -> Output {
     let label = method().label();
+    let warn = unmatched_report(&t.unmatched);
     if breaches.is_empty() {
-        let out = format!("check ok: {n} path(s) within budget ({label})\n");
-        return Output::ok(out);
+        return Output {
+            out: ok_line(t, &label),
+            err: warn,
+            code: 0,
+        };
     }
     Output {
         out: String::new(),
-        err: breach_report(&label, breaches),
+        err: breach_report(&label, breaches) + &warn,
         code: 1,
     }
+}
+
+/// Unchanged when every row matched; otherwise the unmatched rows are
+/// counted beside the pass rather than inside it (#42).
+fn ok_line(t: &Tally, label: &str) -> String {
+    let n = t.measured;
+    let tail = match t.unmatched.len() {
+        0 => String::new(),
+        k => format!(", {k} row(s) matched nothing"),
+    };
+    format!("check ok: {n} path(s) within budget ({label}){tail}\n")
+}
+
+/// One stderr line per unmatched row, greppable by a gate (#42).
+fn unmatched_report(unmatched: &[String]) -> String {
+    unmatched
+        .iter()
+        .map(|p| {
+            format!(
+                "itok: {LIMITS}: `{p}` matches nothing on disk \
+                 -- the row guards nothing\n"
+            )
+        })
+        .collect()
 }
 
 fn breach_report(label: &str, breaches: &[Breach]) -> String {
@@ -137,13 +188,9 @@ fn breach_report(label: &str, breaches: &[Breach]) -> String {
     s
 }
 
-fn json(n: usize, breaches: &[Breach]) -> Output {
+fn json(t: &Tally, breaches: &[Breach]) -> Output {
     let ok = breaches.is_empty();
-    let out = format!(
-        "{{\"ok\":{ok},\"method\":\"{}\",\"checked\":{n},\"breaches\":[{}]}}\n",
-        method().label(),
-        json_items(breaches),
-    );
+    let out = json_body(ok, t, breaches);
     if ok {
         Output::ok(out)
     } else {
@@ -153,6 +200,25 @@ fn json(n: usize, breaches: &[Breach]) -> Output {
             code: 1,
         }
     }
+}
+
+fn json_body(ok: bool, t: &Tally, breaches: &[Breach]) -> String {
+    format!(
+        "{{\"ok\":{ok},\"method\":\"{}\",\"checked\":{},\"breaches\":[{}],\
+         \"unmatched\":[{}]}}\n",
+        method().label(),
+        t.measured,
+        json_items(breaches),
+        json_paths(&t.unmatched),
+    )
+}
+
+fn json_paths(paths: &[String]) -> String {
+    paths
+        .iter()
+        .map(|p| format!("\"{}\"", crate::json::escape(p)))
+        .collect::<Vec<_>>()
+        .join(",")
 }
 
 fn json_items(breaches: &[Breach]) -> String {
@@ -269,9 +335,57 @@ mod tests {
         assert!(evaluate(root, &[("no/such/file".to_owned(), 1)]).is_empty());
     }
 
+    /// #42: a row naming a path that does not exist guards NOTHING, and
+    /// used to be counted "within budget" in the same words as a real
+    /// pass. It is now named on stderr and counted apart, exit unchanged
+    /// (V10: the registry stays opt-in; a directory row still counts).
+    #[test]
+    fn a_row_that_matches_nothing_is_counted_apart() {
+        let tally = demo_tally();
+        assert_eq!(tally.measured, 2, "the file and the directory");
+        assert_eq!(tally.unmatched, vec!["nosuchfile.md".to_owned()]);
+    }
+
+    fn demo_tally() -> Tally {
+        let rows = [
+            ("Cargo.toml".to_owned(), 9_999_999),
+            ("src".to_owned(), 10),
+            ("nosuchfile.md".to_owned(), 5),
+        ];
+        tally_of(Path::new(DIR), &rows)
+    }
+
+    #[test]
+    fn a_row_that_matches_nothing_is_named_in_both_formats() {
+        let tally = demo_tally();
+        let o = verdict(&tally, &[], Format::Human);
+        assert_eq!(o.code, 0);
+        assert!(o.out.contains("check ok: 2 path(s)"), "{}", o.out);
+        assert!(o.out.contains("1 row(s) matched nothing"), "{}", o.out);
+        assert!(o.err.contains("nosuchfile.md"), "{}", o.err);
+        let j = verdict(&tally, &[], Format::Json).out;
+        assert!(j.contains("\"checked\":2"), "{j}");
+        assert!(j.contains("\"unmatched\":[\"nosuchfile.md\"]"), "{j}");
+    }
+
+    /// With every row matched, the summary reads exactly as it always did.
+    #[test]
+    fn a_fully_matched_registry_says_nothing_extra() {
+        let o = verdict(&clean(3), &[], Format::Human);
+        assert!(!o.out.contains("matched nothing"), "{}", o.out);
+        assert!(o.err.is_empty(), "{}", o.err);
+    }
+
+    fn clean(measured: usize) -> Tally {
+        Tally {
+            measured,
+            unmatched: Vec::new(),
+        }
+    }
+
     #[test]
     fn a_clean_verdict_exits_zero() {
-        let o = verdict(3, &[], Format::Human);
+        let o = verdict(&clean(3), &[], Format::Human);
         assert_eq!(o.code, 0);
         assert!(o.out.contains("within budget"));
     }
@@ -279,7 +393,7 @@ mod tests {
     #[test]
     fn a_breach_verdict_exits_one() {
         let b = vec![("SPEC.md".to_owned(), 99u64, 10u64)];
-        let o = verdict(1, &b, Format::Human);
+        let o = verdict(&clean(1), &b, Format::Human);
         assert_eq!(o.code, 1);
         assert!(o.err.contains("over budget"));
         assert!(o.err.contains("SPEC.md"));
@@ -287,9 +401,9 @@ mod tests {
 
     #[test]
     fn json_reports_ok_and_breaches() {
-        assert!(json(2, &[]).out.contains("\"ok\":true"));
+        assert!(json(&clean(2), &[]).out.contains("\"ok\":true"));
         let b = vec![("a".to_owned(), 9u64, 1u64)];
-        let o = json(1, &b);
+        let o = json(&clean(1), &b);
         assert_eq!(o.code, 1);
         assert!(o.out.contains("\"ok\":false"));
     }
