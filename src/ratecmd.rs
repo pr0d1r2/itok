@@ -6,6 +6,7 @@ use crate::args::Format;
 use crate::cli::Output;
 use crate::session::Session;
 use crate::tracecmd::{Origin, value};
+use std::path::{Path, PathBuf};
 
 #[derive(Default)]
 struct Raw {
@@ -822,11 +823,34 @@ fn to_threshold(t: TomlThreshold) -> Threshold {
 }
 
 fn read_config(chdir: Option<&str>) -> Option<String> {
-    let root = std::path::PathBuf::from(chdir.unwrap_or(".")).join("itok.toml");
-    if let Ok(text) = std::fs::read_to_string(&root) {
+    let start = PathBuf::from(chdir.unwrap_or("."));
+    if let Some(text) =
+        project_config(&start).and_then(|p| std::fs::read_to_string(p).ok())
+    {
         return Some(text);
     }
     read_global_config()
+}
+
+/// V109's "project root wins": the nearest `itok.toml` from `start` up to
+/// the git root, inclusive. It read only the working directory, so a
+/// session opened in `repo/subdir` silently fell through to the global
+/// file (#15). Bounded by the git root so it never reads a PARENT
+/// project's config; outside any repository only `start` itself counts.
+fn project_config(start: &Path) -> Option<PathBuf> {
+    let start = std::fs::canonicalize(start).unwrap_or_else(|_| start.into());
+    let top = start.ancestors().find(|d| d.join(".git").exists());
+    let bound = top.unwrap_or(&start);
+    for dir in start.ancestors() {
+        let file = dir.join("itok.toml");
+        if file.is_file() {
+            return Some(file);
+        }
+        if dir == bound {
+            break;
+        }
+    }
+    None
 }
 
 fn read_global_config() -> Option<String> {
@@ -1746,6 +1770,64 @@ total = { green = 1000000, amber = 5000000 }
         assert!(broken.turn.is_none() && broken.hour.is_none());
         let rateless = parse_config("[limits]\nsrc = 1000\n");
         assert!(rateless.turn.is_none() && rateless.day.is_none());
+    }
+
+    /// A planted tree under the temp dir, fresh per test (B5: no two
+    /// tests share a path, so the suite stays parallel).
+    fn planted(name: &str, dirs: &[&str], files: &[&str]) -> PathBuf {
+        let root = std::env::temp_dir().join(format!("itok-cfg-{name}"));
+        let _ = std::fs::remove_dir_all(&root);
+        for d in dirs {
+            let _ = std::fs::create_dir_all(root.join(d));
+        }
+        for f in files {
+            let _ = std::fs::write(root.join(f), "[rate]\n");
+        }
+        // Canonical, because the search is: macOS's temp dir is a symlink.
+        std::fs::canonicalize(&root).unwrap_or(root)
+    }
+
+    /// V109: the PROJECT root wins, not the working directory -- a
+    /// session started in `repo/subdir` still reads `repo/itok.toml` (#15).
+    #[test]
+    fn config_is_found_above_a_subdirectory_up_to_the_git_root() {
+        let root =
+            planted("up", &["repo/.git", "repo/a/b"], &["repo/itok.toml"]);
+        let found = project_config(&root.join("repo/a/b"));
+        assert_eq!(found, Some(root.join("repo/itok.toml")));
+    }
+
+    #[test]
+    fn the_nearest_config_wins() {
+        let root = planted(
+            "near",
+            &["repo/.git", "repo/a/b"],
+            &["repo/itok.toml", "repo/a/itok.toml"],
+        );
+        let found = project_config(&root.join("repo/a/b"));
+        assert_eq!(found, Some(root.join("repo/a/itok.toml")));
+    }
+
+    /// The search stops at the git root, so it cannot wander into a
+    /// PARENT project's config.
+    #[test]
+    fn the_search_never_crosses_the_git_root() {
+        let root = planted(
+            "bound",
+            &["outer/inner/.git", "outer/inner/a"],
+            &["outer/itok.toml"],
+        );
+        assert_eq!(project_config(&root.join("outer/inner/a")), None);
+    }
+
+    /// Outside any repository there is no root to walk to, so only the
+    /// directory itself is read -- the old behaviour, now the bounded one.
+    #[test]
+    fn outside_a_repository_only_the_directory_itself_is_read() {
+        let root = planted("norepo", &["top/a"], &["top/itok.toml"]);
+        assert_eq!(project_config(&root.join("top/a")), None);
+        let here = project_config(&root.join("top"));
+        assert_eq!(here, Some(root.join("top/itok.toml")));
     }
 
     /// `rate` has no tokenizer tiers to pick from, so the flags that name
