@@ -360,8 +360,11 @@ assert_eq!(out.code, 0);
 
 `Output` carries stdout, stderr and the exit code the binary would have
 used. The pieces are public too — `estimate`, `bpe`, `session`, `walk`,
-`render`, `json` — so a consumer can take the measurement without the
-grammar around it.
+`render`, `json`, `glob` — so a consumer can take the measurement without
+the grammar around it. `glob::matches` is the three wildcards only, not
+gitignore's rules (`*.md` does not match `docs/guide.md`), and
+`estimate::select_paths` is the tracked-by-default selection `estimate`
+itself uses; both document their contract.
 
 This is not hypothetical: [`sherd`](https://github.com/pr0d1r2/sherd) depends
 on `itok` with `default-features = false, features = ["bpe"]` to size the

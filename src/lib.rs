@@ -33,7 +33,7 @@ mod fitcmd;
 #[cfg(feature = "session")]
 mod gauge;
 mod gitref;
-mod glob;
+pub mod glob;
 mod guardcmd;
 #[cfg(feature = "session")]
 mod headroom;
