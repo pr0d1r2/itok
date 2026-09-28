@@ -83,8 +83,27 @@ pub(crate) fn select(opts: &Opts, root: &Path) -> Result<Vec<String>, String> {
 }
 
 /// The selection rule itself, over a bare path list -- `fit` has its own
-/// options struct and would otherwise need a second copy (V64).
-pub(crate) fn select_paths(
+/// options struct and would otherwise need a second copy (V64). Public
+/// for the same reason: consumers were rebuilding it (#41).
+///
+/// The contract (V8):
+///
+/// - `paths` EMPTY: the git-tracked files under `root` ([`crate::walk::tracked`]),
+///   which is empty when `root` is not a git repository.
+/// - `paths` given: returned as given, in order -- so an explicit path
+///   reaches an UNTRACKED file -- once every one passes the check below.
+///
+/// Each explicit path is resolved against `root` and must `stat`. It is
+/// not opened, so a file that stats but cannot be read fails later, at
+/// measurement.
+///
+/// # Errors
+///
+/// The first explicit path that is missing or cannot be `stat`ed (the
+/// message names the path and the OS reason), or that is a DIRECTORY --
+/// the fileset is flat, so a directory is a category error, not a small
+/// file.
+pub fn select_paths(
     paths: &[String],
     root: &Path,
 ) -> Result<Vec<String>, String> {

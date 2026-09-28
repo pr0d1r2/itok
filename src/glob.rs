@@ -8,7 +8,9 @@
 //! the code that implements it land together (V105).
 //!
 //! One definition, here, which the siblings may adopt -- rather than a
-//! second one grown quietly in another file (V64).
+//! second one grown quietly in another file (V64). It is PUBLIC so they
+//! can: a `pub(crate)` definition "the siblings may adopt" was one they
+//! could only copy, and two consumers did, differently (#41).
 //!
 //! Three wildcards, the ones every developer already knows from the shell
 //! and from `.gitignore` (V1: the convention costs nothing to invoke):
@@ -32,8 +34,24 @@
 ///
 /// Both are split on `/`, so matching is per SEGMENT and a wildcard can
 /// never leak across one unless it is `**`.
+///
+/// This is the THREE WILDCARDS and nothing else. It does **not** apply
+/// `.gitignore`'s surface rules: a pattern with no `/` is not matched at
+/// any depth, a leading `/` does not anchor, and a trailing `/` does not
+/// mean "directory". The pattern is matched against the WHOLE path:
+///
+/// ```
+/// use itok::glob::matches;
+/// assert!(matches("*.md", "README.md"));
+/// assert!(!matches("*.md", "docs/guide.md")); // gitignore would match
+/// assert!(matches("**/*.md", "docs/guide.md")); // say "any depth" with `**`
+/// ```
+///
+/// A caller promising gitignore semantics wraps this -- prefixing `**/`
+/// to a pattern with no `/` is the main rule -- rather than re-deriving
+/// the wildcards.
 #[must_use]
-pub(crate) fn matches(pattern: &str, path: &str) -> bool {
+pub fn matches(pattern: &str, path: &str) -> bool {
     let pat: Vec<&str> = pattern.split('/').collect();
     let seg: Vec<&str> = path.split('/').collect();
     segments(&pat, &seg)
