@@ -144,45 +144,13 @@ jobs:
             extra-substituters = https://pr0d1r2.cachix.org
             extra-trusted-public-keys = pr0d1r2.cachix.org-1:NfWjbhgAj41byXhCKiaE+av3Vnphm1fTezHXEGsiQIM=
 
-      # A MODEST saving, and the honest number is here because the first
-      # version of this comment claimed a large one.
-      #
-      # The dev shell is 156 paths, 961.5 MiB to download and 3.2 GiB
-      # unpacked, with 5 derivations built from source. Those figures are
-      # measured and they LOOK expensive. Timed on a real cold run, the whole
-      # thing materialises in 26 SECONDS -- GitHub's link to cache.nixos.org
-      # is fast, and closure size turned out to be a poor proxy for wall
-      # clock. The gate reaches its first test 79 seconds after the step
-      # starts, cold.
-      #
-      # So this cache is worth roughly half a minute per run. Keep it -- half
-      # a minute times every push is real, and a lock bump warms from the
-      # previous closure rather than starting cold -- but the hour-long runs
-      # that prompted it were the hk deadlock below, not this.
-      #
-      # Keyed on `runner.os`-AND-`runner.arch`, not `runner.os` alone. When
-      # the platform matrix lands (T60), `ubuntu-latest` and
-      # `ubuntu-24.04-arm` both report `Linux` -- one key, two different
-      # closures, each evicting the other on every run. Cheaper to be right
-      # now than to debug a cache that silently never hits.
-      #
-      # The prefix restore means a flake.lock bump warms from the previous
-      # closure instead of starting cold.
-      #
-      # RESTORE and SAVE are separate steps, each bounded and allowed to
-      # fail. The combined action saved in a POST step, inside the job's
-      # bound: on a lock bump the key missed, macOS restored for 4m07s,
-      # the gate PASSED in 3m27s, and the job was cancelled at 10m while
-      # compressing the new 4 GB store (itok#52). A cache is an
-      # optimisation, so a slow one is skipped -- it must never turn a
-      # passing gate red. A skipped restore costs a cold shell (26s).
-      - id: nix-cache
-        uses: nix-community/cache-nix-action/restore@7df957e333c1e5da7721f60227dbba6d06080569 # v7
-        timeout-minutes: 3
-        continue-on-error: true
-        with:
-          primary-key: nix-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('flake.nix', 'flake.lock') }}
-          restore-prefixes-first-match: nix-${{ runner.os }}-${{ runner.arch }}-
+      # NO Nix store cache. The shell is substituted from cache.nixos.org and
+      # pr0d1r2.cachix.org (above); a cold one materialised in 26s on Linux.
+      # MEASURED on #53: restoring the cached store took 141s on macOS, and
+      # the four `nix-*` entries (0.8-1.2 GiB each) plus the cargo ones sat
+      # at 9.7 of the repo's 10 GB Actions budget, so every new key evicted
+      # another. A cache slower than a cold fetch, that also crowds out the
+      # cargo cache, is a cost, not an optimisation.
 
       # Nine compiles of the dependency graph happen per run and cannot
       # share: cargo keys artifacts by feature set, so `--all-features`
@@ -248,11 +216,8 @@ jobs:
         run: nix develop --command hk check --all --check ${FAIL_FAST:+"$FAIL_FAST"}
 
       # Saved only after a passing gate, only on a key miss, and bounded: a
-      # slow upload is skipped and the job stays green. The store cap lives
-      # here, where the store is written. The repo-wide Actions cache budget
-      # is 10 GB and it is SHARED with the cargo cache -- and a platform
-      # matrix multiplies both. Capping the store keeps one job from evicting
-      # another's entry and turning a cache into a coin flip.
+      # slow upload is skipped and the job stays green. The repo-wide Actions
+      # cache budget is 10 GB, and a platform matrix multiplies every entry.
       - if: steps.cargo-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         timeout-minutes: 3
@@ -264,14 +229,6 @@ jobs:
             ~/.cargo/git/db
             target
           key: cargo-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock', 'flake.lock') }}
-      - if: steps.nix-cache.outputs.hit-primary-key != 'true'
-        uses: nix-community/cache-nix-action/save@7df957e333c1e5da7721f60227dbba6d06080569 # v7
-        timeout-minutes: 5
-        continue-on-error: true
-        with:
-          primary-key: nix-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('flake.nix', 'flake.lock') }}
-          gc-max-store-size-linux: 4G
-          gc-max-store-size-macos: 4G
 
   # All three feature configurations must build reproducibly. The minimal
   # one is load-bearing: it is what proves the zero-dependency core actually
@@ -327,21 +284,8 @@ jobs:
             extra-substituters = https://pr0d1r2.cachix.org
             extra-trusted-public-keys = pr0d1r2.cachix.org-1:NfWjbhgAj41byXhCKiaE+av3Vnphm1fTezHXEGsiQIM=
 
-      # RESTORE ONLY, and the matrix makes this load-bearing rather than
-      # tidy: twelve jobs each saving a multi-gigabyte store would exhaust
-      # the 10 GB budget several times over in one run and evict each other
-      # continuously. One writer per system -- the `gate` job for that OS --
-      # and everything else reads. On a cold repo these miss and pay full
-      # price once, measured at about a minute.
-      #
-      # The key carries `runner.arch` for the reason the matrix now makes
-      # concrete: `ubuntu-latest` and `ubuntu-24.04-arm` BOTH report `Linux`,
-      # so an os-only key would have had two different closures fighting
-      # over one entry, silently, forever.
-      - uses: nix-community/cache-nix-action/restore@7df957e333c1e5da7721f60227dbba6d06080569 # v7
-        with:
-          primary-key: nix-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('flake.nix', 'flake.lock') }}
-          restore-prefixes-first-match: nix-${{ runner.os }}-${{ runner.arch }}-
+      # No Nix store cache here either: see the `gate` job. These jobs
+      # substitute from the binary caches above and push what they build.
 
       # PUSH, not merely READ. Every cache line above this one made CI a
       # CONSUMER; nothing made it a PRODUCER -- so `packages.default`
