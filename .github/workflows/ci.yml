@@ -100,7 +100,13 @@ jobs:
     # toward the 360-minute default that hid B21 for three hours -- and a
     # bound is only worth having if it is tight enough to fire before a hang
     # costs an afternoon.
-    timeout-minutes: 10
+    #
+    # The 10 now sits ON THE GATE STEP, which is what it bounds: the hk
+    # deadlock was a step. At job level it also counted the cache upload,
+    # and on itok#52 it cancelled a PASSED gate while the new store was
+    # being compressed. Each cache step carries its own small bound and may
+    # fail; this job bound is only the net above their sum.
+    timeout-minutes: 30
     steps:
       # Pinned to commit SHAs, not tags. A tag is mutable: whoever controls
       # the action can move `v4` to different code, and every workflow that
@@ -162,16 +168,21 @@ jobs:
       #
       # The prefix restore means a flake.lock bump warms from the previous
       # closure instead of starting cold.
-      - uses: nix-community/cache-nix-action@7df957e333c1e5da7721f60227dbba6d06080569 # v7
+      #
+      # RESTORE and SAVE are separate steps, each bounded and allowed to
+      # fail. The combined action saved in a POST step, inside the job's
+      # bound: on a lock bump the key missed, macOS restored for 4m07s,
+      # the gate PASSED in 3m27s, and the job was cancelled at 10m while
+      # compressing the new 4 GB store (itok#52). A cache is an
+      # optimisation, so a slow one is skipped -- it must never turn a
+      # passing gate red. A skipped restore costs a cold shell (26s).
+      - id: nix-cache
+        uses: nix-community/cache-nix-action/restore@7df957e333c1e5da7721f60227dbba6d06080569 # v7
+        timeout-minutes: 3
+        continue-on-error: true
         with:
           primary-key: nix-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('flake.nix', 'flake.lock') }}
           restore-prefixes-first-match: nix-${{ runner.os }}-${{ runner.arch }}-
-          # The repo-wide Actions cache budget is 10 GB and it is SHARED
-          # with the cargo cache below -- and a platform matrix multiplies
-          # both. Capping the store keeps one job from evicting another's
-          # entry and turning a cache into a coin flip.
-          gc-max-store-size-linux: 4G
-          gc-max-store-size-macos: 4G
 
       # Nine compiles of the dependency graph happen per run and cannot
       # share: cargo keys artifacts by feature set, so `--all-features`
@@ -191,7 +202,10 @@ jobs:
       # need the shell's PATH exported into the job first. Keying on
       # `flake.lock` says the same thing -- the toolchain is pinned there --
       # without a second way to name the compiler.
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      - id: cargo-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        timeout-minutes: 3
+        continue-on-error: true
         with:
           path: |
             ~/.cargo/registry/index
@@ -220,8 +234,8 @@ jobs:
       # runs to completion instead of waiting forever. That version arrives
       # with `nix-hk`, so the dependency bump is what made this safe.
       #
-      # The timeout above stays regardless. It is what made the deadlock
-      # visible, and it is what bounds the next one.
+      # The timeout on this step stays regardless. It is what made the
+      # deadlock visible, and it is what bounds the next one.
       # Same shape as the `nix build` step below: the expression is evaluated
       # into `env:`, and the shell reads a variable. `${FAIL_FAST:+"$FAIL_FAST"}`
       # expands to a single quoted argument when set and to NOTHING when empty,
@@ -230,7 +244,34 @@ jobs:
       # is one a later edit breaks silently.
       - env:
           FAIL_FAST: ${{ github.event_name == 'push' && '--no-fail-fast' || '' }}
+        timeout-minutes: 10
         run: nix develop --command hk check --all --check ${FAIL_FAST:+"$FAIL_FAST"}
+
+      # Saved only after a passing gate, only on a key miss, and bounded: a
+      # slow upload is skipped and the job stays green. The store cap lives
+      # here, where the store is written. The repo-wide Actions cache budget
+      # is 10 GB and it is SHARED with the cargo cache -- and a platform
+      # matrix multiplies both. Capping the store keeps one job from evicting
+      # another's entry and turning a cache into a coin flip.
+      - if: steps.cargo-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        timeout-minutes: 3
+        continue-on-error: true
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            target
+          key: cargo-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock', 'flake.lock') }}
+      - if: steps.nix-cache.outputs.hit-primary-key != 'true'
+        uses: nix-community/cache-nix-action/save@7df957e333c1e5da7721f60227dbba6d06080569 # v7
+        timeout-minutes: 5
+        continue-on-error: true
+        with:
+          primary-key: nix-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('flake.nix', 'flake.lock') }}
+          gc-max-store-size-linux: 4G
+          gc-max-store-size-macos: 4G
 
   # All three feature configurations must build reproducibly. The minimal
   # one is load-bearing: it is what proves the zero-dependency core actually
