@@ -323,7 +323,7 @@ jobs:
       # with the contribution. No token = still built, still gated, just
       # not shared. The cache stays a SPEEDUP and is never a gate: nothing
       # in this file may depend on a push having happened.
-      - uses: cachix/cachix-action@5f2d7c5294214f71b873db4b969586b980625e71 # v17
+      - uses: cachix/cachix-action@38b082610b782e7e93e209c35fd730d399dee866 # v17
         with:
           name: pr0d1r2
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
