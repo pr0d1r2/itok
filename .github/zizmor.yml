@@ -50,4 +50,4 @@ rules:
   anonymous-definition:
     ignore:
       - ci.yml:71
-      - ci.yml:255
+      - ci.yml:253
