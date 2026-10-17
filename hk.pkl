@@ -376,7 +376,7 @@ local fast = new Mapping<String, Step> {
   // mechanical check that pretends to make judgements is worse than one
   // that admits its scope. This catches the half that is countable.
   //
-  // NO BACKSLASHES IN THIS SCRIPT. Pkl passes `\\` through to the shell as
+  // NO BACKSLASHES IN THIS SCRIPT. Pkl passes `\\\` through to the shell as
   // two characters, so `grep -E '\\["'` would match a literal backslash and
   // find NOTHING -- a pattern that silently counts 0 rather than erroring.
   // `[[]` matches a bracket with no escape at all.
@@ -671,10 +671,10 @@ local all = (fast) {
 }
 
 hooks {
-  /// Fast set only: a hook you are tempted to `--no-verify` past is worse
-  /// than no hook. `stash = "git"` is correctness, not speed -- without it
-  /// a partially staged file (`git add -p`) is checked as it looks in the
-  /// worktree, giving a verdict about code you are not committing.
+  // Fast set only: a hook you are tempted to `--no-verify` past is worse
+  // than no hook. `stash = "git"` is correctness, not speed -- without it
+  // a partially staged file (`git add -p`) is checked as it looks in the
+  // worktree, giving a verdict about code you are not committing.
   ["pre-commit"] {
     fix = true
     stash = "git"
@@ -683,26 +683,28 @@ hooks {
   ["pre-push"] {
     steps = all
   }
-  /// What `hk check` runs -- the CI entry point. Flat and complete: CI has
-  /// no fail-fast-cheapest-first gradient to optimize for.
+  // What `hk check` runs -- the CI entry point. Flat and complete: CI has
+  // no fail-fast-cheapest-first gradient to optimize for.
   ["check"] {
     steps = all
   }
   ["fix"] {
     fix = true
+    stage = true
     steps = fast
   }
-  /// `hk run refresh` -- the only way to update `.coverage` and, through it,
-  /// the README coverage badge. `fix` over the SLOW set, because the number
-  /// it caches costs a full instrumented run; the ordinary `fix` hook stays
-  /// on `fast` so a commit never pays for one.
-  ///
-  /// Needed as its own entry point precisely BECAUSE the cache is cheap to
-  /// read: nothing in the commit path can notice the number has moved, so
-  /// updating it has to be a thing you ask for. `coverage` on push is what
-  /// tells you to.
+  // `hk run refresh` -- the only way to update `.coverage` and, through it,
+  // the README coverage badge. `fix` over the SLOW set, because the number
+  // it caches costs a full instrumented run; the ordinary `fix` hook stays
+  // on `fast` so a commit never pays for one.
+  //
+  // Needed as its own entry point precisely BECAUSE the cache is cheap to
+  // read: nothing in the commit path can notice the number has moved, so
+  // updating it has to be a thing you ask for. `coverage` on push is what
+  // tells you to.
   ["refresh"] {
     fix = true
+    stage = true
     steps = all
   }
 }
