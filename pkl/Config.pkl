@@ -1,18 +1,18 @@
 @ModuleInfo { minPklVersion = "0.27.2" }
 module hk.Config
-import "pkl:base" as base
 
-min_hk_version = "{{version | truncate(length=1)}}.0.0"
+/// The minimum hk version required by this config.
+///
+/// If the running hk version is older, hk errors out while loading the config.
+///
+/// Example:
+///
+/// ```pkl
+/// min_hk_version = "1.0.0"
+/// ```
+min_hk_version: String = "{{version | truncate(length=1)}}.0.0"
 
 typealias StashMethod = Boolean | "git" | "patch-file" | "none"
-
-// NB: Re-export Regex in case users use Config.Regex
-@Deprecated {
-  since = "1.27.1"
-  message = "Replace `Types.Regex` with `Regex` (pkl built-in)"
-  replaceWith = "Regex"
-}
-const function Regex(s: String): Regex = base.Regex(s)
 
 class Script {
   linux: String?
@@ -25,9 +25,24 @@ class Script {
 ///
 /// The first entry is the executable. Exact `{{files}}` and
 /// `{{workspace_files}}` entries expand to one argument per file.
-/// Structured commands cannot be combined with a step's `shell` or `prefix`.
+/// Structured commands cannot be combined with a step's `shell` or a string
+/// `prefix`.
 class Command {
   argv: List<String>
+}
+
+typealias CommandEffect = "read" | "write" | "destructive"
+typealias DiagnosticFormat = "sarif" | "cargo-json" | "eslint-json" | "gcc"
+
+/// A command paired with its declared effect on user or project state.
+/// Commands that do not use CommandSpec remain valid and have an unknown effect.
+///
+/// This class is abstract because neither property has a meaningful default;
+/// pklr 2.x otherwise attempts to instantiate the union-typed `command` and
+/// rejects the schema before a concrete command specification is provided.
+class CommandSpec {
+  abstract command: String | Script | Command
+  abstract effect: CommandEffect
 }
 
 /// Default: auto-detected
@@ -44,7 +59,7 @@ class Command {
 /// default_branch = "main"
 ///
 /// // Or a remote-qualified ref
-/// default_branch = "origin/main"
+/// // default_branch = "origin/main"
 /// ```
 ///
 /// Notes:
@@ -73,22 +88,25 @@ env: Mapping<String, String> = new Mapping<String, String> {}
 /// exclude = List("node_modules", "dist", "build")
 ///
 /// // Exclude using glob patterns
-/// exclude = List("**/*.min.js", "**/*.map", "**/vendor/**")
+/// // exclude = List("**/*.min.js", "**/*.map", "**/vendor/**")
 ///
 /// // Single pattern
-/// exclude = "node_modules"
+/// // exclude = "node_modules"
 ///
 /// // Exclude using regex pattern (for complex matching)
-/// exclude = Regex(#".*\.(test|spec)\.(js|ts)$"#)
+/// // exclude = Regex(#".*\.(test|spec)\.(js|ts)$"#)
 /// ```
 ///
 /// Notes:
 ///
-/// - Patterns from all configuration sources are unioned together
-/// - Simple directory names automatically match their contents
-///   (e.g., `"excluded"` matches `excluded/*` and `excluded/**`)
+/// - Patterns from all configuration sources are unioned together: the project
+///   config, the user config, git config, `HK_EXCLUDE`, and `--exclude`
+/// - Directory names automatically match their contents: `"excluded"`,
+///   `"excluded/"`, and `"**/excluded"` also match everything inside them
 /// - Can be overridden per-step with `<STEP>.exclude`
-/// - Regex patterns use Rust regex syntax and match against full file paths
+/// - Regex patterns use Rust regex syntax and search repo-relative paths, like
+///   step-level regex excludes; anchor with `^` to match from the repo root
+///   (e.g., `Regex(#"^vendor/"#)`)
 exclude: (String | List<String> | Regex)?
 
 /// Default: `true`
@@ -110,11 +128,11 @@ fail_fast: Boolean?
 /// - "disabled-by-env"
 /// - "disabled-by-cli"
 /// - "missing-required-env"
-display_skip_reasons: List<String> = List("profile-not-enabled")
+display_skip_reasons: List<String>?
 
 /// Which warning categories to show. Empty by default (no warnings shown).
 /// Available tags include: "missing-profiles"
-warnings: List<String> = List()
+warnings: List<String>?
 
 /// Warning tags to suppress. Allows hiding specific warning messages that you don't want to see.
 ///
@@ -124,7 +142,7 @@ warnings: List<String> = List()
 /// Example: `hide_warnings = List("missing-profiles")`
 ///
 /// All hide configurations from different sources are **unioned** together.
-hide_warnings: List<String> = List()
+hide_warnings: List<String>?
 
 /// The number of parallel processes that hk will use to execute steps concurrently.
 /// This affects performance by controlling how many linting/formatting tasks can run simultaneously.
@@ -139,9 +157,10 @@ jobs: UInt?
 /// Example usage:
 /// ```pkl
 /// profiles = List("ci", "slow")
-/// profiles = List("!slow")  // explicitly disable
+/// // Or explicitly disable a profile:
+/// // profiles = List("!slow")
 /// ```
-profiles: List<String> = List()
+profiles: List<String>?
 
 /// A list of hook names to skip entirely. This allows you to disable specific git hooks from running.
 ///
@@ -151,16 +170,16 @@ profiles: List<String> = List()
 /// Unlike `skip_steps` which skips individual steps, this skips the entire hook and all its steps.
 ///
 /// **All skip configurations from different sources are unioned together.**
-skip_hooks: List<String> = List()
+skip_hooks: List<String>?
 
 /// A list of step names to skip when running hooks. This allows you to bypass specific linting or formatting tasks.
 ///
 /// For example: `skip_steps = List("lint", "test")` would skip any steps named "lint" or "test".
 ///
 /// **All skip configurations from different sources are unioned together.**
-skip_steps: List<String> = List()
+skip_steps: List<String>?
 
-/// When specified, overrides the [hook's `stage` key](https://hk.jdx.dev/configuration.html#hooks-hook-stage-boolean).
+/// When specified, overrides the [hook's `stage` key](https://hk.jdx.dev/configuration#hook-stage-boolean).
 ///
 /// This is useful when you want to manually review changes made by auto-fixers before including them in your commit.
 stage: Boolean?
@@ -176,6 +195,22 @@ stage: Boolean?
 /// Default: 20
 stash_backup_count: UInt?
 
+/// Directories containing their own hk config files, for monorepos. Entries may be
+/// literal directories or glob patterns (e.g. `"packages/*"`).
+///
+/// Each subproject's hooks are merged into this config, scoped to its directory:
+/// step working directories and glob matching are relative to the subdirectory,
+/// step names are prefixed with `"<dir>:"` (e.g. `packages/web:eslint`), and the
+/// subproject's `env` applies only to its own steps.
+///
+/// This pairs well with [mise monorepo config roots](https://mise.jdx.dev/tasks/monorepo.html):
+/// each config root can own its linting config next to its code.
+///
+/// ```pkl
+/// subprojects = List("subproject", "packages/*")
+/// ```
+subprojects: List<String>?
+
 /// Enables or disables reporting progress via OSC sequences to compatible terminals.
 terminal_progress: Boolean?
 
@@ -184,21 +219,30 @@ terminal_progress: Boolean?
 /// Default: true
 walk_ignore: Boolean?
 
+/// Steps declared here are shared by the implicit `check`, `fix`, and `pre-commit`
+/// hooks. Explicit hook steps with the same name override these definitions.
+steps: Mapping<String, Step | Group> = new Mapping<String, Step> {}
+
 /// Hooks define when and how linters are run. See [hooks](https://hk.jdx.dev/hooks) for more information.
 hooks: Mapping<String, Hook> = new Mapping<String, Hook> {}
 
 class Hook {
+  /// Whether this hook should run and be installed.
+  ///
+  /// Set this to false to disable an implicit hook created by top-level `steps`.
+  enabled: Boolean = true
+
   /// Default: `false` (`true` for `fix` hook)
   ///
   /// If true, hk will run the fix command for each step (if it exists) to make modifications.
   fix: Boolean?
 
-  /// Default: `true`
+  /// Default: `true` for `pre-commit`; `false` for every other hook.
   ///
   /// If true, hk will automatically stage fixed files after `fix` commands run.
   ///
   /// This can be overridden via the `stage` [configuration setting](https://hk.jdx.dev/configuration.html#stage).
-  /// Note that this means the value of `stage` in your `hk.pkl` takes precendence.
+  /// Note that this means the value of `stage` in your `hk.pkl` takes precedence.
   stage: Boolean?
 
   /// Default: `"none"`
@@ -235,7 +279,7 @@ class Hook {
   /// hooks {
   ///   ["pre-push"] {
   ///     env {
-  ///       ["HK_PROFILES"] = "types"
+  ///       ["NODE_ENV"] = "test"
   ///     }
   ///     steps = linters
   ///   }
@@ -262,11 +306,14 @@ class Hook {
   fail_on_fix: Boolean = false
 
   /// Command to run after the hook completes. Receives timing JSON in `HK_REPORT_JSON`.
-  report: (String | Script)?
+  ///
+  /// A plain string or `Script` has an unknown effect, so `--safe` refuses to run the hook.
+  /// Use a `CommandSpec` to declare the report's `effect` (`read`, `write`, or `destructive`).
+  report: (String | Script | Command | CommandSpec)?
 
   /// Steps are the individual linters that make up a hook.
-  /// They are executed in the order they are defined in parallel up to
-  /// [`HK_JOBS`](https://hk.jdx.dev//configuration#hk-jobs) at a time.
+  /// Steps can run concurrently, subject to dependencies, groups, and file locks, up to
+  /// [`HK_JOBS`](https://hk.jdx.dev/environment_variables#hk-jobs) at a time.
   steps: Mapping<String, Step | Group> = new Mapping<String, Step> {}
 }
 
@@ -280,15 +327,15 @@ class FileSelector {
   types: List<String>?
 }
 
-class Step {
+open class Step {
   /// List of environment variables that must be set for this step to run.
   /// A variable is considered satisfied if it is present in the process environment,
   /// the global `env` block in hk.pkl, or the step's own `env` block.
   /// If any are missing, the step will be skipped with a clear message.
   required: List<String> = List()
 
-  /// Files the step should run on. By default this will only run this step if
-  /// at least 1 staged file matches the glob or regex patterns.
+  /// Files the step should run on. The step runs when at least one selected file
+  /// matches the glob or regex patterns. The hook and CLI options select the initial files.
   /// If no patterns are provided, the step will always run.
   ///
   /// ```pkl
@@ -306,7 +353,7 @@ class Step {
   ///
   /// // Regex pattern for complex matching
   /// ["config-lint"] {
-  ///     glob = Types.Regex(#"^(config|settings).*\.(json|yaml|yml)$"#)
+  ///     glob = Regex(#"^(config|settings).*\.(json|yaml|yml)$"#)
   ///     check = "config-lint {{files}}"
   /// }
   /// ```
@@ -352,6 +399,7 @@ class Step {
   /// - **Shells:** `shell`, `bash`, `zsh`, `fish`, `sh`
   /// - **Data formats:** `json`, `yaml`, `toml`, `xml`, `csv`, 'pkl'
   /// - **Markup:** `html`, `markdown`, `css`, 'asciidoc'
+  /// - **Components:** `svelte`, `vue`, `astro`
   /// - **Special:** `text`, `binary`, `executable`, `symlink`, `dockerfile`
   /// - **Images:** `image`, `png`, `jpeg`, `gif`, `svg`, `webp`
   /// - **Archives:** `archive`, `zip`, `tar`, `gzip`
@@ -373,13 +421,16 @@ class Step {
   /// ```pkl
   /// ["shellcheck"] {
   ///   match_any = List(
-  ///     new { glob = List("**/*.sh", "**/*.bash") },
-  ///     new { types = List("sh", "bash") }
+  ///     new FileSelector { glob = List("**/*.sh", "**/*.bash") },
+  ///     new FileSelector { types = List("sh", "bash") }
   ///   )
   ///   check = "shellcheck {{files}}"
   /// }
   /// ```
   match_any: List<FileSelector>?
+
+  /// Whether to include binary files (default: false)
+  allow_binary: Boolean = false
 
   /// Whether to include symbolic links (default: false)
   allow_symlinks: Boolean = false
@@ -392,8 +443,10 @@ class Step {
   /// ```pkl
   /// hooks {
   ///     ["pre-commit"] {
-  ///         ["prettier"] {
-  ///             check = "prettier --check {{files}}"
+  ///         steps {
+  ///             ["prettier"] {
+  ///                 check = "prettier --check {{files}}"
+  ///             }
   ///         }
   ///     }
   /// }
@@ -405,12 +458,14 @@ class Step {
   /// ```pkl
   /// hooks {
   ///     ["pre-commit"] {
-  ///         ["prettier"] {
-  ///             check = new Script {
-  ///                 linux = "prettier --check {{files}}"
-  ///                 macos = "prettier --check {{files}}"
-  ///                 windows = "prettier --check {{files}}"
-  ///                 other = "prettier --check {{files}}"
+  ///         steps {
+  ///             ["prettier"] {
+  ///                 check = new Script {
+  ///                     linux = "prettier --check {{files}}"
+  ///                     macos = "prettier --check {{files}}"
+  ///                     windows = "prettier --check {{files}}"
+  ///                     other = "prettier --check {{files}}"
+  ///                 }
   ///             }
   ///         }
   ///     }
@@ -433,7 +488,7 @@ class Step {
   ///   argv = List("wc", "-c", "{{files}}")
   /// }
   /// ```
-  check: (String | Script | Command)?
+  check: (String | Script | Command | CommandSpec)?
 
   /// A command that returns a list of files that need fixing.
   /// This is used to optimize the fix step when `check_first` is enabled.
@@ -442,50 +497,114 @@ class Step {
   /// ```pkl
   /// hooks {
   ///     ["pre-commit"] {
-  ///         ["prettier"] {
-  ///             check_list_files = "prettier --list-different {{files}}"
+  ///         steps {
+  ///             ["prettier"] {
+  ///                 check_list_files = "prettier --list-different {{files}}"
+  ///             }
   ///         }
   ///     }
   /// }
   /// ```
-  check_list_files: (String | Script | Command)?
+  check_list_files: (String | Script | Command | CommandSpec)?
 
-  /// A command that shows the diff of what would be changed.
-  /// This is an alternative to `check` that can provide more detailed information about what would be changed.
+  /// A command that prints a unified diff of what would be changed, without changing files,
+  /// and exits non-zero when there are changes.
   ///
-  /// When defined, hk will attempt to apply the diff output directly using `git apply`
-  /// instead of running the fix command. This is more efficient for tools that
-  /// produce standard unified diffs (black, ruff, shfmt, etc.).
+  /// When defined, fix mode runs this command first and applies its output with `git apply`
+  /// instead of running the fix command, and skips the fixer when it exits 0. The output must
+  /// be a patch `git apply` accepts, with `---`/`+++` headers naming each file, as printed by
+  /// `ruff format --diff`, `shfmt -d`, or `gofmt -d`. Output that only looks like a diff, such as
+  /// a line-numbered or side-by-side view, never applies: hk then runs the fixer on every file
+  /// after the check, so the tool runs twice. Put such a command in `check`, and build a patch
+  /// with `hk util format-diff` (a formatter that reads stdin) or `hk util sarif-diff` (a tool
+  /// that reports SARIF fixes). A `StepTest` with `run = "diff"` fails when the patch doesn't
+  /// apply.
   ///
   /// Falls back to running the fix command if patch application fails.
-  check_diff: (String | Script | Command)?
+  check_diff: (String | Script | Command | CommandSpec)?
+
+  /// Default: `true`
+  ///
+  /// If false, fix mode runs `fix` instead of applying `check_diff` output, and `check_diff`
+  /// only serves check mode. In a hook that stages fixes, hk still runs `check_diff` first and
+  /// then runs `fix` on just the files the diff names, so a passing check skips both the fixer
+  /// and staging. Set this for a fixer that only rewrites files that need it and is cheaper to
+  /// run than producing and applying a patch. A step without `fix` always applies the diff.
+  apply_check_diff: Boolean = true
+
+  /// Default: `false`
+  ///
+  /// If true, rerun `check` on the original file batch after successfully
+  /// applying `check_diff` output. Use this for partial fixers whose diff can
+  /// leave non-fixable findings behind.
+  ///
+  /// Requires both `check` and `check_diff`.
+  check_after_diff: Boolean = false
+
+  /// Default: `false`
+  ///
+  /// If true, check mode first runs `check_diff` or `check_list_files` to
+  /// identify failing files, then runs `check` only on those files. This keeps
+  /// detailed diagnostics while avoiding commands and suggestions containing
+  /// every file in a large repository.
+  ///
+  /// Requires `check` and at least one of `check_diff` or `check_list_files`.
+  check_failed_files: Boolean = false
 
   /// A command to run that modifies files.
   /// This typically is a "fix" command like `eslint --fix` or `prettier --write`.
   /// Templates variables are the same as for `check`.
   ///
   /// ```pkl
-  /// local linters = new Mapping<String, Step> {
+  /// local linters = new Mapping {
   ///     ["prettier"] {
   ///         fix = "prettier --write {{files}}"
   ///     }
   /// }
   /// ```
   ///
-  /// By default, hk will use `fix` commands but this can be overridden by setting
-  /// [`HK_FIX=0`](https://hk.jdx.dev/configuration#hk-fix) or running `hk run <HOOK> --check`.
-  fix: (String | Script | Command)?
+  /// A hook with `fix = true` uses fix commands. Disable configured fixes by setting
+  /// [`HK_FIX=0`](https://hk.jdx.dev/environment_variables#hk-fix) or running `hk run <HOOK> --check`.
+  fix: (String | Script | Command | CommandSpec)?
 
-  /// If true, hk will run the check step first and only run the fix step if the check step fails.
-  check_first: Boolean = true
+  /// Default: `false`
+  ///
+  /// If true, and another step writes the same files, hk runs this step's `check` before `fix`
+  /// and skips the fix when the check passes, so files that already pass aren't rewritten. The
+  /// check holds the same write locks as the fix would. When files need fixing, the tool runs
+  /// twice, which usually costs more than it saves, so it's off by default. Consider it for a
+  /// slow fixer whose files usually pass.
+  ///
+  /// Some steps check first whatever this is set to:
+  /// - a step whose `check` and `fix` are the same command, as in steps migrated from
+  ///   pre-commit: such a fixer exits 1 after fixing, and the second run is what lets it pass;
+  /// - a step with `check_diff` in fix mode, so it can apply the diff instead of running `fix`.
+  ///   With `apply_check_diff = false`, only in a hook that stages fixes, so a passing check
+  ///   skips both the fixer and staging;
+  /// - a step with `check_diff` or `check_list_files` and `stage = "<JOB_FILES>"`, so only the
+  ///   files it changed are fixed and staged. With the default `stage`, this happens only when one
+  ///   of the step's files has unstaged changes that hk didn't stash, since otherwise staging
+  ///   picks up exactly the files the fix changed.
+  check_first: Boolean = false
 
   /// Default: `false`
   ///
   /// If true, hk will run the linter on batches of files instead of all files at once.
   /// This takes advantage of parallel processing for otherwise single-threaded linters like eslint and prettier.
+  /// Files are split evenly across `--jobs` batches, with at least `batch_min_files` files in
+  /// each, so a handful of files doesn't start one process per file and pay the tool's startup
+  /// cost each time.
+  ///
+  /// Batched steps that run at the same time share `--jobs` rather than each splitting its files
+  /// into `--jobs` batches. Each step first gets an equal share of the jobs, and the jobs left over
+  /// go to the steps with the most files. For example, with 8 jobs, prettier on 900 files and
+  /// eslint on 300 make 4 batches each, and prettier, eslint and jq on 900, 100 and 100 files make
+  /// 4, 2 and 2. Together they never make more batches than `--jobs`, unless there are more such
+  /// steps than jobs, when each still runs once. A step that is the only batched one with files,
+  /// or that has `depends` or a `condition`, gets every job.
   ///
   /// ```pkl
-  /// local linters = new Mapping<String, Step> {
+  /// local linters = new Mapping {
   ///     ["eslint"] {
   ///         batch = true
   ///     }
@@ -493,18 +612,38 @@ class Step {
   /// ```
   batch: Boolean = false
 
+  /// Default: `4`
+  ///
+  /// When `batch` is true, the fewest files hk puts in each batch when it splits a step's files
+  /// across `--jobs`. A step with fewer files still runs once, and a batch whose command would be
+  /// too long for the OS is split further, below this number. Raise it for tools that are slow to
+  /// start, such as Node-based linters: when other steps keep the CPUs busy, every extra batch
+  /// mostly pays the tool's startup again.
+  ///
+  /// ```pkl
+  /// local linters = new Mapping {
+  ///     ["prettier"] {
+  ///         batch = true
+  ///         // 900 files make 4 batches instead of one per job
+  ///         batch_min_files = 200
+  ///     }
+  /// }
+  /// ```
+  batch_min_files: UInt?
+
   /// Default: `false`
   ///
-  /// If true, hk will get a write lock instead of a read lock when running fix/fix_all.
-  /// Use this if the tool has its own locking mechanism or you simply don't care
-  /// if files may be written to by multiple linters simultaneously.
+  /// If true, bypass hk's file locks for this step.
+  /// Only use this when another mechanism coordinates access or the command
+  /// can safely run alongside readers and writers. Read-only checks normally
+  /// need no such override because they already share read locks.
   stomp: Boolean = false
 
   /// If set, run the linter on workspaces only which are parent directories containing this filename.
   /// This is useful for tools that need to be run from a specific directory, like a project root.
   ///
   /// ```pkl
-  /// local linters = new Mapping<String, Step> {
+  /// local linters = new Mapping {
   ///     ["cargo-clippy"] {
   ///         glob = "*.rs"
   ///         workspace_indicator = "Cargo.toml"
@@ -543,60 +682,101 @@ class Step {
   /// For example, in a monorepo with Node packages:
   ///
   /// ```pkl
-  /// local linters = new Mapping<String, Step> {
+  /// local linters = new Mapping {
   ///   ["npm-lint"] {
   ///     glob = List("*.js", "*.jsx", "*.ts", "*.tsx")
   ///     workspace_indicator = "package.json"
-  ///     check = "echo cd {{workspace}} && npm run lint -- {{workspace_files}}"
-  ///     fix = "echo cd {{workspace}} && npm run fix -- {{workspace_files}}"
+  ///     check = "cd {{workspace}} && npm run lint -- {{workspace_files}}"
+  ///     fix = "cd {{workspace}} && npm run fix -- {{workspace_files}}"
   ///   }
   /// }
   /// ```
   workspace_indicator: String?
 
-  /// If set, run the linter scripts with this prefix, e.g.: "mise exec --" or "npm run".
+  /// If set, run commands with this prefix. Use a string for shell commands or
+  /// a list of explicit arguments for structured commands.
+  ///
+  /// A `check_diff` or `check_list_files` that can't run with the prefix, such as
+  /// a builtin's shell script under a list prefix, is left out: hk runs `check`
+  /// and `fix` instead. A `check` or `fix` that can't run with it is an error.
   ///
   /// ```pkl
-  /// local linters = new Mapping<String, Step> {
+  /// local linters = new Mapping {
   ///     ["eslint"] {
   ///         prefix = "npm run"
   ///     }
   /// }
   /// ```
-  prefix: String?
+  prefix: (String | List<String>)?
 
   /// If set, run the linter scripts in this directory.
   ///
   /// ```pkl
-  /// local linters = new Mapping<String, Step> {
+  /// local linters = new Mapping {
   ///     ["eslint"] = (Builtins.eslint) {
   ///         dir = "frontend"
   ///     }
   /// }
   /// ```
+  ///
+  /// `dir` is a template, so with `workspace_indicator` set it can follow each
+  /// job's workspace instead of the command opening with a `cd`:
+  ///
+  /// ```pkl
+  /// local linters = new Mapping {
+  ///     ["go-vet"] {
+  ///         glob = "**/*.go"
+  ///         workspace_indicator = "go.mod"
+  ///         dir = "{{workspace}}"
+  ///         check = "go vet ./..."
+  ///     }
+  /// }
+  /// ```
+  ///
+  /// `{{files}}` is relative to the rendered directory, as it already is for a
+  /// literal `dir`.
+  ///
+  /// Note that file selection — `glob` matching, `exclude`, and `stage`
+  /// pathspecs — happens before hk knows which workspace a job will run in, so
+  /// it can only use the literal part of `dir` that precedes the first template
+  /// expression. `dir = "{{workspace}}"` therefore scopes nothing, and file
+  /// selection is left to `glob` and `workspace_indicator`.
   dir: String?
 
   /// Profiles are a way to enable/disable linters based on the current profile.
-  /// The linter will only run if its profile is in [`HK_PROFILE`](https://hk.jdx.dev/configuration#hk-profile).
+  /// All positive profiles must be enabled in [`HK_PROFILE`](https://hk.jdx.dev/environment_variables#hk-profile).
   ///
   /// ```pkl
-  /// local linters = new Mapping<String, Step> {
+  /// local linters = new Mapping {
   ///     ["prettier"] = (Builtins.prettier) {
   ///         profiles = List("slow")
   ///     }
   /// }
   /// ```
   ///
-  /// Profiles can be prefixed with `!` to disable them.
+  /// A negative step profile, prefixed with `!`, skips the step when that profile is enabled.
   ///
   /// ```pkl
-  /// local linters = new Mapping<String, Step> {
+  /// local linters = new Mapping {
   ///     ["prettier"] = (Builtins.prettier) {
   ///         profiles = List("!slow")
   ///     }
   /// }
   /// ```
   profiles: List<String>?
+
+  /// An expression over profiles for combinations that `profiles` cannot express, such as "any
+  /// of". `profile('name')` is true when that profile is enabled and not explicitly disabled.
+  /// Combine with `and`, `or`, and `not`. It applies in addition to `profiles`.
+  ///
+  /// ```pkl
+  /// local linters = new Mapping {
+  ///     ["prettier"] = (Builtins.prettier) {
+  ///         profile_condition = "profile('ci') or (profile('slow') and not profile('fast'))"
+  ///     }
+  /// }
+  /// ```
+  profile_condition: String?
 
   /// A list of steps that must finish before this step can run.
   ///
@@ -613,7 +793,29 @@ class Step {
   /// ```
   depends: (String | List<String>) = List()
 
+  /// Default: `false`
+  ///
+  /// If true, a non-zero exit from this step's command is reported but does not
+  /// cause the hook to fail. The step still runs, its output is preserved, and
+  /// dependent steps may continue. Errors produced by hk itself remain fatal.
+  ///
+  /// A string value is evaluated as an expression when the command fails. The
+  /// expression can use `env(name)` to read an environment variable:
+  ///
+  /// ```pkl
+  /// ["cargo-check"] {
+  ///     check = "cargo check"
+  ///     allow_failure = "env('KNOWN_BROKEN') == 'true'"
+  /// }
+  /// ```
+  allow_failure: (Boolean | String) = false
+
   /// If set, use this shell instead of the default `sh -o errexit -c`.
+  ///
+  /// The value is split on whitespace. If it contains quotes, the quoted words are grouped,
+  /// so a program path with spaces can be quoted (POSIX rules; on Windows backslashes stay literal, except before a double quote, as in `CommandLineToArgvW`). On Windows the default is
+  /// `cmd.exe`, so a step written as a POSIX script, such as the `jq` builtin, needs
+  /// `shell = "sh -o errexit -c"` or the full path to a POSIX `sh`.
   ///
   /// ```pkl
   /// hooks {
@@ -630,8 +832,9 @@ class Step {
 
   /// A list of globs of files to add to the git index after running a fix step.
   ///
-  /// When staging is enabled and the step has a `fix` command, this defaults to the step's
-  /// glob. Set explicitly if your fix modifies different files than those it reads.
+  /// This filters what hk stages; it does not enable staging by itself. When
+  /// staging is enabled and this is unset, hk stages the files processed by
+  /// the step. Set it when a fix modifies different files than those it reads.
   ///
   /// ```pkl
   /// hooks {
@@ -651,6 +854,9 @@ class Step {
   /// If true, this step will wait for any previous steps to finish before running.
   /// No other steps will start until this one finishes.
   /// Under the hood this groups the previous steps into a group.
+  /// Prefer declaring generated files with `stage` and letting hk own Git staging.
+  /// Use this for legacy or third-party commands that access shared resources hk
+  /// cannot infer, such as scripts that cannot avoid writing the Git index themselves.
   ///
   /// ```pkl
   /// hooks {
@@ -685,7 +891,7 @@ class Step {
   /// // Exclude with regex pattern for complex matching
   /// ["linter"] {
   ///     glob = List("**/*")
-  ///     exclude = Types.Regex(#"""
+  ///     exclude = Regex(#"""
   /// (?x)
   /// ^(vendor|dist|build)/.*$|
   /// .*\.(min|bundle)\.(js|css)$|
@@ -696,6 +902,8 @@ class Step {
   /// ```
   ///
   /// Notes:
+  /// - A glob naming a directory (`"vendor"`, `"vendor/"`, `"**/vendor"`) also
+  ///   excludes every file inside it. A group's `exclude` is inherited as is.
   /// - Regex patterns use Rust regex syntax
   /// - The `(?x)` flag enables verbose mode for multi-line patterns with comments
   /// - Use raw strings (`#"..."#` or `#"""..."""#`) to avoid escaping backslashes
@@ -707,7 +915,7 @@ class Step {
   /// This implies `exclusive = true`.
   ///
   /// ```pkl
-  /// local linters = new Mapping<String, Step> {
+  /// local linters = new Mapping {
   ///     ["show-warning"] {
   ///         interactive = true
   ///         check = "echo warning && read -p 'Press Enter to continue'"
@@ -722,7 +930,7 @@ class Step {
   /// This is useful for tools which allow passing filenames via stdin (like xargs), to avoid hk's automatic batching.
   ///
   /// ```pkl
-  /// local linters = new Mapping<String, Step> {
+  /// local linters = new Mapping {
   ///     ["hungry-command"] {
   ///         stdin = " {{ files_list | join(sep='\n') }}"
   ///         check = "xargs my-command"
@@ -736,9 +944,9 @@ class Step {
   /// Evaluated with [`expr`](https://github.com/jdx/expr-rs).
   ///
   /// ```pkl
-  /// local linters = new Mapping<String, Step> {
+  /// local linters = new Mapping {
   ///     ["prettier"] {
-  ///         condition = "exec('test -f check.js')"
+  ///         condition = "exec_ok('test -f check.js')"
   ///     }
   /// }
   /// ```
@@ -749,9 +957,9 @@ class Step {
   /// Evaluated with [`expr`](https://github.com/jdx/expr-rs).
   ///
   /// ```pkl
-  /// local linters = new Mapping<String, Step> {
+  /// local linters = new Mapping {
   ///     ["prettier"] {
-  ///         condition = "exec('test -f check.js')"
+  ///         condition = "exec_ok('test -f check.js')"
   ///     }
   /// }
   /// ```
@@ -762,7 +970,7 @@ class Step {
   /// If true, the step will be hidden from output.
   ///
   /// ```pkl
-  /// local linters = new Mapping<String, Step> {
+  /// local linters = new Mapping {
   ///     ["prettier"] {
   ///         hide = true
   ///     }
@@ -805,11 +1013,47 @@ class Step {
   /// ```
   output_summary: "stdout" | "stderr" | "combined" | "hide" = "stderr"
 
+  /// Parse the combined stdout and stderr of `check` runs into normalized diagnostics for
+  /// structured output (`--format json`), SARIF export (`--sarif`), and the MCP dashboard.
+  ///
+  /// A step reports diagnostics only when this is set; without it, `diagnostics` and its SARIF
+  /// results are empty and only the raw output is kept. hk does not add flags to the command, so
+  /// the command must print one of these formats itself:
+  ///
+  /// - `gcc`: `path:line:column: [severity:] message [rule]` lines
+  /// - `sarif`: a SARIF 2.1.0 log
+  /// - `eslint-json`: the output of `eslint --format json`
+  /// - `cargo-json`: the output of `cargo check --message-format=json`
+  ///
+  /// When the step sets `dir` (including `dir = "{{workspace}}"`), the tool prints paths relative
+  /// to that directory. hk rebases them onto the repository root, so SARIF, JSON and MCP
+  /// diagnostics name the file as the repository sees it. Absolute paths are left as printed.
+  ///
+  /// ```pkl
+  /// check = "my-compiler {{files}}"
+  /// diagnostic_format = "gcc"
+  /// ```
+  diagnostic_format: DiagnosticFormat?
+
+  /// Tool name recorded on normalized diagnostics. Defaults to the step name.
+  diagnostic_tool: String?
+
+  /// Severity for `gcc` findings the tool prints without a severity word, when they are shaped
+  /// `path:line: rule-name: message` (for example Buildifier's lint findings). Defaults to `error`.
+  /// Findings that name a severity keep it, and other lines without one (for example
+  /// `path:3:1: syntax error`) stay `error`.
+  ///
+  /// ```pkl
+  /// diagnostic_format = "gcc"
+  /// diagnostic_severity = "warning"
+  /// ```
+  diagnostic_severity: ("error" | "warning" | "note" | "help")?
+
   /// Environment variables specific to this step.
   /// These are merged with the global environment variables.
   ///
   /// ```pkl
-  /// local linters = new Mapping<String, Step> {
+  /// local linters = new Mapping {
   ///     ["prettier"] {
   ///         env {
   ///             ["NODE_ENV"] = "production"
@@ -889,15 +1133,22 @@ class Step {
   /// ```bash
   /// hk test                 # all tests
   /// hk test --step prettier # only prettier's tests
-  /// hk test --name formats json via fix
+  /// hk test --name "formats json via fix"
   /// hk test --list          # list without running
   /// ```
   tests: Mapping<String, StepTest> = new Mapping<String, StepTest> {}
 }
 
 class StepTest {
-  /// What to run: "check", "fix", or "command"
-  run: "check" | "fix" = "check"
+  /// What to run: "check", "fix", or "diff".
+  ///
+  /// A "diff" test runs `check_diff` and, if it exits non-zero, applies its output with
+  /// `git apply` as fix mode does. Unlike fix mode it never falls back to `fix`: output that
+  /// doesn't apply fails the test. After a patch applies, a step with `check_after_diff` reruns
+  /// `check`, whose exit code becomes the test's; otherwise the exit code is 0. `expect.files`
+  /// is compared after the patch is applied, so a "diff" test can expect the same files as the
+  /// matching "fix" test.
+  run: "check" | "fix" | "diff" = "check"
 
   /// Files to pass to the command (used to render {{ files }})
   files: (String | List<String>)?
@@ -938,6 +1189,53 @@ class StepTestExpect {
 
   /// Expected files after run: path => full contents (exact match)
   files: Mapping<String, String> = new Mapping<String, String> {}
+
+  /// Normalized diagnostics that the output of a `check` test must contain.
+  ///
+  /// hk parses the test command's combined stdout and stderr with the step's `diagnostic_format`,
+  /// as a real check does for `--sarif` and `--format json`, and each entry here must match at
+  /// least one parsed diagnostic. The step must set `diagnostic_format`, and the test must use
+  /// `run = "check"`. Fields you leave out match anything.
+  ///
+  /// The test parses one invocation's output, so it fails with an explanation instead of passing
+  /// for two kinds of step it can't model: a check-first step (`check_failed_files` with
+  /// `check_diff` or `check_list_files`, whose real check also captures the file-reporting
+  /// command's output), and a `batch` or `workspace_indicator` step whose `diagnostic_format` is
+  /// `sarif` or `eslint-json` (a real check joins every job's output before parsing, so separate
+  /// documents would not parse).
+  ///
+  /// ```pkl
+  /// expect {
+  ///   code = 1
+  ///   diagnostics {
+  ///     new { path = "main.c"; line = 2; severity = "error" }
+  ///   }
+  /// }
+  /// ```
+  diagnostics: Listing<StepTestDiagnostic> = new Listing<StepTestDiagnostic> {}
+}
+
+class StepTestDiagnostic {
+  /// File path as the tool printed it; a leading `./` is ignored. If the tool printed an absolute
+  /// path, as tools do for the test's temporary sandbox, a relative path here matches when that
+  /// path lies inside the sandbox directory and the rest equals it. On Windows, backslash
+  /// separators and letter case are ignored; elsewhere neither is.
+  path: String?
+
+  /// Line where the diagnostic starts.
+  line: Int?
+
+  /// Column where the diagnostic starts.
+  column: Int?
+
+  /// "error", "warning", "note", or "help".
+  severity: ("error" | "warning" | "note" | "help")?
+
+  /// Rule or code the tool reported.
+  rule: String?
+
+  /// Substring that must appear in the diagnostic's message.
+  message: String?
 }
 
 class Group {
@@ -949,7 +1247,7 @@ class Group {
   /// Command prefix inherited by child steps that do not set `prefix`.
   ///
   /// This is copied to each child step as a default; child step values override it completely.
-  prefix: String?
+  prefix: (String | List<String>)?
 
   /// Workspace indicator inherited by child steps that do not set `workspace_indicator`.
   ///

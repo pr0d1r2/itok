@@ -690,6 +690,7 @@ hooks {
   }
   ["fix"] {
     fix = true
+    stage = true
     steps = fast
   }
   // `hk run refresh` -- the only way to update `.coverage` and, through it,
@@ -703,6 +704,7 @@ hooks {
   // tells you to.
   ["refresh"] {
     fix = true
+    stage = true
     steps = all
   }
 }
