@@ -204,8 +204,11 @@ jobs:
       # runs to completion instead of waiting forever. That version arrives
       # with `nix-hk`, so the dependency bump is what made this safe.
       #
-      # The timeout on this step stays regardless. It is what made the
-      # deadlock visible, and it is what bounds the next one.
+      # The job bound is 30 minutes because a cold platform can legitimately
+      # build the pinned Rust tools while entering the shell. Keep the same
+      # bound on this step: a shorter step bound makes the job timeout
+      # unreachable on a cold Intel macOS runner and reports a false gate
+      # failure before hk gets to run.
       # Same shape as the `nix build` step below: the expression is evaluated
       # into `env:`, and the shell reads a variable. `${FAIL_FAST:+"$FAIL_FAST"}`
       # expands to a single quoted argument when set and to NOTHING when empty,
@@ -214,7 +217,7 @@ jobs:
       # is one a later edit breaks silently.
       - env:
           FAIL_FAST: ${{ github.event_name == 'push' && '--no-fail-fast' || '' }}
-        timeout-minutes: 10
+        timeout-minutes: 30
         run: nix develop --command hk check --all --check ${FAIL_FAST:+"$FAIL_FAST"}
 
       # Saved only after a passing gate, only on a key miss, and bounded: a
