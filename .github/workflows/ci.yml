@@ -61,6 +61,7 @@ jobs:
   #   ubuntu-latest     x86_64-linux
   #   ubuntu-24.04-arm  aarch64-linux
   #   macos-latest      aarch64-darwin
+  #   macos-15-intel    x86_64-darwin
   #
   # A matrix REPLICATES the work, it does not divide it: each runner pays
   # the whole gate. Wall clock stays roughly flat because they run
@@ -69,6 +70,7 @@ jobs:
   # this repo has already shipped two defects that were invisible from one
   # vantage point (B18's merge commit, B20's platform-dependent coverage).
   gate:
+    name: gate
     runs-on: ${{ matrix.os }}
     strategy:
       # Every platform reports. Cancelling the others would hide whether a
@@ -76,7 +78,7 @@ jobs:
       # question anyone asks, and the one a matrix exists to answer.
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest]
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest, macos-15-intel]
     # A bound, not hygiene, and it EARNED ITS KEEP within an hour of being
     # added. GitHub serves no logs for an in-progress job and defaults to
     # 360 minutes, so an unbounded hang is six hours of silence followed by
@@ -251,6 +253,7 @@ jobs:
   # zero-dependency claim is most likely to break first, which is the
   # claim's whole point.
   nix-build:
+    name: nix-build
     runs-on: ${{ matrix.os }}
     # 10, matching the gate again. These jobs never enter the dev shell --
     # they build PACKAGES -- so they did not get heavier when it did.
@@ -262,7 +265,7 @@ jobs:
       # Cancelling the rest would hide whether the defect is shared.
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest]
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest, macos-15-intel]
         package: [default, itok-minimal, itok-ollama]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

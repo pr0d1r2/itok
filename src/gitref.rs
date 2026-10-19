@@ -437,8 +437,10 @@ mod tests {
         if !crate::testutil::dogfood() {
             return;
         }
-        // HEAD~1..HEAD changed at least the files of the last commit.
-        assert!(!changed_between(&repo(), "HEAD~1", "HEAD").is_empty());
+        // The empty tree is stable even when this checkout's HEAD is the
+        // root commit; coupling the assertion to HEAD~1 makes it depend on
+        // the history surrounding the test rather than the behavior tested.
+        assert!(!changed_between(&repo(), EMPTY_TREE, "HEAD").is_empty());
     }
 
     #[test]
