@@ -136,7 +136,13 @@
       mthWrapper =
         pkgs:
         let
-          pinned = microlith.packages.${pkgs.stdenv.hostPlatform.system}.default;
+          pinned = pkgs.rustPlatform.buildRustPackage {
+            pname = "microlith";
+            version = "0.6.1";
+            src = microlith;
+            cargoLock.lockFile = "${microlith}/Cargo.lock";
+            doCheck = false;
+          };
         in
         pkgs.writeShellScriptBin "mth" ''
           set -eu
