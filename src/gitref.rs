@@ -5,6 +5,8 @@
 
 use std::path::Path;
 
+const EMPTY_TREE: &str = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
+
 /// Every variable through which an AMBIENT repository can reach a child
 /// `git`, and the reason `-C` alone is not isolation.
 const GIT_ENV: &[&str] = &[
