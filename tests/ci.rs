@@ -21,6 +21,23 @@ fn workflow() -> String {
     read(".github/workflows/ci.yml")
 }
 
+fn flake() -> String {
+    read("flake.nix")
+}
+
+#[test]
+fn the_flake_exports_intel_macos() {
+    let f = flake();
+    assert!(
+        f.contains("\"x86_64-darwin\""),
+        "flake.nix must include x86_64-darwin in its systems"
+    );
+    assert!(
+        f.contains("packages = forAll"),
+        "flake.nix must derive packages for every declared system"
+    );
+}
+
 #[test]
 fn the_gate_defines_the_standard_ops() {
     let g = gate();
