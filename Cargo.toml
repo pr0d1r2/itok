@@ -83,6 +83,10 @@ documentation = "https://docs.rs/itok"
 readme = "README.md"
 keywords = ["tokens", "llm", "context", "tokenizer", "cli"]
 categories = ["command-line-utilities", "development-tools"]
+
+[workspace]
+members = ["dev"]
+resolver = "2"
 # Dev-only guard files, meaningless to a crate consumer (V26/V13).
 exclude = [
   "flake.nix",
