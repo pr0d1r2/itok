@@ -185,7 +185,7 @@ V125: **run the STRICTER setting & write down what you decline; an exemption wit
 | M9 | public exposure — ships as `0.3.0-rc.1` | T59 | repo public, `0.3.0-rc.1` published & installed from crates.io, then `0.3.0`; badges resolve |
 | M10 | CI hardening — ships as `0.8.0` | T60 | matrix (linux + macos-arm) green over a streak, release automation, MSRV axis |
 | M11 | closure — ships as `1.0.0` | T61 | public feedback folded; CLI surface + json contract frozen |
-| M8 | local guardrails — ONE gate definition, run by hk | T50, T51, T54-T58, T62-T68, T70, T71, T90-T93, T98, T108 | `hk.pkl` is the only place an op is written; pre-commit/pre-push/CI all reach it; the suite is green run PARALLEL |
+| M8 | local guardrails — ONE gate definition, run by hk | T50, T51, T54-T58, T62-T68, T70, T71, T90-T93, T98, T108, T110 | `hk.pkl` is the only place an op is written; pre-commit/pre-push/CI all reach it; the suite is green run PARALLEL |
 | M12 | correctness sweep -- one rule per PATH (B11) | T81-T84, T89, T105 | every rule carried to every sibling path; a gated flag names its feature; the fleet answers in parallel |
 | M13 | live awareness — throughput badge | T94-T97, T100-T104, T106 | `itok rate` returns a pre-formatted string a statusline hook can display; `itok.toml` carries color thresholds; cell 1 reads as a FILL GAUGE against the MEASURED compaction point ∴ the badge names the first compaction before it lands |
 | M14 | the fleet can CALL it -- a consumable package, ⊥ a dev shim | T99, T109 | `nix build .#default` yields an `itok` binary, CI pushes it to the cache both repos already read, & a consumer flake gates on `itok check` without building itok from source |
