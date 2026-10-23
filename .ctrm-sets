@@ -1,0 +1,5 @@
+# U+2153 appears in SPEC.md's V20 example as a compact, exact fraction.
+# U+226A appears in SPEC.md's V20 comparison of the fit and knapsack cases.
+# These are intentional mathematical notation in the specification, not
+# arbitrary prose characters.
+spec-math U+2153 U+226A
