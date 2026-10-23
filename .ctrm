@@ -1,0 +1,38 @@
+# Drafted by `ctrm init` from the tracked files. Review it before you
+# commit it: every grant is a decision. A pattern with no `/` matches a
+# file name at any depth; the last matching line wins; a path no line
+# matches gets `ascii`. `ctrm explain <path>` says which line decides.
+
+# 97 text files read, 0 skipped (binary or not UTF-8).
+# Pure ASCII, no line needed: *.json (2) *.jsonl (6) *.lock (2)
+#   *.nix (1) *.rs (55) *.sh (1) *.txt (2) .context-ratchet (1)
+#   .coverage (1) .envrc (1) .gitignore (1) LICENSE (1)
+
+# *.md, files: 11.
+# `spec-math` in `.ctrm-sets` covers the two deliberate mathematical symbols;
+# `zh` covers the Chinese characters used in the explanatory text.
+# `ctrm fix` rewrites, no grant needed: U+2013 U+2014 U+2026
+*.md ascii+caveman+typography+math+box+legal+spec-math+zh
+
+# *.pkl, files: 2.
+# box for U+2500 U+2502 U+2514 U+251C
+# marks for U+2192
+# `ctrm fix` rewrites, no grant needed: U+2014 U+2019
+*.pkl ascii+box+marks
+
+# *.toml, files: 6.
+# Needs no grant.
+# `ctrm fix` rewrites, no grant needed: U+2014
+
+# *.yml, files: 2.
+# caveman for U+00B7
+*.yml ascii+caveman
+
+# .context-limits, files: 1.
+# caveman for U+00A7
+.context-limits ascii+caveman
+
+# .spec-records, files: 1.
+# caveman for U+22A5
+# zh for U+6587 U+8A00
+.spec-records ascii+caveman+zh
