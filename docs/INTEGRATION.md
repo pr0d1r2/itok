@@ -15,8 +15,8 @@ things run it, and none of them restates it.
 | caller | set | when |
 |---|---|---|
 | `pre-commit` hook | `fast` — **27 steps** | every commit |
-| `pre-push` hook | `all` — **34 steps** | every push |
-| `hk check --all` in CI | `all` — **34 steps** | every push and PR |
+| `pre-push` hook | `all` — **35 steps** | every push |
+| `hk check --all` in CI | `all` — **35 steps** | every push and PR |
 
 `all` is `fast` plus six: `ollama`, `no-default-features`, `package`,
 `rustdoc`, `coverage`, `semver`. Those six either compile a second
