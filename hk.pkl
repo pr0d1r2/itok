@@ -258,10 +258,10 @@ local fast = new Mapping<String, Step> {
   // itok's 3 dependencies. The bug is invisible at zero dependencies, which
   // is the only place it has run.
   ["readme-badges"] {
-    glob = List("README.md", ".coverage", "Cargo.toml", "flake.nix", "flake.lock", "hk.pkl")
+    glob = List("README.md", ".coverage", "Cargo.toml", "flake.nix", "flake.lock", "hk.pkl", ".github/workflows/ci.yml", "dev/**")
     depends = List("coverage")
-    check = "sh scripts/badges.sh --check"
-    fix = "sh scripts/badges.sh --write"
+    check = "cargo run -p itok-dev -- readme --check"
+    fix = "cargo run -p itok-dev -- readme --fix"
   }
   // OFFLINE ONLY. `--offline` checks relative paths and skips every http
   // link, which is the half that breaks when a file moves and the half no
@@ -400,6 +400,12 @@ local fast = new Mapping<String, Step> {
 /// definition of the cheap steps -- the slow set is the fast set plus two,
 /// never a second copy that can drift.
 local all = (fast) {
+  ["dev-all"] {
+    glob = List("**/*")
+    depends = List("readme-badges")
+    check = "cargo run -p itok-dev -- --check"
+    fix = "cargo run -p itok-dev -- --fix"
+  }
   // V38: the network backend is cassette-replayed offline; this axis is
   // what keeps that path from rotting.
   ["ollama"] {
