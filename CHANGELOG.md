@@ -35,6 +35,73 @@ same guarantee; the suffix said only that the publishing pipeline was
 unproven. It is proven now, so the suffix is gone and the ladder is
 unchanged.
 
+## [0.3.2] - 2026-10-25
+
+**A tag that builds on every system the flake declares.** `x86_64-darwin`
+joined the flake's `systems` after `0.3.1` was cut, so a consumer pinning
+the tag still had to build itok from source on an Intel Mac. This tag
+carries it. The guarantee level is unchanged: everything below is
+additive or a fix, `cargo semver-checks` against `v0.3.1` reports no
+semver update required, and `0.4.0`'s telemetry rung stays open (`T35`),
+so the number stays in the `0.3.x` fix band (V70).
+
+### Added
+
+- **`x86_64-darwin` flake output**, beside `x86_64-linux`,
+  `aarch64-linux` and `aarch64-darwin`.
+- **`packages.default` is published**, not merely built (`T99`): CI
+  pushes the `itok` binary to the binary cache, so a consumer flake can
+  gate on `itok check` without compiling itok.
+- **`glob::matches` and `estimate::select_paths` are public** (`T109`),
+  each with its semantics documented at the item, so consumers stop
+  re-implementing them slightly differently.
+- **`itok cap` reduction ladder** (`T40`): `--strip`, `--dedup`,
+  `--elide` and `--outline`, lossless first, every applied rung named in
+  the footer.
+- **`doctor --session`** retargets the verb at one session (`T76`), and
+  ends with an advice block once `use%` crosses the line `fit` warns at
+  (`T77`).
+- **`top --cost`** prices the cache split in the unit `.context-models`
+  declares (`T38`); a missing rate means no column, never a guessed one.
+- **`rate` colours its first cell as a fill gauge** against the measured
+  compaction point (`T100`, `T101`), and dates the red line as
+  `~to compaction`, floored rather than rounded up (`T104`).
+- **`[rate.compact]` is keyed by model** (`T106`): the compaction point
+  differs about 6x between a 200k and a 1M window, so one global number
+  painted a 200k session green into a compaction.
+
+### Changed
+
+- **`rate`'s `/h` and `/d` measure growth, not re-billing** (`T103`,
+  `§B30`). They divided billed input, which is about 98% cache reads, so
+  the rate climbed fastest exactly when the window was growing slowest.
+- **`--help` prints a one-line blurb**; the reference paragraph moved to
+  `docs` and the README (`T107`).
+
+### Fixed
+
+- **`cap`'s resume selector no longer loops** (`T41`, `§B37`): a budget
+  too small for the first line pointed back at byte 0, and following it
+  read the same bytes forever.
+- **`top` reads the compaction caveat off the session** (`T102`,
+  `§B29`): a session that compacted says its `carried` and `projected`
+  are upper bounds, and names when.
+- **A `[1m]` model variant falls back to its base id**, so the red-line
+  ladder finds a limit instead of missing on every rung.
+- **The gauge turns red where the `!` alarm fires**, not at the limit;
+  the hue and the mark no longer contradict each other.
+- **An absent last turn is a dash, not a zero**: `-` in the badge,
+  `null` in json.
+- **`itok.toml` is found at the project root** (walking up to the git
+  root), not only in the working directory.
+- **`check` names `.context-limits` rows that match nothing on disk**,
+  and json gains `"unmatched"`, so a typo'd row no longer reads as a pass.
+- **Verb routing is exhaustive again** (`§B42`): a new verb is a compile
+  error until wired, instead of silently answering as `trace`.
+- **Intel macOS**: `mth` shell evaluation and a cold-shell gate timeout.
+- **The nix package builds from the workspace sources** now that `dev/`
+  is a workspace member.
+
 ## [0.3.1] - 2026-08-22
 
 **A badge that reports itself.** `itok rate` turns a session's throughput
