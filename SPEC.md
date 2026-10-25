@@ -189,7 +189,7 @@ V492: **a workspace helper duplicates the root deny list to stay detachable.** C
 | M8 | local guardrails — ONE gate definition, run by hk | T50, T51, T54-T58, T62-T68, T70, T71, T90-T93, T98, T108, T110-T111 | `hk.pkl` is the only place an op is written; pre-commit/pre-push/CI all reach it; the suite is green run PARALLEL |
 | M12 | correctness sweep -- one rule per PATH (B11) | T81-T84, T89, T105 | every rule carried to every sibling path; a gated flag names its feature; the fleet answers in parallel |
 | M13 | live awareness — throughput badge | T94-T97, T100-T104, T106 | `itok rate` returns a pre-formatted string a statusline hook can display; `itok.toml` carries color thresholds; cell 1 reads as a FILL GAUGE against the MEASURED compaction point ∴ the badge names the first compaction before it lands |
-| M14 | the fleet can CALL it -- a consumable package, ⊥ a dev shim | T99, T109, T112 | `nix build .#default` yields an `itok` binary, CI pushes it to the cache both repos already read, & a consumer flake gates on `itok check` without building itok from source |
+| M14 | the fleet can CALL it -- a consumable package, ⊥ a dev shim | T99, T109, T112 | `nix build .#default` yields an `itok` binary, CI pushes it to the cache both repos already read, & a consumer flake pinning the `v0.3.2` tag (T112, flake declares `x86_64-darwin`) gates on `itok check` without building itok from source |
 | M7 | runtime CI — replay & regression | T47, T48 | a recorded ledger replays deterministically offline ∴ policy A/B w/o an agent; a run over session budget fails CI |
 
 T1|x|crate skeleton: standalone bin, Cargo.toml, MIT license, min deps|V13
