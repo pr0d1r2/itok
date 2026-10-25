@@ -1,0 +1,30 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+# CodeRabbit configuration planted by the hallucinogen loop (C96/V586).
+# Quiet reviews, no blocking reviews, no chat replies unless asked, and no
+# review of generated files. Edit freely: the loop only adds this file when a
+# repository has none, and never overwrites one.
+language: en-US
+reviews:
+  profile: chill
+  auto_approvals:
+    enabled: false
+  poem: false
+  sequence_diagrams: false
+  changed_files_summary: false
+  collapse_walkthrough: true
+  path_filters:
+    - "!flake.lock"
+    - "!**/*.lock"
+    - "!**/recordings/**"
+    - "!**/*.cast"
+    - "!**/*.gif"
+  path_instructions:
+    - path: "**/SPEC.md"
+      instructions: >-
+        Rows in the bug (B) and task (T) tables have exactly four `|`-separated fields
+        (id, date or status, text, cites); a literal pipe inside the text is
+        escaped as `\|`. The up-tack symbol (U+22A5) means "not". Cited ids must be declared in this
+        spec or written in the federated `path:ID` form. Do not suggest
+        rewriting the notation itself.
+chat:
+  auto_reply: false
