@@ -1,0 +1,56 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+# CodeRabbit configuration planted by the hallucinogen loop
+# (scripts/just/trips/review/coderabbit V586). Quiet reviews, no blocking
+# reviews, no commits by CodeRabbit, no chat replies unless asked, and no
+# review of generated files. Edit freely: the loop only adds this file when a
+# repository has none, and never overwrites one.
+language: en-US
+reviews:
+  profile: quiet
+  auto_approvals:
+    enabled: false
+  poem: false
+  in_progress_fortune: false
+  sequence_diagrams: false
+  changed_files_summary: false
+  estimate_code_review_effort: false
+  related_issues: false
+  related_prs: false
+  suggested_labels: false
+  suggested_reviewers: false
+  collapse_walkthrough: true
+  # The loop's merge wait reads this status: keep it on.
+  commit_status: true
+  finishing_touches:
+    docstrings:
+      enabled: false
+    unit_tests:
+      enabled: false
+    simplify:
+      enabled: false
+    autofix:
+      enabled: false
+    fix_ci:
+      enabled: false
+    resolve_merge_conflict:
+      enabled: false
+  pre_merge_checks:
+    docstrings:
+      mode: "off"
+  path_filters:
+    - "!flake.lock"
+    - "!**/*.lock"
+    - "!**/recordings/**"
+    - "!**/*.cast"
+    - "!**/*.gif"
+  path_instructions:
+    - path: "**/SPEC.md"
+      instructions: >-
+        Task (T) rows have four fields separated by |: id, status, task and
+        cites. Bug (B) rows have four fields: id, date, cause and fix. A
+        literal pipe inside a field is escaped as \|. The up-tack symbol
+        (U+22A5) means "not". A cited id must be declared in this spec or
+        written in the federated path:ID form. Do not suggest rewriting the
+        notation itself.
+chat:
+  auto_reply: false
