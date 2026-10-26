@@ -268,20 +268,38 @@ pub fn run(args: &[String], root: &Path) -> u8 {
                 }
             };
         let (fast, all) = gate_steps(&pkl);
-        let words: Vec<_> = doc.split_whitespace().collect();
-        let stated: Vec<_> = words
-            .windows(2)
-            .filter(|pair| pair[1].contains("step"))
-            .filter_map(|pair| {
-                pair[0]
-                    .trim_matches(|c: char| !c.is_ascii_digit())
-                    .parse::<usize>()
-                    .ok()
+        let labeled: Vec<_> = doc
+            .lines()
+            .filter(|line| line.contains("step"))
+            .filter_map(|line| {
+                let label = match (
+                    line.contains("`fast`") || line.contains("— fast"),
+                    line.contains("`all`") || line.contains("— all"),
+                ) {
+                    (true, false) => Some(fast),
+                    (false, true) => Some(all),
+                    _ => None,
+                }?;
+                let count = line
+                    .split_whitespace()
+                    .collect::<Vec<_>>()
+                    .windows(2)
+                    .find_map(|pair| {
+                        if !pair[1].contains("step") {
+                            return None;
+                        }
+                        let digits: String = pair[0]
+                            .chars()
+                            .filter(|c| c.is_ascii_digit())
+                            .collect();
+                        digits.parse::<usize>().ok()
+                    })?;
+                Some((label, count))
             })
             .collect();
-        if !stated.contains(&fast)
-            || !stated.contains(&all)
-            || stated.iter().any(|n| *n != fast && *n != all)
+        if !labeled.contains(&(fast, fast))
+            || !labeled.contains(&(all, all))
+            || labeled.iter().any(|(expected, actual)| expected != actual)
         {
             eprintln!(
                 "itok-dev: docs/INTEGRATION.md must state exactly the fast count ({fast}) and all count ({all})"
