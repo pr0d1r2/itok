@@ -17,6 +17,7 @@
 [![minimal tier 0 dependencies](https://img.shields.io/badge/minimal_tier-0_dependencies-brightgreen)](docs/THIRD-PARTY-NOTICES.md)
 [![unsafe forbidden](https://img.shields.io/badge/unsafe-forbidden-brightgreen)](Cargo.toml)
 [![gate hk](https://img.shields.io/badge/gate-hk-6E4AFF)](hk.pkl)
+[![gate steps 27 fast / 35 all](https://img.shields.io/badge/gate_steps-27_fast_%2F_35_all-6E4AFF)](hk.pkl)
 [![coverage 98.3%](https://img.shields.io/badge/coverage-98.3%25-brightgreen)](hk.pkl)
 [![floor 98%](https://img.shields.io/badge/floor-%E2%89%A598%25-brightgreen)](hk.pkl)
 
