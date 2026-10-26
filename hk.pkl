@@ -375,24 +375,9 @@ local fast = new Mapping<String, Step> {
   // paragraph still describes what a step does is a judgement, and a
   // mechanical check that pretends to make judgements is worse than one
   // that admits its scope. This catches the half that is countable.
-  //
-  // NO BACKSLASHES IN THIS SCRIPT. Pkl passes `\\\` through to the shell as
-  // two characters, so `grep -E '\\["'` would match a literal backslash and
-  // find NOTHING -- a pattern that silently counts 0 rather than erroring.
-  // `[[]` matches a bracket with no escape at all.
   ["integration-doc"] {
     glob = List("hk.pkl", "docs/INTEGRATION.md")
-    check = """
-      fast=$(awk '/^local fast/,/^}/' hk.pkl | grep -cE '^  [[]["]')
-      extra=$(awk '/^local all/,/^}/' hk.pkl | grep -cE '^  [[]["]')
-      all=$((fast + extra))
-      stated=$(grep -oE '[0-9]+ steps?' docs/INTEGRATION.md | grep -oE '^[0-9]+' | sort -u)
-      [ -n "$stated" ] || { echo "hk: docs/INTEGRATION.md states no step count at all. It is the document that explains the gate; a count that vanished is not the same as a count that is right." >&2; exit 1; }
-      bad=$(echo "$stated" | grep -vE "^($fast|$all)$" || true)
-      [ -z "$bad" ] || { echo "hk: docs/INTEGRATION.md claims $(echo $bad) steps; hk.pkl defines $fast fast and $all all. The doc describes the gate, so it goes stale every time the gate grows -- fix the numbers, and check whether the new steps are described at all." >&2; exit 1; }
-      echo "$stated" | grep -qx "$all" || { echo "hk: docs/INTEGRATION.md never states the all-set count ($all). Stating only the commit-side number hides drift in the half that gates a push." >&2; exit 1; }
-      echo "$stated" | grep -qx "$fast" || { echo "hk: docs/INTEGRATION.md never states the fast-set count ($fast). Stating only the all count hides drift in the half you meet on every commit." >&2; exit 1; }
-      """
+    check = "cargo run -p itok-dev -- integration-doc --check"
   }
 }
 

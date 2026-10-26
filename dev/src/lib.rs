@@ -1,6 +1,28 @@
 use std::fmt::Write;
 use std::path::Path;
 
+pub fn gate_steps(pkl: &str) -> (usize, usize) {
+    let mut section = None;
+    let mut fast = 0;
+    let mut extra = 0;
+    for line in pkl.lines() {
+        if line.starts_with("local fast") {
+            section = Some(true);
+        } else if line.starts_with("local all") {
+            section = Some(false);
+        } else if line.starts_with('}') {
+            section = None;
+        } else if line.starts_with("  [\"") && line.ends_with("{") {
+            match section {
+                Some(true) => fast += 1,
+                Some(false) => extra += 1,
+                None => {}
+            }
+        }
+    }
+    (fast, fast + extra)
+}
+
 pub fn direct_dependencies(toml: &str) -> Result<usize, String> {
     let mut section = false;
     let mut count = 0;
@@ -208,6 +230,11 @@ pub fn render(
     let mut out = format!(
         "[![CI](https://github.com/pr0d1r2/itok/actions/workflows/ci.yml/badge.svg)](https://github.com/pr0d1r2/itok/actions/workflows/ci.yml)\n[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)\n[![crates.io](https://img.shields.io/crates/v/itok.svg)](https://crates.io/crates/itok)\n[![docs.rs](https://docs.rs/itok/badge.svg)](https://docs.rs/itok)\n[![edition {edition}](https://img.shields.io/badge/edition-{edition}-000000?logo=rust&logoColor=white)](Cargo.toml)\n[![MSRV {msrv}](https://img.shields.io/badge/MSRV-{msrv}-000000?logo=rust&logoColor=white)](Cargo.toml)\n[![direct dependencies {deps}](https://img.shields.io/badge/direct_dependencies-{deps}-brightgreen)](docs/THIRD-PARTY-NOTICES.md)\n[![minimal tier 0 dependencies](https://img.shields.io/badge/minimal_tier-0_dependencies-brightgreen)](docs/THIRD-PARTY-NOTICES.md)\n[![unsafe forbidden](https://img.shields.io/badge/unsafe-forbidden-brightgreen)](Cargo.toml)\n[![gate hk](https://img.shields.io/badge/gate-hk-6E4AFF)](hk.pkl)\n[![coverage {cov}%](https://img.shields.io/badge/coverage-{cov}%25-brightgreen)](hk.pkl)\n[![floor {floor}%](https://img.shields.io/badge/floor-%E2%89%A5{floor}%25-brightgreen)](hk.pkl)\n\n[![nix flake](https://img.shields.io/badge/nix-flake-5277C3?logo=nixos&logoColor=white)](flake.nix)\n[![nixpkgs {rev}](https://img.shields.io/badge/nixpkgs-{rev}-5277C3?logo=nixos&logoColor=white)](flake.lock)\n{platforms}\n[![built with Claude Code](https://img.shields.io/badge/built_with-Claude_Code-D97757)](https://claude.com/claude-code)\n[![built with Opus 5](https://img.shields.io/badge/built_with-Opus_5-D97757)](https://www.anthropic.com/claude)\n[![built with SDD](https://img.shields.io/badge/built_with-spec--driven_development-D97757)](SPEC.md)"
     );
+    let (fast_steps, all_steps) = gate_steps(hk);
+    let badge = format!(
+        "[![gate steps {fast_steps} fast / {all_steps} all](https://img.shields.io/badge/gate_steps-{fast_steps}_fast_%2F_{all_steps}_all-6E4AFF)](hk.pkl)\n"
+    );
+    out = out.replace("[![gate hk](https://img.shields.io/badge/gate-hk-6E4AFF)](hk.pkl)\n", &format!("[![gate hk](https://img.shields.io/badge/gate-hk-6E4AFF)](hk.pkl)\n{badge}"));
     Ok(std::mem::take(&mut out))
 }
 
@@ -223,6 +250,45 @@ pub fn run(args: &[String], root: &Path) -> u8 {
     if !check && !fix {
         eprintln!("usage: itok-dev readme [--check|--fix]");
         return 2;
+    }
+    if args.iter().any(|a| a == "integration-doc") {
+        let pkl = match std::fs::read_to_string(root.join("hk.pkl")) {
+            Ok(value) => value,
+            Err(error) => {
+                eprintln!("itok-dev: {error}");
+                return 1;
+            }
+        };
+        let doc =
+            match std::fs::read_to_string(root.join("docs/INTEGRATION.md")) {
+                Ok(value) => value,
+                Err(error) => {
+                    eprintln!("itok-dev: {error}");
+                    return 1;
+                }
+            };
+        let (fast, all) = gate_steps(&pkl);
+        let words: Vec<_> = doc.split_whitespace().collect();
+        let stated: Vec<_> = words
+            .windows(2)
+            .filter(|pair| pair[1].contains("step"))
+            .filter_map(|pair| {
+                pair[0]
+                    .trim_matches(|c: char| !c.is_ascii_digit())
+                    .parse::<usize>()
+                    .ok()
+            })
+            .collect();
+        if !stated.contains(&fast)
+            || !stated.contains(&all)
+            || stated.iter().any(|n| *n != fast && *n != all)
+        {
+            eprintln!(
+                "itok-dev: docs/INTEGRATION.md must state exactly the fast count ({fast}) and all count ({all})"
+            );
+            return 1;
+        }
+        return 0;
     }
     let values = (|| {
         let readme = std::fs::read_to_string(root.join("README.md"))
@@ -296,6 +362,16 @@ mod tests {
         assert!(
             splice("<!-- BEGIN badges -->\nold\n<!-- END badges -->", "new")
                 .is_ok_and(|s| s.contains("new"))
+        );
+    }
+
+    #[test]
+    fn gate_steps_are_scoped_to_fast_and_all() {
+        assert_eq!(
+            gate_steps(
+                "local fast = new Mapping<String, Step> {\n  [\"check\"] {\n    check = \"hook\"\n  }\n}\nlocal all = (fast) {\n  [\"extra\"] {\n    check = \"step\"\n  }\n}"
+            ),
+            (1, 2)
         );
     }
 }
