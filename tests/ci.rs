@@ -145,6 +145,28 @@ fn fetches_full_history() {
     );
 }
 
+fn marker(text: &str, needle: &str) -> usize {
+    text.find(needle).unwrap_or(usize::MAX)
+}
+
+#[test]
+fn cache_work_cannot_cancel_a_passing_gate() {
+    let y = workflow();
+    let restore = marker(&y, "uses: actions/cache/restore@");
+    let check = marker(&y, "run: nix develop --command hk check --all --check");
+    let save = marker(&y, "uses: actions/cache/save@");
+    let ordered = restore < check && check < save;
+    let bounded = y[restore..check].matches("timeout-minutes: 3").count() == 1
+        && y[save..save + 500].matches("timeout-minutes: 3").count() == 1;
+    let best_effort = y[restore..check].contains("continue-on-error: true")
+        && y[save..].contains("continue-on-error: true");
+    assert!(ordered && bounded && best_effort);
+    assert!(y.contains("if: steps.cargo-cache.outputs.cache-hit != 'true'"));
+    assert!(
+        y[check.saturating_sub(200)..check].contains("timeout-minutes: 10")
+    );
+}
+
 /// V75 amends V31: nix is now this crate's OWN toolchain rather than a
 /// host dependency, so CI uses the dev shell. What survives from V31 is
 /// the part that still matters -- no tool gets a second, drifting install
