@@ -59,7 +59,7 @@ flowchart TD
     B2 --> B
     B -->|fails| A
     B -->|passes| C["commit"]
-    C --> D["pre-push — all (32)"]
+    C --> D["pre-push — all (35 steps)"]
     D -->|fails| A
     D -->|passes| E["push"]
     E --> F["CI — gate ×3: x86-linux · arm-linux · arm-macos"]
