@@ -269,7 +269,7 @@ pub fn run(args: &[String], root: &Path) -> u8 {
             };
         let (fast, all) = gate_steps(&pkl);
         let mut missing_count = false;
-        let labeled: Vec<_> = doc
+        let counts: Vec<_> = doc
             .lines()
             .filter(|line| line.contains("steps"))
             .filter_map(|line| {
@@ -280,7 +280,7 @@ pub fn run(args: &[String], root: &Path) -> u8 {
                     (true, false) => Some(fast),
                     (false, true) => Some(all),
                     _ => None,
-                }?;
+                };
                 let count = line
                     .split_whitespace()
                     .collect::<Vec<_>>()
@@ -297,8 +297,7 @@ pub fn run(args: &[String], root: &Path) -> u8 {
                 let count = match count {
                     Some(count) => count,
                     None => {
-                        missing_count |=
-                            line.contains("— fast") || line.contains("— all");
+                        missing_count |= label.is_some();
                         return None;
                     }
                 };
@@ -306,9 +305,12 @@ pub fn run(args: &[String], root: &Path) -> u8 {
             })
             .collect();
         if missing_count
-            || !labeled.contains(&(fast, fast))
-            || !labeled.contains(&(all, all))
-            || labeled.iter().any(|(expected, actual)| expected != actual)
+            || !counts.contains(&(Some(fast), fast))
+            || !counts.contains(&(Some(all), all))
+            || counts.iter().any(|(expected, actual)| match expected {
+                Some(expected) => expected != actual,
+                None => *actual != fast && *actual != all,
+            })
         {
             eprintln!(
                 "itok-dev: docs/INTEGRATION.md must state exactly the fast count ({fast}) and all count ({all})"
