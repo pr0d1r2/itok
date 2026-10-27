@@ -268,9 +268,10 @@ pub fn run(args: &[String], root: &Path) -> u8 {
                 }
             };
         let (fast, all) = gate_steps(&pkl);
+        let mut missing_count = false;
         let labeled: Vec<_> = doc
             .lines()
-            .filter(|line| line.contains("step"))
+            .filter(|line| line.contains("steps"))
             .filter_map(|line| {
                 let label = match (
                     line.contains("`fast`") || line.contains("— fast"),
@@ -293,11 +294,19 @@ pub fn run(args: &[String], root: &Path) -> u8 {
                             .filter(|c| c.is_ascii_digit())
                             .collect();
                         digits.parse::<usize>().ok()
-                    })?;
+                    });
+                let count = match count {
+                    Some(count) => count,
+                    None => {
+                        missing_count = true;
+                        return None;
+                    }
+                };
                 Some((label, count))
             })
             .collect();
-        if !labeled.contains(&(fast, fast))
+        if missing_count
+            || !labeled.contains(&(fast, fast))
             || !labeled.contains(&(all, all))
             || labeled.iter().any(|(expected, actual)| expected != actual)
         {
