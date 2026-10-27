@@ -289,11 +289,10 @@ pub fn run(args: &[String], root: &Path) -> u8 {
                         if !pair[1].contains("step") {
                             return None;
                         }
-                        let digits: String = pair[0]
-                            .chars()
-                            .filter(|c| c.is_ascii_digit())
-                            .collect();
-                        digits.parse::<usize>().ok()
+                        pair[0]
+                            .trim_matches(|c: char| c.is_ascii_punctuation())
+                            .parse::<usize>()
+                            .ok()
                     });
                 let count = match count {
                     Some(count) => count,
