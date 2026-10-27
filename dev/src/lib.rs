@@ -297,7 +297,8 @@ pub fn run(args: &[String], root: &Path) -> u8 {
                 let count = match count {
                     Some(count) => count,
                     None => {
-                        missing_count = true;
+                        missing_count |=
+                            line.contains("— fast") || line.contains("— all");
                         return None;
                     }
                 };
