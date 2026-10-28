@@ -398,7 +398,7 @@ mod tests {
     fn gate_steps_are_scoped_to_fast_and_all() {
         assert_eq!(
             gate_steps(
-                "local fast = new Mapping<String, Step> {\n  [\"check\"] {\n    check = \"hook\"\n  }\n}\nlocal all = (fast) {\n  [\"extra\"] {\n    check = \"step\"\n  }\n}"
+                "local fast = new Mapping<String, Step> {\n  [\"check\"] {\n    check = \"hook\"\n  }\n}\nlocal all = (fast) {\n  [\"extra\"] {\n    check = \"step\"\n  }\n}\nhooks {\n  [\"check\"] {\n    steps = fast\n  }\n}"
             ),
             (1, 2)
         );
