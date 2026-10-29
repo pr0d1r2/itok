@@ -116,7 +116,7 @@ being a copy.
 
 ## The steps that guard claims, not code
 
-Most of the 34 are ordinary: a formatter, a linter, a test runner, hygiene.
+Most of the 35 are ordinary: a formatter, a linter, a test runner, hygiene.
 Eleven exist because this repository makes a *claim* somewhere, and a claim with
 no runner is just a sentence (`§V17`). The count said six while the table
 listed ten, which is the drift `integration-doc` checks for and cannot see:
