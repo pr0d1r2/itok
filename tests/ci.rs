@@ -163,7 +163,7 @@ fn cache_work_cannot_cancel_a_passing_gate() {
     assert!(ordered && bounded && best_effort);
     assert!(y.contains("if: steps.cargo-cache.outputs.cache-hit != 'true'"));
     assert!(
-        y[check.saturating_sub(200)..check].contains("timeout-minutes: 10")
+        y[check.saturating_sub(200)..check].contains("timeout-minutes: 20")
     );
 }
 
