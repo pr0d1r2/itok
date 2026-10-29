@@ -13,7 +13,8 @@ pub fn gate_steps(pkl: &str) -> (usize, usize) {
         } else if line.starts_with("local all") {
             section = Some(false);
             depth = 0;
-        } else if line.starts_with("  [\"") && line.ends_with("{") && depth == 1 {
+        } else if line.starts_with("  [\"") && line.ends_with("{") && depth == 1
+        {
             match section {
                 Some(true) => fast += 1,
                 Some(false) => extra += 1,
