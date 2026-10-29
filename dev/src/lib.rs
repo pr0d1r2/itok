@@ -3,20 +3,29 @@ use std::path::Path;
 
 pub fn gate_steps(pkl: &str) -> (usize, usize) {
     let mut section = None;
+    let mut depth = 0usize;
     let mut fast = 0;
     let mut extra = 0;
     for line in pkl.lines() {
         if line.starts_with("local fast") {
             section = Some(true);
+            depth = 0;
         } else if line.starts_with("local all") {
             section = Some(false);
-        } else if line == "}" {
-            section = None;
-        } else if line.starts_with("  [\"") && line.ends_with("{") {
+            depth = 0;
+        } else if line.starts_with("  [\"") && line.ends_with("{") && depth == 1 {
             match section {
                 Some(true) => fast += 1,
                 Some(false) => extra += 1,
                 None => {}
+            }
+        }
+        if section.is_some() {
+            depth = depth
+                .saturating_add(line.matches('{').count())
+                .saturating_sub(line.matches('}').count());
+            if depth == 0 {
+                section = None;
             }
         }
     }
