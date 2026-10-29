@@ -206,10 +206,8 @@ jobs:
       #
       # The job bound is 30 minutes because a cold platform can legitimately
       # build the pinned Rust tools while entering the shell. The check itself
-      # gets a 15-minute bound: cache work is outside this step and must not
-      # turn a passed gate into a job timeout. Ten minutes was too tight for
-      # the Intel macOS matrix member once the full gate reached its late
-      # semver/dev checks (B47).
+      # gets a 10-minute bound: cache work is outside this step and must not
+      # turn a passed gate into a job timeout.
       # Same shape as the `nix build` step below: the expression is evaluated
       # into `env:`, and the shell reads a variable. `${FAIL_FAST:+"$FAIL_FAST"}`
       # expands to a single quoted argument when set and to NOTHING when empty,
@@ -218,7 +216,7 @@ jobs:
       # is one a later edit breaks silently.
       - env:
           FAIL_FAST: ${{ github.event_name == 'push' && '--no-fail-fast' || '' }}
-        timeout-minutes: 15
+        timeout-minutes: 10
         run: nix develop --command hk check --all --check ${FAIL_FAST:+"$FAIL_FAST"}
 
       # Saved only after a passing gate, only on a key miss, and bounded: a
