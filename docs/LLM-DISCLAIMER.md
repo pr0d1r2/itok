@@ -72,7 +72,7 @@ gates nothing (`§V17`).
 
 Entering the dev shell (`nix develop`, or `direnv allow`) installs `pre-commit`
 and `pre-push`, which run [hk](https://github.com/jdx/hk) against one definition
-of the gate in [`hk.pkl`](../hk.pkl) — 26 steps on commit, 32 on push, the slow
+of the gate in [`hk.pkl`](../hk.pkl) — 27 steps on commit, 35 on push, the slow
 half adding coverage, the tarball's contents and the network axis.
 
 [`ci.yml`](../.github/workflows/ci.yml) calls that same definition, so a laptop
