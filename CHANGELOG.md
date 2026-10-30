@@ -282,7 +282,8 @@ gate.
   runner (`§V17`).
 
   The version bump still goes through a pull request, because `main` requires
-  one with twelve passing checks. Only the tail runs from `main` afterwards,
+  one with the complete platform matrix passing. Only the tail runs from
+  `main` afterwards,
   and `cargo release hook` must be first: `tag`, `publish` and `push` do
   **not** run `pre-release-hook`, so a sequence starting at `tag` would
   publish whatever the tree happened to hold.

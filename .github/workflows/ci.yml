@@ -252,8 +252,8 @@ jobs:
   # part, which is worth writing down, because the obvious reading of a
   # 50-minute run is that everything in it is slow.
   #
-  # CROSSED with the platform matrix: three packages on three systems is
-  # nine jobs, and they are affordable precisely because each is about a
+  # CROSSED with the platform matrix: three packages on four systems is
+  # twelve jobs, and they are affordable precisely because each is about a
   # minute. The alternative -- build every package on x86 only -- would
   # leave `nix build .#itok-minimal` unproven on the two systems where the
   # zero-dependency claim is most likely to break first, which is the
