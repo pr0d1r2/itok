@@ -35,6 +35,13 @@ same guarantee; the suffix said only that the publishing pipeline was
 unproven. It is proven now, so the suffix is gone and the ladder is
 unchanged.
 
+## [0.8.0] - 2026-10-30
+
+The public gate is now trustworthy across every system declared by the flake.
+CI runs the complete gate and reproducible package builds on Linux and macOS,
+with pinned actions, bounded jobs, and platform-specific coverage. The release
+workflow is configured for the post-merge tag, publish, and push sequence.
+
 ## [0.3.2] - 2026-10-25
 
 **A tag that builds on every system the flake declares.** `x86_64-darwin`
