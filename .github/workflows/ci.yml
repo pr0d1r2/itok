@@ -217,10 +217,10 @@ jobs:
       - env:
           FAIL_FAST: ${{ github.event_name == 'push' && '--no-fail-fast' || '' }}
         # The semver check builds both the current crate and the tagged
-        # baseline on cold platforms.  Ten minutes is shorter than that
+        # baseline on cold platforms.  Twenty minutes is the bound for that
         # legitimate work (macos-15-intel timed out while building v0.3.2),
         # even though the enclosing job still has room for it.
-        timeout-minutes: 10
+        timeout-minutes: 20
         run: nix develop --command hk check --all --check ${FAIL_FAST:+"$FAIL_FAST"}
 
       # Saved only after a passing gate, only on a key miss, and bounded: a
