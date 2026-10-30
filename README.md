@@ -400,8 +400,6 @@ Each of these is checked by something, not asserted here:
 
 `0.8.0` — the public gate is trustworthy across every system declared by the
 flake. A minor here is a level of **guarantee**, not a feature count (§V70).
-Publication is deliberately not a rung (§V107), so the version describes the
-gate's maturity rather than when the package became installable.
 
 Publication is deliberately **not** a rung (§V107). The ladder once made
 `0.7` the first public release, welding who-can-install-it onto
