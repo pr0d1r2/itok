@@ -6,10 +6,9 @@
 [package]
 name = "itok"
 # The ladder (V70): each minor is a level of GUARANTEE, not a feature count.
-# 0.3.0 is an ODD minor, which the ladder reserves for a fix release between
-# milestones -- and that is exactly what this is: TLS on the exact tier, an
-# MSRV matched to the toolchain, the public docs, and the gate steps added
-# with them. No milestone moved.
+# 0.8.0 is the next EVEN minor milestone: the public gate is now trustworthy
+# across the systems and package configurations the flake declares. This is
+# not a fix release between milestones; the version records that guarantee.
 #
 # It is also the FIRST PUBLIC release, which used to be welded to 0.7.0.
 # V107 separated those: publication is a distribution decision, maturity is a

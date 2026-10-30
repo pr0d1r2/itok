@@ -18,8 +18,8 @@
 #
 # THE BUMP DOES NOT HAPPEN HERE. cargo-release's default flow bumps the
 # version, COMMITS it, and pushes that commit to the release branch. This
-# repo's `main` forbids that: a pull request is required, with TWELVE passing
-# checks (`gate` and `nix-build` across three systems). So the version is
+# repo's `main` forbids that: a pull request is required, with the complete
+# gate and package-build matrix passing across four systems. So the version is
 # bumped in a PR like any other change, and only the TAIL runs from `main`
 # once it merges:
 #
@@ -43,7 +43,7 @@
 # was built from (`.cargo_vcs_info.json`), and a squash merge ORPHANS the
 # branch sha -- so publishing off a PR branch leaves the artifact naming a
 # commit that is on no branch. `main` is also the only branch whose tree has
-# passed all twelve checks.
+# passed the complete matrix.
 allow-branch = ["main"]
 
 # THE GATE, called rather than re-checked (V64). A non-zero return ABORTS the
