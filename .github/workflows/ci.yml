@@ -103,7 +103,7 @@ jobs:
     # bound is only worth having if it is tight enough to fire before a hang
     # costs an afternoon.
     #
-    # The 10 now sits ON THE GATE STEP, which is what it bounds: the hk
+    # The 15 now sits ON THE GATE STEP, which is what it bounds: the hk
     # deadlock was a step. At job level it also counted the cache upload,
     # and on itok#52 it cancelled a PASSED gate while the new store was
     # being compressed. Each cache step carries its own small bound and may
