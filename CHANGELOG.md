@@ -39,8 +39,8 @@ unchanged.
 
 The public gate is now trustworthy across every system declared by the flake.
 CI runs the complete gate and reproducible package builds on Linux and macOS,
-with pinned actions, bounded jobs, and platform-specific coverage. The release
-workflow is configured for the post-merge tag, publish, and push sequence.
+with pinned actions, bounded jobs, and platform-specific coverage. After merge,
+run the gate hook, then the tag, publish, and push steps.
 
 ## [0.3.2] - 2026-10-25
 
