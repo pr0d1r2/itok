@@ -86,8 +86,8 @@ jobs:
     # identified the hk deadlock -- a diagnosis no amount of staring at the
     # Actions page could reach, because the page had nothing to show.
     #
-    # 10, which is ~2x the worst MEASURED job. Three numbers, each replacing
-    # a guess with a measurement, and the middle one is the lesson:
+    # 10 was ~2x the worst MEASURED job. These values replace a guess with a
+    # measurement, and the middle one is the lesson:
     #
     #   45  chosen when nothing had been timed
     #   15  worst job 6m40s, so ~2.2x  -- correct until the shell changed
@@ -97,11 +97,11 @@ jobs:
     #   10  the binary cache above removed those 8 minutes; worst is now
     #       `gate (macos-latest)` at 4m43s, with 4m32s and 2m54s beside it
     #
-    # 25 was deliberately loose pending a green run, and this is that run, so
-    # it gets tightened rather than left. A bound nobody revisits drifts back
-    # toward the 360-minute default that hid B21 for three hours -- and a
-    # bound is only worth having if it is tight enough to fire before a hang
-    # costs an afternoon.
+    # These measurements are historical. The current job bound is 45 minutes,
+    # while the 15-minute value below is the gate-step bound. A bound nobody
+    # revisits drifts back toward the 360-minute default that hid B21 for three
+    # hours -- and a bound is only worth having if it is tight enough to fire
+    # before a hang costs an afternoon.
     #
     # The 15 now sits ON THE GATE STEP, which is what it bounds: the hk
     # deadlock was a step. At job level it also counted the cache upload,
