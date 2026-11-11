@@ -58,11 +58,20 @@
   inputs.microlith.inputs.nixpkgs-lock.follows = "nixpkgs-lock";
   inputs.microlith.inputs.nix-hk.follows = "hk";
 
+  # A HOLD: cargo-release 1.1.6, applied as an overlay so `pkgs.cargo-release`
+  # below names it. nixos-26.05 moved to 1.1.7, which needs rustc 1.97 while
+  # the channel ships 1.95, so the next pin refresh would leave the release
+  # tool unbuildable. Follows our `nixpkgs-lock`, same as `hk`. Drop it once
+  # the channel's own cargo-release builds (`nix-cargo-release/T2`).
+  inputs.nix-cargo-release.url = "github:pr0d1r2/nix-cargo-release";
+  inputs.nix-cargo-release.inputs.nixpkgs-lock.follows = "nixpkgs-lock";
+
   outputs =
     {
       nixpkgs,
       microlith,
       hk,
+      nix-cargo-release,
       ...
     }:
     let
@@ -73,7 +82,11 @@
         "x86_64-linux"
         "aarch64-linux"
       ];
-      forAll = f: nixpkgs.lib.genAttrs systems (s: f nixpkgs.legacyPackages.${s});
+      forAll =
+        f:
+        nixpkgs.lib.genAttrs systems (
+          s: f (nixpkgs.legacyPackages.${s}.extend nix-cargo-release.overlays.default)
+        );
 
       # itok dogfoods itself (V15) -- so the dev shell must PROVIDE `itok`,
       # not merely the toolchain to build it. Deliberately a SHIM and not a
@@ -272,6 +285,7 @@
             # rather than enforced, which is the shape of a rule with no
             # runner (V17). Propagated from microlith, which reached the
             # same conclusion and deleted the script it had started (V84).
+            # Held at 1.1.6 by the nix-cargo-release overlay (#98).
             pkgs.cargo-release
           ];
           # Pin locale so tool output is deterministic across machines.
