@@ -54,6 +54,31 @@
         "type": "github"
       }
     },
+    "nix-cargo-release": {
+      "inputs": {
+        "nixpkgs": [
+          "nix-cargo-release",
+          "nixpkgs-lock",
+          "nixpkgs"
+        ],
+        "nixpkgs-lock": [
+          "nixpkgs-lock"
+        ]
+      },
+      "locked": {
+        "lastModified": 1794035962,
+        "narHash": "sha256-iNWNnBa8vOe11PSLYNRaA5kqN6MT4P/HwqxWywnoAgc=",
+        "owner": "pr0d1r2",
+        "repo": "nix-cargo-release",
+        "rev": "7cd15405d094a71f6d79f7751f2623af61e8718d",
+        "type": "github"
+      },
+      "original": {
+        "owner": "pr0d1r2",
+        "repo": "nix-cargo-release",
+        "type": "github"
+      }
+    },
     "nixpkgs": {
       "locked": {
         "lastModified": 1793633738,
@@ -92,6 +117,7 @@
       "inputs": {
         "hk": "hk",
         "microlith": "microlith",
+        "nix-cargo-release": "nix-cargo-release",
         "nixpkgs": [
           "nixpkgs-lock",
           "nixpkgs"
