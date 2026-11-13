@@ -19,6 +19,10 @@ you can rely on at that tag:
 | `0.8.0` | public gate trustworthy |
 | `1.0.0` | contract frozen -- CLI surface and JSON output |
 
+The current rung is `0.3.x`: the `0.4.0` row is still open. `Cargo.toml`
+carries the last released version, and a release PR is the only thing that
+moves it (`tests/ci.rs` pins this).
+
 Odd minors (`0.3`, `0.5`, `0.9`) are reserved for fix releases between
 milestones. Before `1.0.0` a minor bump may change behaviour: each rung is
 a behaviour change, and saying so is the honest reading of SemVer 0.x.
@@ -35,12 +39,19 @@ same guarantee; the suffix said only that the publishing pipeline was
 unproven. It is proven now, so the suffix is gone and the ladder is
 unchanged.
 
-## [0.8.0] - 2026-10-30
+## [Unreleased]
 
-The public gate is now trustworthy across every system declared by the flake.
-CI runs the complete gate and reproducible package builds on Linux and macOS,
-with pinned actions, bounded jobs, and platform-specific coverage. After merge,
-run the gate hook, then the tag, publish, and push steps.
+`Cargo.toml` is back at `0.3.2`, the last tag and the last crates.io release.
+It had read `0.8.0` since an automated release-prepare commit, which would
+have spent the `0.8` rung while `0.4`, `0.6` and `0.7` are open (V70, #101).
+The next release is `0.3.3` or `0.4.0`, by its own changes.
+
+### Changed
+
+- CI runs the complete gate and reproducible package builds on Linux and
+  macOS, with pinned actions, bounded jobs, and platform-specific coverage
+  (T60). This is groundwork for the `0.8.0` rung, not that rung: it ships
+  when `0.4`, `0.6` and `0.7` have.
 
 ## [0.3.2] - 2026-10-25
 
