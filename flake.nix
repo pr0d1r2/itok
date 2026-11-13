@@ -41,20 +41,20 @@
   # rules this spec is held to should change when the pin changes and at no
   # other time.
   #
-  # v0.6.1 rather than v0.5.0 because 26.05 made the old pin UNBUILDABLE:
+  # Nothing older than v0.6.1, because 26.05 made v0.5.0 UNBUILDABLE:
   # both earlier tags declare `rust-version = "1.96"` and this nixpkgs
   # carries rustc 1.95.0, so the shell died with `rustc 1.95.0 is not
-  # supported by microlith@0.5.0`. 0.6.1 lowers its MSRV to 1.95 and takes
+  # supported by microlith@0.5.0`. 0.6.1 lowered its MSRV to 1.95 and takes
   # nixpkgs from the same fleet lock.
   #
-  # It follows our `nixpkgs-lock`, not our `nixpkgs`: 0.6.1 consumes the
+  # It follows our `nixpkgs-lock`, not our `nixpkgs`: microlith consumes the
   # lock repo directly, so redirecting only `nixpkgs` left a SECOND
   # `nixpkgs-lock` node resolving the same repo twice. One authority, one
   # nixpkgs, one toolchain to download -- same wiring as `hk` above.
   # `nix-hk` follows ours too: microlith consumes it for its OWN dev shell,
   # and left alone it locks a different rev -- two hk builds in one closure
   # for a binary neither this shell nor `mth` needs twice.
-  inputs.microlith.url = "github:pr0d1r2/microlith/v0.6.1";
+  inputs.microlith.url = "github:pr0d1r2/microlith/v0.7.6";
   inputs.microlith.inputs.nixpkgs-lock.follows = "nixpkgs-lock";
   inputs.microlith.inputs.nix-hk.follows = "hk";
 
@@ -151,7 +151,7 @@
         let
           pinned = pkgs.rustPlatform.buildRustPackage {
             pname = "microlith";
-            version = "0.6.1";
+            version = "0.7.6";
             src = microlith;
             cargoLock.lockFile = "${microlith}/Cargo.lock";
             doCheck = false;
