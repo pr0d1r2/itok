@@ -16,7 +16,7 @@ name: ci
 # nix is this crate's own toolchain rather than a host dependency.
 #
 # PENDING -- listed rather than silently absent:
-#   * cargo target caching, measured                    T60 / 0.8.0
+#   * cargo target caching, measured                    T60 / M10
 #   * release automation and publish                    T59 / 0.7.0
 #
 # NO MSRV AXIS, and that is a decision rather than an omission. An MSRV job

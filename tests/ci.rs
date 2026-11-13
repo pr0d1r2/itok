@@ -182,3 +182,27 @@ fn no_second_install_path() {
         );
     }
 }
+
+/// The newest released heading in CHANGELOG.md (skipping `[Unreleased]`).
+fn newest_released() -> String {
+    read("CHANGELOG.md")
+        .lines()
+        .filter_map(|l| l.strip_prefix("## ["))
+        .filter_map(|l| l.split(']').next())
+        .find(|v| v.chars().next().is_some_and(|c| c.is_ascii_digit()))
+        .unwrap_or_default()
+        .to_string()
+}
+
+/// #101: an automated bump set `0.8.0` with no tag or publish, twice. The
+/// manifest may carry the newest released version or a newer one only if the
+/// CHANGELOG has a heading for it; it must never run ahead of the ladder.
+#[test]
+fn the_manifest_version_is_a_released_changelog_heading() {
+    let want = env!("CARGO_PKG_VERSION");
+    assert_eq!(
+        want,
+        newest_released(),
+        "Cargo.toml version must equal the newest released CHANGELOG heading (V70)"
+    );
+}
