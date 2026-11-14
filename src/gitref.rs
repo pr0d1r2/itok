@@ -279,12 +279,23 @@ mod tests {
         assert_eq!(count_at(&repo(), "HEAD", "no/such.xyz", false), None);
     }
 
+    /// Against the last commit that TOUCHED `Cargo.toml`, never the live
+    /// `HEAD`: on CI `HEAD` is the pull request's merge commit, and a PR
+    /// whose net diff is nothing makes that merge equal to its first parent
+    /// -- an honest empty answer that failed the old assertion (B48, V37).
     #[test]
     fn a_commit_changed_some_files() {
         if !crate::testutil::dogfood() {
             return;
         }
-        assert!(!changed_in(&repo(), "HEAD").is_empty());
+        let f = crate::testutil::crate_path("Cargo.toml");
+        let out = git(&repo())
+            .args(["log", "-1", "--format=%H", "--", &f])
+            .output()
+            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_owned())
+            .unwrap_or_default();
+        assert!(!out.is_empty(), "no commit touched {f}");
+        assert!(changed_in(&repo(), &out).contains(&f), "{f} not in {out}");
     }
 
     /// A scratch repo whose shape is the POINT: a root commit, a mainline
