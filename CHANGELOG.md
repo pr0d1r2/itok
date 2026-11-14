@@ -41,8 +41,6 @@ unchanged.
 
 ## [Unreleased]
 
-## [0.8.0] - 2026-11-14
-
 `Cargo.toml` is back at `0.3.2`, the last tag and the last crates.io release.
 It had read `0.8.0` since an automated release-prepare commit, which would
 have spent the `0.8` rung while `0.4`, `0.6` and `0.7` are open (V70, #101).
