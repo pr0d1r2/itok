@@ -206,3 +206,56 @@ fn the_manifest_version_is_a_released_changelog_heading() {
         "Cargo.toml version must equal the newest released CHANGELOG heading (V70)"
     );
 }
+
+/// `major.minor` of a version string, ignoring the patch and any suffix.
+fn rung_of(v: &str) -> Option<(u64, u64)> {
+    let mut parts = v.split(['.', '-']).map(str::parse::<u64>);
+    Some((parts.next()?.ok()?, parts.next()?.ok()?))
+}
+
+/// The rungs of the CHANGELOG's `## Versioning` table, in order.
+fn ladder() -> Vec<(u64, u64)> {
+    let text = read("CHANGELOG.md");
+    text.lines()
+        .skip_while(|l| *l != "## Versioning")
+        .skip(1)
+        .take_while(|l| !l.starts_with("## "))
+        .filter_map(|l| l.strip_prefix("| `"))
+        .filter_map(|l| l.split('`').next())
+        .filter_map(rung_of)
+        .collect()
+}
+
+/// Every `major.minor` a released CHANGELOG heading has reached.
+fn released_rungs() -> Vec<(u64, u64)> {
+    read("CHANGELOG.md")
+        .lines()
+        .filter_map(|l| l.strip_prefix("## ["))
+        .filter_map(|l| l.split(']').next())
+        .filter_map(rung_of)
+        .collect()
+}
+
+/// V70: the ladder is "a number you cannot skip". The heading test above
+/// cannot see a skip -- a release PR that adds `[0.8.0]` and bumps to
+/// `0.8.0` is self-consistent, and that is exactly what PR #108 did while
+/// `0.4`, `0.6` and `0.7` were open. So every rung BELOW the manifest's own
+/// must already have a released heading.
+#[test]
+fn the_manifest_version_skips_no_open_rung() {
+    let current = rung_of(env!("CARGO_PKG_VERSION"));
+    let reached = released_rungs();
+    let ladder = ladder();
+    assert!(
+        ladder.len() >= 2,
+        "CHANGELOG.md's Versioning table is unreadable"
+    );
+    let skipped: Vec<_> = ladder
+        .into_iter()
+        .filter(|r| Some(*r) < current && !reached.contains(r))
+        .collect();
+    assert!(
+        skipped.is_empty(),
+        "Cargo.toml's version skips open rungs {skipped:?} (V70)"
+    );
+}
