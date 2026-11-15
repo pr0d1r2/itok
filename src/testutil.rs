@@ -70,8 +70,12 @@ pub(crate) fn crate_path(rel: &str) -> String {
 /// merge commit, and a PR with no net diff makes it TREESAME to `main` --
 /// a commit that changed nothing, so every per-file path goes unrun and
 /// coverage depends on what the PR happens to contain (B48, V37).
+///
+/// `rel` is crate-relative and passed as-is: git resolves a pathspec
+/// against `-C DIR`, so `crate_path` would double the prefix in-tree and
+/// match nothing.
 pub(crate) fn touching(rel: &str) -> String {
-    let c = git(&["log", "-1", "--format=%H", "--", &crate_path(rel)]);
+    let c = git(&["log", "-1", "--format=%H", "--", rel]);
     if c.is_empty() { "HEAD".to_owned() } else { c }
 }
 
