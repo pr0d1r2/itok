@@ -65,6 +65,16 @@ pub(crate) fn crate_path(rel: &str) -> String {
     format!("{}{rel}", git(&["rev-parse", "--show-prefix"]))
 }
 
+/// The last commit that TOUCHED `rel`, falling back to `HEAD` outside a
+/// repo. Never the live `HEAD` itself: on CI that is the pull request's
+/// merge commit, and a PR with no net diff makes it TREESAME to `main` --
+/// a commit that changed nothing, so every per-file path goes unrun and
+/// coverage depends on what the PR happens to contain (B48, V37).
+pub(crate) fn touching(rel: &str) -> String {
+    let c = git(&["log", "-1", "--format=%H", "--", &crate_path(rel)]);
+    if c.is_empty() { "HEAD".to_owned() } else { c }
+}
+
 /// The tool's own scrubbed constructor, not a bare `Command`: `-C` loses to
 /// an inherited `GIT_DIR`, and this suite runs from `pre-commit`, where git
 /// has exported one (B19). Unscrubbed, `repo_root` answers with the

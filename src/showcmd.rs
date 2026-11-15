@@ -171,12 +171,25 @@ mod tests {
         parts.iter().map(|s| (*s).to_owned()).collect()
     }
 
+    /// A commit that changed `Cargo.toml`, never the live `HEAD`: on CI
+    /// that is a merge commit, TREESAME to `main` when the PR's net diff is
+    /// nothing, and an empty breakdown runs none of the per-file paths
+    /// (B48, V37).
+    fn touched() -> (String, String) {
+        let f = crate::testutil::crate_path("Cargo.toml");
+        (crate::testutil::touching("Cargo.toml"), f)
+    }
+
     #[test]
     fn a_commit_shows_subject_and_total() {
-        let o = show(&args(&["-C", &root(), "HEAD"]));
+        let (c, f) = touched();
+        let o = show(&args(&["-C", &root(), &c]));
         assert_eq!(o.code, 0);
         assert!(o.out.contains("total"));
         assert!(o.out.contains("itok"));
+        if crate::testutil::dogfood() {
+            assert!(o.out.contains(&f), "{f} not in:\n{}", o.out);
+        }
     }
 
     #[test]
@@ -208,9 +221,14 @@ mod tests {
 
     #[test]
     fn json_carries_commit_and_files() {
-        let o = show(&args(&["-C", &root(), "--format", "json", "HEAD"]));
+        let (c, f) = touched();
+        let o = show(&args(&["-C", &root(), "--format", "json", &c]));
         assert!(o.out.contains("\"commit\":"));
         assert!(o.out.contains("\"files\":["));
+        if crate::testutil::dogfood() {
+            let row = format!("\"path\":\"{f}\"");
+            assert!(o.out.contains(&row), "{row} not in {}", o.out);
+        }
     }
 
     #[test]
