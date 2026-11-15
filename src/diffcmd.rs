@@ -264,6 +264,10 @@ mod tests {
         assert!(o.err.contains("over budget"));
     }
 
+    /// From the empty tree, like its siblings above (B3, B35): on CI
+    /// `HEAD~1..HEAD` is `main` against the PR's merge commit, which is
+    /// EMPTY when the PR's net diff is nothing, and an empty `files` list
+    /// runs none of the per-file rendering (B48, V37).
     #[test]
     fn json_carries_total_and_files() {
         let o = diff(&args(&[
@@ -271,11 +275,14 @@ mod tests {
             &root(),
             "--format",
             "json",
-            "HEAD~1",
+            EMPTY_TREE,
             "HEAD",
         ]));
         assert!(o.out.contains("\"total\":"));
         assert!(o.out.contains("\"files\":["));
+        if crate::testutil::dogfood() {
+            assert!(o.out.contains("\"path\":"), "{}", o.out);
+        }
     }
 
     #[test]
