@@ -167,6 +167,17 @@ fn cache_work_cannot_cancel_a_passing_gate() {
     );
 }
 
+/// B49: the gate's 15-minute bound must time the checks, not the shell
+/// build. The shell is materialised by an earlier, separately bounded step.
+#[test]
+fn the_shell_build_has_its_own_bound() {
+    let y = workflow();
+    let shell = marker(&y, "run: nix develop --command true");
+    let check = marker(&y, "run: nix develop --command hk check --all --check");
+    assert!(shell < check);
+    assert!(y[shell.saturating_sub(40)..shell].contains("timeout-minutes: 25"));
+}
+
 /// V75 amends V31: nix is now this crate's OWN toolchain rather than a
 /// host dependency, so CI uses the dev shell. What survives from V31 is
 /// the part that still matters -- no tool gets a second, drifting install

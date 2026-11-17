@@ -97,8 +97,8 @@ jobs:
     #   10  the binary cache above removed those 8 minutes; worst is now
     #       `gate (macos-latest)` at 4m43s, with 4m32s and 2m54s beside it
     #
-    # These measurements are historical. The current job bound is 45 minutes,
-    # while the 15-minute value below is the gate-step bound. A bound nobody
+    # These measurements are historical. The current job bound is 50 minutes:
+    # the net above 25 (shell), 15 (gate) and two 3-minute cache steps. A bound nobody
     # revisits drifts back toward the 360-minute default that hid B21 for three
     # hours -- and a bound is only worth having if it is tight enough to fire
     # before a hang costs an afternoon.
@@ -108,7 +108,7 @@ jobs:
     # and on itok#52 it cancelled a PASSED gate while the new store was
     # being compressed. Each cache step carries its own small bound and may
     # fail; this job bound is only the net above their sum.
-    timeout-minutes: 45
+    timeout-minutes: 50
     steps:
       # Pinned to commit SHAs, not tags. A tag is mutable: whoever controls
       # the action can move `v4` to different code, and every workflow that
@@ -145,6 +145,18 @@ jobs:
           extra_nix_config: |
             extra-substituters = https://pr0d1r2.cachix.org
             extra-trusted-public-keys = pr0d1r2.cachix.org-1:NfWjbhgAj41byXhCKiaE+av3Vnphm1fTezHXEGsiQIM=
+
+      # Materialise the dev shell in its OWN step, under its OWN bound.
+      # Before this, the first `nix develop` was the gate step itself, so
+      # the gate's 15-minute bound also paid for building the shell. On
+      # itok#109, a `nix flake update`, `gate (macos-15-intel)` was killed
+      # by that bound after 15m13s (B49). B44, B46 and B47 each re-tuned the
+      # same bound around the same mixed cost; splitting it makes each bound
+      # measure one thing, which is what lets a log say WHICH half ran out.
+      # A cold build of the pinned Rust tools is legitimate work and gets
+      # 25 minutes; a warm shell passes in seconds.
+      - timeout-minutes: 25
+        run: nix develop --command true
 
       # NO Nix store cache. The shell is substituted from cache.nixos.org and
       # pr0d1r2.cachix.org (above); a cold one materialised in 26s on Linux.
@@ -204,10 +216,10 @@ jobs:
       # runs to completion instead of waiting forever. That version arrives
       # with `nix-hk`, so the dependency bump is what made this safe.
       #
-      # The job bound is 45 minutes because a cold platform can legitimately
-      # build the pinned Rust tools while entering the shell. The check itself
-      # gets a 15-minute bound: cache work is outside this step and must not
-      # turn a passed gate into a job timeout.
+      # The shell is already materialised by the step above, so entering it
+      # here is seconds. The check itself gets a 15-minute bound: shell and
+      # cache work are outside this step, and neither may turn a passed gate
+      # into a timeout.
       # Same shape as the `nix build` step below: the expression is evaluated
       # into `env:`, and the shell reads a variable. `${FAIL_FAST:+"$FAIL_FAST"}`
       # expands to a single quoted argument when set and to NOTHING when empty,
