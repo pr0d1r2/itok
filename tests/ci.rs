@@ -283,9 +283,13 @@ fn cachix_push_cannot_cancel_a_passing_build() {
     let build = marker(job_y, "run: nix build");
     let push = marker(job_y, "cachix push");
     assert!(build < push);
-    assert!(job_y[..build].contains("timeout-minutes: 10"));
+    // Each bound is checked inside its own block, so a swap (job 10, build
+    // 25) cannot pass by the job key satisfying the build assertion.
+    let step = job_y[..build].rfind("\n      - ").unwrap_or(0);
+    assert!(job_y[step..build].contains("timeout-minutes: 10"));
     let tail = &job_y[build..push];
     assert!(tail.contains("continue-on-error: true"));
     assert!(tail.contains("timeout-minutes: 5"));
-    assert!(job_y.contains("timeout-minutes: 25"));
+    let header = marker(job_y, "\n    steps:");
+    assert!(job_y[..header].contains("timeout-minutes: 25"));
 }
