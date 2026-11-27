@@ -273,11 +273,12 @@ jobs:
   nix-build:
     name: nix-build
     runs-on: ${{ matrix.os }}
-    # 10, matching the gate again. These jobs never enter the dev shell --
+    # 25, loose: the 10-minute bound is on the build step, the push has
+    # its own 5. A job bound counts the push. These jobs never enter the dev shell --
     # they build PACKAGES -- so they did not get heavier when it did.
     # MEASURED across all nine: 54s to 3m55s, macOS slowest, so ~2.5x the
     # worst.
-    timeout-minutes: 10
+    timeout-minutes: 25
     strategy:
       # One package failing is a fact about that package on that system.
       # Cancelling the rest would hide whether the defect is shared.
@@ -308,31 +309,23 @@ jobs:
       # No Nix store cache here either: see the `gate` job. These jobs
       # substitute from the binary caches above and push what they build.
 
-      # PUSH, not merely READ. Every cache line above this one made CI a
-      # CONSUMER; nothing made it a PRODUCER -- so `packages.default`
-      # EXISTED and nobody could substitute it, and a consumer flake that
-      # gates on `itok` still built itok AND tiktoken from source to lint
-      # one file. That is the cost T99 names, and it survives the package
-      # being defined: defining an output and publishing one are two
-      # different jobs, and only the second is what "callable" means.
+      # post step would upload inside the job's time limit, and a job timeout
+      # cancels the whole job -- `continue-on-error` does not prevent that.
+      # On itok#114 a slow macOS (intel) upload turned three jobs whose builds
+      # had passed red. The action still installs cachix and the substituter.
+      # The post-build-hook ordering rule no longer applies: the explicit push
+      # names the built output, so there is nothing to arm before the build.
       #
-      # BEFORE the build, not after: cachix-action installs a nix
-      # post-build-hook, so it pushes paths realised WHILE IT IS ARMED.
-      # Placed after `nix build` it would arm on a store that already has
-      # everything and push nothing -- silently, and green.
-      #
-      # GUARDED on the token by cachix-action itself: with `authToken`
-      # empty it configures the substituter and skips the push rather than
-      # failing. That is what makes it safe here, because a `pull_request`
-      # from a FORK gets no secrets, and a hard-required push would turn
-      # every outside contribution red for a reason having nothing to do
-      # with the contribution. No token = still built, still gated, just
-      # not shared. The cache stays a SPEEDUP and is never a gate: nothing
-      # in this file may depend on a push having happened.
+      # GUARDED on the token: a `pull_request` from a FORK gets no secrets,
+      # and a hard-required push would turn every outside contribution red
+      # for a reason having nothing to do with the contribution. No token =
+      # still built, still gated, just not shared. The cache stays a SPEEDUP
+      # and is never a gate: nothing in this file may depend on a push.
       - uses: cachix/cachix-action@38b082610b782e7e93e209c35fd730d399dee866 # v17
         with:
           name: pr0d1r2
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+          skipPush: true
 
       # The matrix value reaches the shell through `env:` rather than being
       # pasted into the script by the expression engine. Both are workflow-
@@ -340,6 +333,19 @@ jobs:
       # the point is that the shell receives DATA in a variable rather than
       # having its own source code assembled around it, which is the only
       # form that stays safe when the input later changes.
+      #
+      # The tight bound sits on THIS step, the one that checks; the job's
+      # bound is only loose headroom for the push.
       - env:
           PACKAGE: ${{ matrix.package }}
+        timeout-minutes: 10
         run: nix build ".#$PACKAGE"
+
+      # Best-effort and bounded: a slow upload ends only this step.
+      - env:
+          CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}
+        continue-on-error: true
+        timeout-minutes: 5
+        run: |
+          [ -n "$CACHIX_AUTH_TOKEN" ] || exit 0
+          cachix push pr0d1r2 ./result*
