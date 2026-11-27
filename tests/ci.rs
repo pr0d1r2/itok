@@ -270,3 +270,22 @@ fn the_manifest_version_skips_no_open_rung() {
         "Cargo.toml's version skips open rungs {skipped:?} (V70)"
     );
 }
+
+/// A slow cachix upload must not cancel a nix-build job whose build passed:
+/// the action's post-step push is off, and the push is a separate,
+/// best-effort, bounded step after the build.
+#[test]
+fn cachix_push_cannot_cancel_a_passing_build() {
+    let y = workflow();
+    let job = marker(&y, "  nix-build:");
+    let job_y = &y[job..];
+    assert!(job_y.contains("skipPush: true"));
+    let build = marker(job_y, "run: nix build");
+    let push = marker(job_y, "cachix push");
+    assert!(build < push);
+    assert!(job_y[..build].contains("timeout-minutes: 10"));
+    let tail = &job_y[build..push];
+    assert!(tail.contains("continue-on-error: true"));
+    assert!(tail.contains("timeout-minutes: 5"));
+    assert!(job_y.contains("timeout-minutes: 25"));
+}
